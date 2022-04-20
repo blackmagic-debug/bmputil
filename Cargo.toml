@@ -1,17 +1,15 @@
 [package]
-name = "bmp"
+name = "bmputil"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = "3.0"
 env_logger = "0.9"
-
-#dfu = "0.4"
-#usbapi = "0.4"
-
 dfu-core = { version = "0.2", features = ["std"] }
 dfu-libusb = "0.2"
 rusb = "0.9"
+
+[patch.crates-io]
+# Required until https://github.com/dfu-rs/dfu-core/pull/9 is merged.
+dfu-core = { git = "https://github.com/dfu-rs/dfu-core", branch = "cecton-add-set-address" }
