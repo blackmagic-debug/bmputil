@@ -9,6 +9,9 @@ env_logger = "0.9"
 dfu-core = { version = "0.2", features = ["std"] }
 dfu-libusb = "0.2"
 rusb = "0.9"
+log = "0.4"
+anyhow = "1.0"
+thiserror = "1.0"
 
 [patch.crates-io]
 # Required until https://github.com/dfu-rs/dfu-core/pull/9 is merged.
