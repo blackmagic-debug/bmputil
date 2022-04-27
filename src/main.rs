@@ -200,6 +200,34 @@ fn detach_if_needed(context: &rusb::Context)
 }
 
 
+fn detach(_matches: &ArgMatches)
+{
+    let context = rusb::Context::new().unwrap();
+
+    let devices = context.devices()
+        .expect("Unable to list USB devices!");
+
+    let mut bmp_application_mode_devices: Vec<rusb::Device<_>> = devices
+        .iter()
+        .filter(|device| device_matches_vid_pid(device, Vid(0x1d50), Pid(0x6018)))
+        .collect();
+
+    if bmp_application_mode_devices.len() > 1 {
+        unimplemented!("Selecting between multiple Blackmagic Probe devices isn't implemented yet, sorry!");
+    }
+
+    if let Some(app_mode_dev) = bmp_application_mode_devices.pop() {
+
+        println!("Detaching device...");
+        detach_device(app_mode_dev).expect("Device failed to detach!");
+        println!("Device detached.");
+        return;
+    }
+
+    panic!("No Blackmagic Probe device was found!");
+}
+
+
 fn flash(matches: &ArgMatches)
 {
     let firmware_file = matches.value_of("firmware_binary")
@@ -255,6 +283,13 @@ fn main() -> AResult<()>
     match subcommand {
         "info" => unimplemented!(),
         "flash" => flash(subcommand_matches),
+        "debug" => match subcommand_matches.subcommand().unwrap() {
+            ("detach", detach_matches) => detach(detach_matches),
+            ("reattach", _reattach_matches) => unimplemented!(),
+            _ => unreachable!(),
+        },
+
+
         &_ => unimplemented!(),
     };
 
