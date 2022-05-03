@@ -24,7 +24,8 @@ type DfuDevice = DfuSync<DfuLibusb<rusb::Context>, DfuLibusbError>;
 
 
 fn device_matches_vid_pid<ContextT>(device: &rusb::Device<ContextT>, vid: Vid, pid: Pid) -> bool
-    where ContextT: UsbContext,
+where
+    ContextT: UsbContext,
 {
     let dev_descriptor = device.device_descriptor()
         .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
@@ -58,8 +59,6 @@ fn detach_device(device: rusb::Device<rusb::Context>) -> Result<(), BmputilError
 
             // USB configuration descriptors are 1-indexed, as 0 is considered
             // to be "unconfigured".
-            //device.config_descriptor(1)
-                //.expect("Device seems to not have any configuration descriptors! This shouldn't be possible!")
             match device.config_descriptor(1) {
                 Ok(d) => d,
                 Err(e) => {
@@ -76,10 +75,14 @@ fn detach_device(device: rusb::Device<rusb::Context>) -> Result<(), BmputilError
     };
 
     // Get the descriptor for the DFU interface on the Blackmagic Probe.
-    let dfu_interface_descriptor = configuration.interfaces()
-        .map(|interface| interface.descriptors()
-            .next().unwrap() // Unwrap fine as we've already established there is at least one interface.
-        )
+    let dfu_interface_descriptor = configuration
+        .interfaces()
+        .map(|interface| {
+            interface
+            .descriptors()
+            .next()
+            .unwrap() // Unwrap fine as we've already established there is at least one interface.
+        })
         .find(interface_descriptor_is_dfu)
         .ok_or_else(|| BmputilError::DeviceSeemsInvalidError {
             source: None,

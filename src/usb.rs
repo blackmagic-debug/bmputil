@@ -138,7 +138,8 @@ pub enum DescriptorConvertError
         "bLength field ({provided_length}) in provided data does not match the correct value\
         ({correct_length}) for this descriptor type"
     )]
-    LengthFieldMismatch {
+    LengthFieldMismatch
+    {
         provided_length: u8,
         correct_length: u8,
     },
@@ -147,7 +148,8 @@ pub enum DescriptorConvertError
         "bDescriptorType field ({provided_type}) in provided data does not match the correct\
         value ({correct_type}) for this descriptor type"
     )]
-    DescriptorTypeMismatch {
+    DescriptorTypeMismatch
+    {
         provided_type: u8,
         correct_type: u8,
     },
@@ -221,9 +223,11 @@ pub(crate) const CHECKED_LIBUSB_VERSION: &str = "1.0.26";
 macro_rules! libusb_cannot_fail
 {
     ($funcname:literal) => {
-        format!("As of libusb {}, {} cannot fail. This should be unreachable, unless libusb has updated.",
+        format!(
+            "As of libusb {}, {} cannot fail. This should be unreachable, unless libusb has updated.",
             crate::usb::CHECKED_LIBUSB_VERSION,
             $funcname,
-        ).as_str()
-    }
+        )
+        .as_str()
+    };
 }

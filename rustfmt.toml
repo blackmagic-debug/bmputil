@@ -1,0 +1,10 @@
+# We don't actually want rustfmt to do all the formatting, as there isn't enough granularity.
+# Therefore, any options that follow this one are symbolic as guidelines, rather than rules
+# for rustfmt.
+#disable_all_formatting = true
+
+brace_style = "AlwaysNextLine"
+control_brace_style = "AlwaysSameLine"
+binop_separator = "Back"
+match_block_trailing_comma = true
+overflow_delimited_expr = true

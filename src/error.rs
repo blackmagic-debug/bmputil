@@ -7,7 +7,8 @@ use thiserror::Error;
 pub enum BmputilError
 {
     #[error("Access denied when attempting to {operation} to {context}")]
-    PermissionsError {
+    PermissionsError
+    {
         #[source]
         source: rusb::Error,
 
@@ -19,7 +20,8 @@ pub enum BmputilError
     },
 
     #[error("Blackmagic Probe device found disconnected when attempting to {operation} to {context}")]
-    DeviceDisconnectDuringOperationError {
+    DeviceDisconnectDuringOperationError
+    {
         #[source]
         source: rusb::Error,
 
@@ -32,7 +34,8 @@ pub enum BmputilError
 
     #[allow(dead_code)] // FIXME: this will presumably be used once we have more dynamic detection of re-enumeration.
     #[error("Blackmagic Probe device did not re-enumerate after requesting to switch to DFU mode")]
-    DeviceReconfigureError {
+    DeviceReconfigureError
+    {
         /// Source is optional because there may be no libusb error, if detecting connection is
         /// done through e.g. checking device lists.
         #[source]
@@ -41,7 +44,8 @@ pub enum BmputilError
 
     #[allow(dead_code)] // FIXME: this will presumably be used once we, well, actually implement the post-flash check.
     #[error("Blackmagic Probe device did not re-enumerate after flashing firmware; firmware may be invalid?")]
-    DeviceRebootError {
+    DeviceRebootError
+    {
         #[source]
         source: Option<rusb::Error>,
     },
@@ -51,7 +55,8 @@ pub enum BmputilError
         "Blackmagic Probe device returned bad data ({invalid_thing}) during configuration.\
         This generally shouldn't be possible. Maybe cable is bad, or OS is messing with things?"
     )]
-    DeviceSeemsInvalidError {
+    DeviceSeemsInvalidError
+    {
         #[source]
         source: Option<anyhow::Error>,
         invalid_thing: String,
@@ -63,7 +68,8 @@ pub enum BmputilError
 
 
 #[macro_export]
-macro_rules! log_and_return {
+macro_rules! log_and_return
+{
     ($err:expr) => {
         let err = $err;
         log::error!("{}", err);
