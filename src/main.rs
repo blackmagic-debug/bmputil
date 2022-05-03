@@ -16,13 +16,11 @@ use log::warn;
 mod usb;
 mod error;
 use crate::usb::{Vid, Pid, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuFunctionalDescriptor};
+use crate::usb::DfuRequest;
 use crate::error::BmputilError;
 
 
 type DfuDevice = DfuSync<DfuLibusb<rusb::Context>, DfuLibusbError>;
-
-
-const DFU_DETACH: u8 = 0;
 
 
 fn device_matches_vid_pid<ContextT>(device: &rusb::Device<ContextT>, vid: Vid, pid: Pid) -> bool
@@ -147,7 +145,7 @@ fn detach_device(device: rusb::Device<rusb::Context>) -> Result<(), BmputilError
 
     let _response = handle.write_control(
         request_type, // bmRequestType
-        DFU_DETACH, // bRequest
+        DfuRequest::Detach as u8, // bRequest
         timeout_ms, // wValue
         interface_index, // wIndex
         &[], // buffer

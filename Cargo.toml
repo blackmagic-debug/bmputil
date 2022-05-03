@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = "3.0"
+clap = { version = "3.0", default-features = false, features = ["std", "color"] }
 env_logger = "0.9"
 dfu-core = { version = "0.2", features = ["std"] }
 dfu-libusb = "0.2"
@@ -12,7 +12,8 @@ rusb = "0.9"
 log = "0.4"
 anyhow = "1.0"
 thiserror = "1.0"
+indicatif = "0.16"
 
 [patch.crates-io]
-# Required until https://github.com/dfu-rs/dfu-core/pull/9 is merged.
-dfu-core = { git = "https://github.com/dfu-rs/dfu-core", branch = "cecton-add-set-address" }
+# Required until dfu-libusb updates its dfu-core dependency.
+dfu-core = { git = "https://github.com/dfu-rs/dfu-core", rev = "refs/pull/9/head" }
