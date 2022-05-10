@@ -1,42 +1,33 @@
+use std::{time, thread};
+
+
 use clap::{Command, Arg, ArgMatches};
 
 use dfu_core::sync::DfuSync;
 use dfu_libusb::DfuLibusb;
 use dfu_libusb::Error as DfuLibusbError;
 
-use rusb::UsbContext;
-
 use anyhow::Result as AResult;
+use rusb::UsbContext;
+use log::warn;
 
 
 mod usb;
 mod error;
 mod bmp;
-use crate::usb::{Vid, Pid, DfuOperatingMode};
-use crate::bmp::BlackmagicProbeDevice;
+use crate::usb::{Vid, Pid, DfuOperatingMode, DfuMatch};
+use crate::bmp::{BlackmagicProbeDevice, BmpVidPid};
 use crate::error::BmputilError;
 
 
 type DfuDevice = DfuSync<DfuLibusb<rusb::Context>, DfuLibusbError>;
 
 
-fn device_matches_vid_pid<ContextT>(device: &rusb::Device<ContextT>, vid: Vid, pid: Pid) -> bool
-where
-    ContextT: UsbContext,
-{
-    let dev_descriptor = device.device_descriptor()
-        .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
-    let dev_vid = dev_descriptor.vendor_id();
-    let dev_pid = dev_descriptor.product_id();
-
-    (dev_vid == vid.0) && (dev_pid == pid.0)
-}
-
-
 fn detach_device(device: rusb::Device<rusb::Context>) -> Result<(), BmputilError>
 {
 
     let device = BlackmagicProbeDevice::from_usb_device(device)?;
+    println!("{}", device);
 
     use crate::usb::DfuOperatingMode::*;
     match device.operating_mode() {
@@ -52,8 +43,6 @@ fn detach_device(device: rusb::Device<rusb::Context>) -> Result<(), BmputilError
 
 fn detach_command(_matches: &ArgMatches)
 {
-    let context = rusb::Context::new().unwrap();
-
     // HACK FIXME: this is cursed.
     let (dev, _handle, _mode) = BlackmagicProbeDevice::first_found()
         .expect("Failed to open Blackmagic Probe device")
@@ -87,7 +76,7 @@ fn flash(matches: &ArgMatches)
         dev.request_detach()
             .expect("Failed to detach device");
     }
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    thread::sleep(time::Duration::from_secs(1));
 
     let (vid, pid) = (BlackmagicProbeDevice::VID, BlackmagicProbeDevice::PID_DFU);
 
@@ -96,6 +85,58 @@ fn flash(matches: &ArgMatches)
 
     println!("Performing flash...");
     device.download(firmware_file, file_size).unwrap();
+}
+
+fn info_command() -> Result<(), BmputilError>
+{
+    let context = match rusb::Context::new() {
+        Ok(c) => c,
+        Err(e) => {
+            log_and_return!(e.into());
+        },
+    };
+
+    let devices = match context.devices() {
+        Ok(l) => l,
+        Err(e) => {
+            log_and_return!(e.into());
+        },
+    };
+
+    let devices = devices
+        .iter()
+        .filter(|d| {
+            let desc = d.device_descriptor().unwrap();
+            let (vid, pid) = (desc.vendor_id(), desc.product_id());
+            BmpVidPid::mode_from_vid_pid(Vid(vid), Pid(pid)).is_some()
+        })
+        .map(|d| BlackmagicProbeDevice::from_usb_device(d));
+
+    let mut found: Vec<BlackmagicProbeDevice> = Vec::new();
+    let mut errors: Vec<BmputilError> = Vec::new();
+
+    for dev in devices.into_iter() {
+        match dev {
+            Ok(d) => found.push(d),
+            Err(e) => errors.push(e),
+        };
+    }
+
+    if !found.is_empty() {
+        for dev in found.iter() {
+            println!("Found a {}", dev);
+        }
+
+        if !errors.is_empty() {
+            warn!("Errors occurred for other devices, results may be incomplete!");
+            warn!("Other device errors: {:?}", errors.as_slice());
+        }
+    } else {
+        return Err(BmputilError::DeviceNotFoundError);
+    }
+
+
+    Ok(())
 }
 
 
@@ -127,7 +168,7 @@ fn main() -> AResult<()>
         .expect("No subcommand given!"); // Should be impossible, thanks to clap.
 
     match subcommand {
-        "info" => unimplemented!(),
+        "info" => info_command()?,
         "flash" => flash(subcommand_matches),
         "debug" => match subcommand_matches.subcommand().unwrap() {
             ("detach", detach_matches) => detach_command(detach_matches),

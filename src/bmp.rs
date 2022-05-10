@@ -1,11 +1,12 @@
+use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
-use crate::BmputilError;
+use crate::{BmputilError, libusb_cannot_fail};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode, DfuMatch};
 
 use log::{trace, info, warn};
-use rusb::{UsbContext, Direction, RequestType, Recipient};
+use rusb::{UsbContext, Direction, RequestType, Recipient, InterfaceDescriptor};
 
 type UsbDevice = rusb::Device<rusb::Context>;
 type UsbHandle = rusb::DeviceHandle<rusb::Context>;
@@ -41,7 +42,8 @@ impl BlackmagicProbeDevice
 		let (device, vid, pid) = loop {
 			let dev = devices.next().ok_or(BmputilError::DeviceNotFoundError)?;
 
-			let desc = dev.device_descriptor()?;
+			let desc = dev.device_descriptor()
+                .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
 			let (vid, pid) = (desc.vendor_id(), desc.product_id());
 
 			if vid == Self::VID.0 {
@@ -85,7 +87,8 @@ impl BlackmagicProbeDevice
 			.find(matcher_fn)
 			.ok_or(BmputilError::DeviceNotFoundError)?;
 
-		let desc = device.device_descriptor()?;
+		let desc = device.device_descriptor()
+            .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
 		let (vid, pid) = (Vid(desc.vendor_id()), Pid(desc.product_id()));
 
 		// Unlike in [`Self::first_found`] we're not unwrapping here as the supplied matcher
@@ -108,7 +111,8 @@ impl BlackmagicProbeDevice
 
 	pub fn from_usb_device(device: UsbDevice) -> Result<Self, BmputilError>
 	{
-		let desc = device.device_descriptor()?;
+		let desc = device.device_descriptor()
+            .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
 		let (vid, pid) = (Vid(desc.vendor_id()), Pid(desc.product_id()));
 		let mode = BmpVidPid::mode_from_vid_pid(vid, pid).ok_or_else(|| {
 			warn!("Device passed to BlackmagicProbeDevice::from_usb_device() does not seem to be a BMP device!");
@@ -337,6 +341,47 @@ impl BlackmagicProbeDevice
 	}
 }
 
+impl Display for BlackmagicProbeDevice
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error>
+    {
+        // FIXME: this function needs proper error handling.
+
+        let languages = self.handle
+            .read_languages(Duration::from_secs(2))
+            .unwrap();
+        let product_string = self.handle
+            .read_product_string(
+                *languages.first().unwrap(),
+                &self.device.device_descriptor().unwrap(),
+                Duration::from_secs(2),
+            )
+            .unwrap();
+        let serial = self.handle
+            .read_serial_number_string(
+                *languages.first().unwrap(),
+                &self.device.device_descriptor().unwrap(),
+                Duration::from_secs(2),
+            )
+            .unwrap();
+
+        let bus = self.device.bus_number();
+        let path = self.device
+            .port_numbers()
+            .unwrap()
+            .into_iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<String>>()
+            .as_slice()
+            .join(".");
+
+        write!(f, "{}\n  Serial: {}  \n", product_string, serial)?;
+        write!(f, "  Port:   {}-{}", bus, path)?;
+
+        Ok(())
+    }
+}
+
 pub struct BmpVidPid;
 impl BmpVidPid
 {
@@ -346,7 +391,6 @@ impl BmpVidPid
 }
 impl DfuMatch for BmpVidPid
 {
-    //fn from_vid_pid(&self, vid: Vid, pid: Pid) -> Option<DfuOperatingMode>
     fn mode_from_vid_pid(vid: Vid, pid: Pid) -> Option<DfuOperatingMode>
     {
 		match vid {
