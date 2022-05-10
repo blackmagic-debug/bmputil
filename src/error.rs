@@ -6,6 +6,17 @@ use thiserror::Error;
 #[allow(dead_code)] // XXX FIXME
 pub enum BmputilError
 {
+    #[error("Failed to read firmware file")]
+    FirmwareFileIOError
+    {
+        #[source]
+        source: std::io::Error,
+        filename: String,
+    },
+
+    #[error("More than one Blackmagic Probe device was found")]
+    TooManyDevicesError,
+
     #[error("No connected Blackmagic Probe device was found! Check connection?")]
     DeviceNotFoundError,
 

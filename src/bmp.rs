@@ -1,12 +1,15 @@
-use std::fmt::{self, Display, Formatter};
+use std::mem;
+use std::str::FromStr;
 use std::time::Duration;
+use std::fmt::{self, Display, Formatter};
 
 use crate::{BmputilError, libusb_cannot_fail};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode, DfuMatch};
 
-use log::{trace, info, warn};
-use rusb::{UsbContext, Direction, RequestType, Recipient, InterfaceDescriptor};
+use log::{trace, info, warn, error};
+use clap::ArgMatches;
+use rusb::{UsbContext, Direction, RequestType, Recipient};
 
 type UsbDevice = rusb::Device<rusb::Context>;
 type UsbHandle = rusb::DeviceHandle<rusb::Context>;
@@ -28,6 +31,7 @@ impl BlackmagicProbeDevice
 	pub const PID_DFU: Pid = BmpVidPid::PID_DFU;
 
 	/// Creates a [`BlackmagicProbeDevice`] struct from the first found connected Blackmagic Probe.
+    #[allow(dead_code)]
 	pub fn first_found() -> Result<Self, BmputilError>
 	{
 		let context = rusb::Context::new()?;
@@ -272,15 +276,15 @@ impl BlackmagicProbeDevice
 		);
 		let mut buf: [u8; 6] = [0; 6];
 		let status = self.handle.read_control(
-			request_type,
-			DfuRequest::GetStatus as u8,
+			request_type, // bmRequestType
+			DfuRequest::GetStatus as u8, // bRequest
 			0, // wValue
 			iface_number as u16, // wIndex
 			&mut buf,
 			Duration::from_secs(2),
 		)?;
 
-		trace!("Device status after zero-length DNLOAD is {:?}", status);
+		trace!("Device status after zero-length DNLOAD is 0x{:02x}", status);
 		info!("DFU_GETSTATUS request completed. Device should now re-enumerate into runtime mode.");
 
 
@@ -335,6 +339,7 @@ impl BlackmagicProbeDevice
 	}
 
     /// Consume the structure and retrieve its parts.
+    #[allow(dead_code)]
 	pub fn into_inner_parts(self) -> (UsbDevice, UsbHandle, DfuOperatingMode)
 	{
 		(self.device, self.handle, self.mode)
@@ -349,7 +354,8 @@ impl Display for BlackmagicProbeDevice
 
         let languages = self.handle
             .read_languages(Duration::from_secs(2))
-            .unwrap();
+            .expect("Failed to read supported languages from Blackmagic Probe device");
+
         let product_string = self.handle
             .read_product_string(
                 *languages.first().unwrap(),
@@ -381,6 +387,302 @@ impl Display for BlackmagicProbeDevice
         Ok(())
     }
 }
+
+
+#[derive(Debug, Clone, Default)]
+pub struct BlackmagicProbeMatcher
+{
+    index: Option<usize>,
+    serial: Option<String>,
+    port: Option<String>,
+}
+impl BlackmagicProbeMatcher
+{
+    pub fn new() -> Self
+    {
+        Default::default()
+    }
+
+    pub(crate) fn from_clap_matches(matches: &ArgMatches) -> Self
+    {
+        Self::new()
+            .index(matches.value_of("index").map(|arg| usize::from_str(arg).unwrap()))
+            .serial(matches.value_of("serial_number"))
+            .port(matches.value_of("port"))
+    }
+
+    /// Set the index to match against.
+    #[must_use]
+    pub fn index(mut self, idx: Option<usize>) -> Self
+    {
+        self.index = idx;
+        self
+    }
+
+    /// Set the serial number to match against.
+    #[must_use]
+    pub fn serial<'s, IntoOptStrT>(mut self, serial: IntoOptStrT) -> Self
+        where IntoOptStrT: Into<Option<&'s str>>
+    {
+        self.serial = serial.into().map(|s| s.to_string());
+        self
+    }
+
+    /// Set the port path to match against.
+    #[must_use]
+    pub fn port<'s, IntoOptStrT>(mut self, port: IntoOptStrT) -> Self
+        where IntoOptStrT: Into<Option<&'s str>>
+    {
+        self.port = port.into().map(|s| s.to_string());
+        self
+    }
+
+    /// Get any index previously set with `.index()`.
+    #[allow(dead_code)]
+    pub fn get_index(&self) -> Option<usize>
+    {
+        self.index
+    }
+    
+    /// Get any serial number previously set with `.serial()`.
+    #[allow(dead_code)]
+    pub fn get_serial(&self) -> Option<&str>
+    {
+        self.serial.as_deref()
+    }
+
+    /// Get any port path previously set with `.port()`.
+    #[allow(dead_code)]
+    pub fn get_port(&self) -> Option<&str>
+    {
+        self.port.as_deref()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct BlackmagicProbeMatchResults
+{
+    pub found: Vec<BlackmagicProbeDevice>,
+    pub filtered_out: Vec<UsbDevice>, // FIXME: rusb::Device?
+    pub errors: Vec<BmputilError>,
+}
+
+impl BlackmagicProbeMatchResults
+{
+    /// Pops all found devices, handling printing error and warning cases.
+    pub(crate) fn pop_all(&mut self) -> Result<Vec<BlackmagicProbeDevice>, BmputilError>
+    {
+        if self.found.is_empty() {
+            if !self.filtered_out.is_empty() {
+                let (suffix, verb) = if self.filtered_out.len() > 1 { ("s", "were") } else { ("", "was") };
+                warn!(
+                    "Matching device not found and {} Blackmagic Probe device{} {} filtered out.",
+                    self.filtered_out.len(),
+                    suffix,
+                    verb,
+                );
+                warn!("Filter arguments (--serial, --index, --port may be incorrect.");
+            }
+
+            if !self.errors.is_empty() {
+                warn!("Device not found and errors occurred when searching for devices.");
+                warn!("One of these may be why the Blackmagic Probe device was not found: {:?}", self.errors.as_slice());
+            }
+            return Err(BmputilError::DeviceNotFoundError);
+        }
+
+        if !self.errors.is_empty() {
+            warn!("Matching device found but errors occurred when searching for devices.");
+            warn!("It is unlikely but possible that the incorrect device was selected!");
+            warn!("Other device errors: {:?}", self.errors.as_slice());
+        }
+
+        return Ok(mem::take(&mut self.found));
+    }
+
+    /// Pops a single found device, handling printing error and warning cases.
+    pub(crate) fn pop_single(&mut self, operation: &str) -> Result<BlackmagicProbeDevice, BmputilError>
+    {
+        if self.found.is_empty() {
+            if !self.filtered_out.is_empty() {
+                let (suffix, verb) = if self.filtered_out.len() > 1 { ("s", "were") } else { ("", "was") };
+                warn!(
+                    "Matching device not found and {} Blackmagic Probe device{} {} filtered out.",
+                    self.filtered_out.len(),
+                    suffix,
+                    verb,
+                );
+                warn!("Filter arguments (--serial, --index, --port may be incorrect.");
+            }
+
+            if !self.errors.is_empty() {
+                warn!("Device not found and errors occurred when searching for devices.");
+                warn!("One of these may be why the Blackmagic Probe device was not found: {:?}", self.errors.as_slice());
+            }
+            return Err(BmputilError::DeviceNotFoundError);
+        }
+
+        if self.found.len() > 1 {
+            error!(
+                "{} operation only accepts one Blackmagic Probe device, but {} were found!",
+                operation,
+                self.found.len()
+            );
+            error!("Hint: try bmputil info and revise your filter arguments (--serial, --index, --port).");
+            return Err(BmputilError::TooManyDevicesError);
+        }
+
+        if !self.errors.is_empty() {
+            warn!("Matching device found but errors occurred when searching for devices.");
+            warn!("It is unlikely but possible that the incorrect device was selected!");
+            warn!("Other device errors: {:?}", self.errors.as_slice());
+        }
+
+        Ok(self.found.remove(0))
+    }
+}
+
+
+/// Find all connected Blackmagic Probe devices that match from the command-line criteria.
+///
+/// This uses the `serial_number`, `index`, and `port` values from `matches`, treating any that
+/// were not provided as always matching.
+///
+/// This function returns all found devices and all errors that occurred during the search.
+/// This is so errors are not hidden, but also do not prevent matching devices from being found.
+/// However, if the length of the error `Vec` is not 0, you should consider the results
+/// potentially incomplete.
+///
+/// The `index` matcher *includes* devices that errored when attempting to match them.
+pub fn find_matching_probes(matcher: &BlackmagicProbeMatcher) -> BlackmagicProbeMatchResults
+{
+    //let mut found: Vec<BlackmagicProbeDevice> = Vec::new();
+    //let mut filtered_out: Vec<UsbDevice> = Vec::new();
+    //let mut errors: Vec<BmputilError> = Vec::new();
+    let mut results = BlackmagicProbeMatchResults {
+        found: Vec::new(),
+        filtered_out: Vec::new(),
+        errors: Vec::new(),
+    };
+
+    let context = match rusb::Context::new() {
+        Ok(c) => c,
+        Err(e) => {
+            results.errors.push(e.into());
+            return results;
+        },
+    };
+
+    let devices = match context.devices() {
+        Ok(d) => d,
+        Err(e) => {
+            results.errors.push(e.into());
+            return results;
+        },
+    };
+
+    // Filter out devices that don't match the Blackmagic Probe's vid/pid in the first place.
+    let devices = devices
+        .iter()
+        .filter(|dev| {
+            let desc = dev.device_descriptor()
+                .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
+
+            let (vid, pid) = (desc.vendor_id(), desc.product_id());
+            BmpVidPid::mode_from_vid_pid(Vid(vid), Pid(pid)).is_some()
+        });
+
+    for (index, dev) in devices.enumerate() {
+
+        // If we're trying to match against a serial number, try to open the device.
+        let handle = if let Some(_) = matcher.serial {
+            match dev.open() {
+                Ok(h) => Some(h),
+                Err(e) => {
+                    results.errors.push(e.into());
+                    continue;
+                },
+            }
+        } else {
+            None
+        };
+
+        // If we opened the device and now have that handle, try to get the device's first
+        // language.
+        let lang = if let Some(handle) = handle.as_ref() {
+            match handle.read_languages(Duration::from_secs(2)) {
+                Ok(mut l) => Some(l.remove(0)),
+                Err(e) => {
+                    results.errors.push(e.into());
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+
+        // And finally, if we have successfully read that language, read and match the serial
+        // number.
+        let serial_matches = if let Some(lang) = lang {
+            let handle = handle.unwrap();
+            let desc = dev.device_descriptor()
+                .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
+            match handle.read_serial_number_string(lang, &desc, Duration::from_secs(2)) {
+                Ok(s) => Some(s) == matcher.serial,
+                Err(e) => {
+                    results.errors.push(e.into());
+                    continue;
+                },
+            }
+        } else {
+            // If we don't have a serial number, treat it as matching.
+            true
+        };
+
+        // Consider the index to match if it equals that of the device or if one was not specified
+        // at all.
+        let index_matches = matcher.index.map_or(true, |needle| needle == index);
+
+        // Consider the port to match if it equals that of the device or if one was not specified
+        // at all.
+        let port_matches = matcher.port.as_ref().map_or(true, |p| {
+            let port_chain = dev
+                .port_numbers()
+                // Unwrap should be safe as the only possible error from libusb_get_port_numbers()
+                // is LIBUSB_ERROR_OVERFLOW, and only if the buffer given to it is too small, but
+                // rusb gives it a buffer big enough for the maximum hub chain allowed by the spec.
+                .expect("Could not get port numbers! Hub depth > 7 shouldn't be possible!")
+                .into_iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<String>>()
+                .as_slice()
+                .join(".");
+
+            let port_path = format!("{}-{}", dev.bus_number(), port_chain);
+
+            p == &port_path
+        });
+
+        // Finally, filter devices based on whether the provided criteria match.
+        if index_matches && port_matches && serial_matches {
+            match BlackmagicProbeDevice::from_usb_device(dev) {
+                Ok(bmpdev) => results.found.push(bmpdev),
+                Err(e) => {
+                    results.errors.push(e.into());
+                    continue;
+                },
+            };
+        } else {
+            results.filtered_out.push(dev);
+        }
+    }
+
+    // And finally, after all this, return all the devices we found, what devices were filtered
+    // out, and any errors that occurred along the way.
+    results
+}
+
 
 pub struct BmpVidPid;
 impl BmpVidPid
