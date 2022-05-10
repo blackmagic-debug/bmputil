@@ -1,22 +1,19 @@
-use std::time::Duration;
-
 use clap::{Command, Arg, ArgMatches};
 
 use dfu_core::sync::DfuSync;
 use dfu_libusb::DfuLibusb;
 use dfu_libusb::Error as DfuLibusbError;
 
-use rusb::{UsbContext, Direction, RequestType, Recipient};
+use rusb::UsbContext;
 
 use anyhow::Result as AResult;
-
-use log::warn;
 
 
 mod usb;
 mod error;
-use crate::usb::{Vid, Pid, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuFunctionalDescriptor};
-use crate::usb::DfuRequest;
+mod bmp;
+use crate::usb::{Vid, Pid, DfuOperatingMode};
+use crate::bmp::BlackmagicProbeDevice;
 use crate::error::BmputilError;
 
 
@@ -36,196 +33,33 @@ where
 }
 
 
-fn interface_descriptor_is_dfu(interface_descriptor: &rusb::InterfaceDescriptor) -> bool
-{
-    interface_descriptor.class_code() == InterfaceClass::APPLICATION_SPECIFIC.0 &&
-        interface_descriptor.sub_class_code() == InterfaceSubClass::DFU.0
-}
-
-
 fn detach_device(device: rusb::Device<rusb::Context>) -> Result<(), BmputilError>
 {
 
-    let configuration = match device.active_config_descriptor() {
-        Ok(desc) => desc,
-        Err(rusb::Error::NotFound) => {
+    let device = BlackmagicProbeDevice::from_usb_device(device)?;
 
-            // In the unlikely event that the OS reports the device as unconfigured
-            // (possibly because it was only just connected and is still enumerating?),
-            // try instead to simply get the first configuration.
-
-            warn!("OS reports Blackmagic Probe device is unconfigured!");
-            warn!("Attempting to continue anyway, in case device is still in the process of enumerating.");
-
-            // USB configuration descriptors are 1-indexed, as 0 is considered
-            // to be "unconfigured".
-            match device.config_descriptor(1) {
-                Ok(d) => d,
-                Err(e) => {
-                    log_and_return!(BmputilError::DeviceSeemsInvalidError {
-                        source: Some(e.into()),
-                        invalid_thing: String::from("no configuration descriptor exists"),
-                    });
-                },
-            }
-        },
-        Err(e) => {
-            log_and_return!(BmputilError::from(e));
-        },
+    use crate::usb::DfuOperatingMode::*;
+    match device.operating_mode() {
+        Runtime => println!("Requesting device detach from runtime mode to DFU mode..."),
+        FirmwareUpgrade => println!("Requesting device detach from DFU mode to runtime mode..."),
     };
 
-    // Get the descriptor for the DFU interface on the Blackmagic Probe.
-    let dfu_interface_descriptor = configuration
-        .interfaces()
-        .map(|interface| {
-            interface
-            .descriptors()
-            .next()
-            .unwrap() // Unwrap fine as we've already established there is at least one interface.
-        })
-        .find(interface_descriptor_is_dfu)
-        .ok_or_else(|| BmputilError::DeviceSeemsInvalidError {
-            source: None,
-            invalid_thing: String::from("no DFU interfaces"),
-        });
-    let dfu_interface_descriptor = match dfu_interface_descriptor {
-        Ok(d) => d,
-        Err(e) => { log_and_return!(e); },
-    };
-
-    // Get the data for all the "extra" descriptors that follow the interface descriptor.
-    let extra_descriptors: Vec<_> = GenericDescriptorRef::multiple_from_bytes(dfu_interface_descriptor.extra());
-
-    // Iterate through all the "extra" descriptors to find the DFU functional descriptor.
-    let dfu_func_desc_bytes: &[u8; DfuFunctionalDescriptor::LENGTH as usize] = extra_descriptors
-        .into_iter()
-        .find(|descriptor| descriptor.descriptor_type() == DfuFunctionalDescriptor::TYPE)
-        .expect("DFU interface does not have a DFU functional descriptor! This shouldn't be possible!")
-        .raw[0..DfuFunctionalDescriptor::LENGTH as usize]
-        .try_into() // Convert &[u8] to &[u8; LENGTH].
-        .unwrap(); // Unwrap fine as we already set the length two lines above.
-
-    let dfu_func_desc = DfuFunctionalDescriptor::copy_from_bytes(dfu_func_desc_bytes)
-        .map_err(|desc_convert_err| BmputilError::DeviceSeemsInvalidError {
-            source: Some(desc_convert_err.into()),
-            invalid_thing: String::from("DFU functional descriptor"),
-        });
-    let dfu_func_desc = match dfu_func_desc {
-        Ok(d) => d,
-        Err(e) => { log_and_return!(e); },
-    };
-
-
-    let handle = match device.open() {
-        Ok(handle) => handle,
-        Err(e @ rusb::Error::Access) => {
-            log_and_return!(BmputilError::PermissionsError {
-                source: e,
-                operation: String::from("open device"),
-                context: String::from("detach device"),
-            });
-        },
-        Err(e @ rusb::Error::NoDevice) => {
-            log_and_return!(BmputilError::DeviceDisconnectDuringOperationError {
-                source: e,
-                operation: String::from("open device"),
-                context: String::from("detach device"),
-            });
-        },
-        Err(e) => {
-            log_and_return!(BmputilError::from(e));
-        },
-    };
-
-
-    let request_type = rusb::request_type(
-        Direction::Out,
-        RequestType::Class,
-        Recipient::Interface,
-    );
-    let timeout_ms = dfu_func_desc.wDetachTimeOut;
-    let interface_index = dfu_interface_descriptor.interface_number() as u16;
-
-    let _response = handle.write_control(
-        request_type, // bmRequestType
-        DfuRequest::Detach as u8, // bRequest
-        timeout_ms, // wValue
-        interface_index, // wIndex
-        &[], // buffer
-        Duration::from_secs(5), // timeout for libusb
-    )
-    .expect("DFU_DETACH request to Blackmagic Probe failed!");
+    device.request_detach().expect("Device failed to detach!");
 
     Ok(())
 }
 
 
-fn detach_if_needed(context: &rusb::Context)
-{
-    let devices = context.devices()
-        .expect("Unable to list USB devices!");
-
-    let mut bmp_application_mode_devices: Vec<rusb::Device<_>> = devices
-        .iter()
-        .filter(|device| device_matches_vid_pid(device, Vid(0x1d50), Pid(0x6018)))
-        .collect();
-
-    let mut bmp_dfu_mode_devices: Vec<rusb::Device<_>> = devices
-        .iter()
-        .filter(|device| device_matches_vid_pid(device, Vid(0x1d50), Pid(0x6017)))
-        .collect();
-
-    if (bmp_application_mode_devices.len() + bmp_dfu_mode_devices.len()) > 1 {
-        unimplemented!("Selecting between multiple Blackmagic Probe devices isn't implemented yet, sorry!");
-    }
-
-    if let Some(_dfu_mode_dev) = bmp_dfu_mode_devices.pop() {
-        // If it's already in DFU mode, there's nothing to do.
-        return;
-    }
-
-    if let Some(app_mode_dev) = bmp_application_mode_devices.pop() {
-
-        println!("Device is in runtime mode. Requesting switch to DFU mode...");
-
-        detach_device(app_mode_dev)
-            .expect("Device failed to detach!");
-
-        println!("Device detached. Waiting a moment for device to re-enumerate...");
-        std::thread::sleep(std::time::Duration::from_secs(2)); // FIXME: this should be more dynamic.
-
-        return;
-    }
-
-    panic!("No Blackmagic Probe device was found!"); // FIXME: error handling would be nice >.>
-}
-
-
-fn detach(_matches: &ArgMatches)
+fn detach_command(_matches: &ArgMatches)
 {
     let context = rusb::Context::new().unwrap();
 
-    let devices = context.devices()
-        .expect("Unable to list USB devices!");
-
-    let mut bmp_application_mode_devices: Vec<rusb::Device<_>> = devices
-        .iter()
-        .filter(|device| device_matches_vid_pid(device, Vid(0x1d50), Pid(0x6018)))
-        .collect();
-
-    if bmp_application_mode_devices.len() > 1 {
-        unimplemented!("Selecting between multiple Blackmagic Probe devices isn't implemented yet, sorry!");
-    }
-
-    if let Some(app_mode_dev) = bmp_application_mode_devices.pop() {
-
-        println!("Detaching device...");
-        detach_device(app_mode_dev).expect("Device failed to detach!");
-        println!("Device detached.");
-        return;
-    }
-
-    panic!("No Blackmagic Probe device was found!");
+    // HACK FIXME: this is cursed.
+    let (dev, _handle, _mode) = BlackmagicProbeDevice::first_found()
+        .expect("Failed to open Blackmagic Probe device")
+        .into_inner_parts();
+    detach_device(dev)
+        .expect("Failed to detach device");
 }
 
 
@@ -244,9 +78,20 @@ fn flash(matches: &ArgMatches)
 
     let context = rusb::Context::new().unwrap();
 
-    detach_if_needed(&context);
+    let dev = BlackmagicProbeDevice::first_found()
+        .expect("Unable to open Blackmagic Probe device");
 
-    let mut device: DfuDevice = DfuLibusb::open(&context, 0x1d50, 0x6017, 0, 0).unwrap()
+    // If the device is in runtime mode, then we need to switch it to DFU mode
+    // before we can actually do the firmware upgrade.
+    if dev.operating_mode() == DfuOperatingMode::Runtime {
+        dev.request_detach()
+            .expect("Failed to detach device");
+    }
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    let (vid, pid) = (BlackmagicProbeDevice::VID, BlackmagicProbeDevice::PID_DFU);
+
+    let mut device: DfuDevice = DfuLibusb::open(&context, vid.0, pid.0, 0, 0).unwrap()
         .override_address(0x08002000);
 
     println!("Performing flash...");
@@ -285,7 +130,7 @@ fn main() -> AResult<()>
         "info" => unimplemented!(),
         "flash" => flash(subcommand_matches),
         "debug" => match subcommand_matches.subcommand().unwrap() {
-            ("detach", detach_matches) => detach(detach_matches),
+            ("detach", detach_matches) => detach_command(detach_matches),
             ("reattach", _reattach_matches) => unimplemented!(),
             _ => unreachable!(),
         },

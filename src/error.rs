@@ -3,9 +3,12 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-//#[allow(dead_code)] // XXX FIXME
+#[allow(dead_code)] // XXX FIXME
 pub enum BmputilError
 {
+    #[error("No connected Blackmagic Probe device was found! Check connection?")]
+    DeviceNotFoundError,
+
     #[error("Access denied when attempting to {operation} to {context}")]
     PermissionsError
     {

@@ -69,6 +69,27 @@ pub enum DfuRequest
 }
 
 
+/// Enum representing the two "modes" a DFU-class device can be in.
+///
+/// Runtime mode is the normal operation mode, in which a device does the things it's made for and
+/// exposes all the necessary descriptors to do so.
+/// DFU mode is limited operating mode used for firmware upgrade purposes *only*. Devices switch
+/// into this mode at the host's request.
+/// \[[USB DFU Device Class Spec § 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=11)
+/// and [§ 4.2](https://usb.org/sites/default/files/DFU_1.1.pdf#page=14)\].
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum DfuOperatingMode
+{
+    Runtime,
+    FirmwareUpgrade,
+}
+
+pub trait DfuMatch
+{
+    fn mode_from_vid_pid(vid: Vid, pid: Pid) -> Option<DfuOperatingMode>;
+}
+
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenericDescriptorRef<'a>
 {
@@ -162,7 +183,7 @@ pub enum DescriptorConvertError
 /// `repr(packed)` would allow you to easily create unaligned references, and thus this
 /// struct does not match the memory layout of the data sent over the USB bus. Sadface indeed.
 #[allow(non_snake_case)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub struct DfuFunctionalDescriptor
 {
@@ -206,7 +227,6 @@ impl DfuFunctionalDescriptor
         })
     }
 }
-
 
 /// The libusb version against which error conditions have been checked from its source code.
 pub(crate) const CHECKED_LIBUSB_VERSION: &str = "1.0.26";
