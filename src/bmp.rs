@@ -1,4 +1,5 @@
 use std::mem;
+use std::cell::{RefCell, Ref};
 use std::str::FromStr;
 use std::time::Duration;
 use std::fmt::{self, Display, Formatter};
@@ -22,6 +23,9 @@ pub struct BlackmagicProbeDevice
     device: rusb::Device<rusb::Context>,
     handle: rusb::DeviceHandle<rusb::Context>,
     mode: DfuOperatingMode,
+
+    /// RefCell for interior-mutability-based caching.
+    serial: RefCell<Option<String>>,
 }
 
 impl BlackmagicProbeDevice
@@ -68,6 +72,7 @@ impl BlackmagicProbeDevice
             device,
             mode,
             handle,
+            serial: RefCell::new(None),
         })
     }
 
@@ -110,6 +115,7 @@ impl BlackmagicProbeDevice
             device,
             mode,
             handle,
+            serial: RefCell::new(None),
         })
     }
 
@@ -131,6 +137,7 @@ impl BlackmagicProbeDevice
             device,
             mode,
             handle,
+            serial: RefCell::new(None),
         })
     }
 
@@ -165,6 +172,45 @@ impl BlackmagicProbeDevice
     pub fn operating_mode(&self) -> DfuOperatingMode
     {
         self.mode
+    }
+
+    /// Returns a the serial number string for this device.
+    ///
+    /// This struct caches the serial number in an [`std::cell::RefCell`],
+    /// and thus returns a `Ref<str>` rather than the `&str` directly.
+    /// Feel free to clone the result if you want a directly referenceable value.
+    pub fn serial_number(&self) -> Result<Ref<str>, BmputilError>
+    {
+        let serial = self.serial.borrow();
+        if serial.is_some() {
+            return Ok(Ref::map(serial, |s| s.as_deref().unwrap()));
+        }
+        // If we don't have a serial yet, drop this borrow so we can re-borrow
+        // self.serial as mutable later.
+        drop(serial);
+
+        let languages = self.handle.read_languages(Duration::from_secs(2))?;
+        if languages.is_empty() {
+            return Err(BmputilError::DeviceSeemsInvalidError {
+                source: None,
+                invalid_thing: String::from("no string descriptor languages"),
+            });
+        }
+
+        let language = languages.first().unwrap(); // Okay as we proved len > 0.
+
+        let serial = self.handle
+            .read_serial_number_string(
+                *language,
+                &self.device.device_descriptor().unwrap(),
+                Duration::from_secs(2),
+            )?;
+
+        // Finally, now that we have the serial number, cache it...
+        *self.serial.borrow_mut() = Some(serial);
+
+        // And return it.
+        Ok(Ref::map(self.serial.borrow(), |s| s.as_deref().unwrap()))
     }
 
     /// Find and return the DFU functional descriptor and its interface number for the connected Blackmagic Probe device.
@@ -274,6 +320,7 @@ impl BlackmagicProbeDevice
             RequestType::Class,
             Recipient::Interface,
         );
+
         let mut buf: [u8; 6] = [0; 6];
         let status = self.handle.read_control(
             request_type, // bmRequestType
@@ -318,10 +365,7 @@ impl BlackmagicProbeDevice
     }
 
     /// Requests the Blackmagic Probe device to detach, switching from DFU mode to runtime mode or vice versa.
-    ///
-    /// This consumes the struct if it succeeds, as the device will disconnect and re-enumerate
-    /// in the other mode. If it fails, however, this function returns self in the Err variant.
-    pub fn request_detach(mut self) -> Result<(), (Self, BmputilError)>
+    pub fn request_detach(&mut self) -> Result<(), BmputilError>
     {
         use DfuOperatingMode::*;
         let res = match self.mode {
@@ -330,7 +374,7 @@ impl BlackmagicProbeDevice
         };
         match res {
             Ok(()) => (),
-            Err(e) => return Err((self, e)),
+            Err(e) => return Err(e),
         };
 
         // FIXME: This should check if the device successfully re-enumerated,
@@ -354,7 +398,7 @@ impl Display for BlackmagicProbeDevice
 
         let languages = self.handle
             .read_languages(Duration::from_secs(2))
-            .expect("Failed to read supported languages from Blackmagic Probe device");
+            .expect("Failed to read supported languages from Black Magic Probe device");
 
         let product_string = self.handle
             .read_product_string(
@@ -363,13 +407,9 @@ impl Display for BlackmagicProbeDevice
                 Duration::from_secs(2),
             )
             .unwrap();
-        let serial = self.handle
-            .read_serial_number_string(
-                *languages.first().unwrap(),
-                &self.device.device_descriptor().unwrap(),
-                Duration::from_secs(2),
-            )
-            .unwrap();
+
+        let serial = self.serial_number()
+            .expect("Failed to read serial number from Black Magic Probe device");
 
         let bus = self.device.bus_number();
         let path = self.device
