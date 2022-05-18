@@ -1,13 +1,16 @@
 use std::mem;
+use std::thread;
+use std::io::Read;
 use std::cell::{RefCell, Ref};
 use std::str::FromStr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::fmt::{self, Display, Formatter};
 
 use crate::{BmputilError, libusb_cannot_fail};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode, DfuMatch};
 
+use dfu_libusb::DfuLibusb;
 use log::{trace, info, warn, error};
 use clap::ArgMatches;
 use rusb::{UsbContext, Direction, RequestType, Recipient};
@@ -334,6 +337,12 @@ impl BlackmagicProbeDevice
         trace!("Device status after zero-length DNLOAD is 0x{:02x}", status);
         info!("DFU_GETSTATUS request completed. Device should now re-enumerate into runtime mode.");
 
+        match self.handle.release_interface(iface_number) {
+            // Ignore if the device has already disconnected.
+            Err(rusb::Error::NoDevice) => Ok(()),
+            other => other,
+        }?;
+
 
         Ok(())
     }
@@ -361,11 +370,23 @@ impl BlackmagicProbeDevice
         )?;
         info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
+        match self.handle.release_interface(iface_number) {
+            // Ignore if the device has already disconnected.
+            Err(rusb::Error::NoDevice) => Ok(()),
+            other => other,
+        }?;
+
         Ok(())
     }
 
-    /// Requests the Blackmagic Probe device to detach, switching from DFU mode to runtime mode or vice versa.
-    pub fn request_detach(&mut self) -> Result<(), BmputilError>
+    /// Requests the Black Magic Probe device to detach, switching from DFU mode to runtime mode or vice versa. You probably want [`detach_and_enumerate`].
+    ///
+    /// This function does not re-enumerate the device and re-initialize this structure, and thus after
+    /// calling this function, the this [`BlackmagicProbeDevice`] instance will not be in a correct state
+    /// if the device successfully detached. Further requests will fail, and functions like
+    /// `dfu_descriptors()` may return now-incorrect data.
+    ///
+    pub unsafe fn request_detach(&mut self) -> Result<(), BmputilError>
     {
         use DfuOperatingMode::*;
         let res = match self.mode {
@@ -377,10 +398,104 @@ impl BlackmagicProbeDevice
             Err(e) => return Err(e),
         };
 
-        // FIXME: This should check if the device successfully re-enumerated,
-        // and possibly re-create this structure if it has.
         Ok(())
     }
+
+    pub fn detach_and_enumerate(&mut self) -> Result<(), BmputilError>
+    {
+
+        // Make sure we have our serial number before we try to detach,
+        // so that we can find the DFU-mode device when it re-enumerates.
+        let serial = self.serial_number()?.to_string();
+        unsafe { self.request_detach()? };
+
+        // Give libusb a moment to at least register the disconnect before we try to do anything
+        // else.
+        thread::sleep(Duration::from_millis(200));
+
+        // Now that we've detached, try to find the device again with the same serial number.
+
+        let matcher = BlackmagicProbeMatcher {
+            index: None,
+            serial: Some(serial),
+            port: None,
+        };
+
+        let mut dev = find_matching_probes(&matcher).pop_single("download");
+
+        // TODO: make this configurable?
+        const TIMEOUT: Duration = Duration::from_secs(5);
+        let start = Instant::now();
+
+        while let Err(BmputilError::DeviceNotFoundError) = dev {
+
+            // If it's been more than our timeout length, error out.
+            if start.duration_since(Instant::now()) > TIMEOUT {
+                error!(
+                    "Timed-out waiting for Black Magic Probe device to re-enumerate in DFU mode!"
+                );
+                return Err(BmputilError::DeviceReconfigureError { source: None });
+            }
+
+            // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
+            // don't need to peg the CPU waiting for it to come back up.
+            // TODO: make this configurable and/or optimize?
+            thread::sleep(Duration::from_millis(200));
+            dev = find_matching_probes(&matcher).pop_single("download");
+        }
+
+        let dev = dev?;
+
+        // If we've made it here, then we have successfully re-found the device.
+        // Re-initialize this structure from the new data.
+        *self = dev;
+
+        Ok(())
+    }
+
+    /// Detach the Black Magic Probe device, consuming the structure.
+    ///
+    /// Currently there is not a way to recover this instance if this function errors.
+    /// You'll just have to create another one.
+    pub fn detach_and_destroy(mut self) -> Result<(), BmputilError>
+    {
+        unsafe { self.request_detach()? };
+
+        Ok(())
+    }
+
+    /// Downloads firmware onto the device, switching into DFU mode automatically if necessary.
+    ///
+    /// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
+    /// the flashing process.
+    pub fn download<R, P>(&mut self, firmware: R, length: u32, progress: P) -> Result<(), BmputilError>
+    where
+        R: Read,
+        P: Fn(usize) + 'static,
+    {
+        if self.mode == DfuOperatingMode::Runtime {
+            self.detach_and_enumerate()?;
+        }
+
+        let mut dfu_dev = DfuLibusb::open(
+            self.device.context(),
+            Self::VID.0,
+            Self::PID_DFU.0,
+            0,
+            0,
+        )?
+        .with_progress(progress)
+        .override_address(0x0800_2000); // TODO: this should be checked against the binary.
+
+        info!("Performing flash...");
+
+        dfu_dev.download(firmware, length)?;
+
+        info!("Flash complete!");
+
+        Ok(())
+    }
+
 
     /// Consume the structure and retrieve its parts.
     #[allow(dead_code)]
@@ -500,11 +615,11 @@ impl BlackmagicProbeMatcher
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct BlackmagicProbeMatchResults
 {
     pub found: Vec<BlackmagicProbeDevice>,
-    pub filtered_out: Vec<UsbDevice>, // FIXME: rusb::Device?
+    pub filtered_out: Vec<UsbDevice>,
     pub errors: Vec<BmputilError>,
 }
 

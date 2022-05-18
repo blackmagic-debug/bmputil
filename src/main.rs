@@ -1,11 +1,9 @@
-use std::{time::Duration, thread};
 use std::str::FromStr;
+use std::rc::Rc;
 
 use clap::{Command, Arg, ArgMatches};
 
-use dfu_core::sync::DfuSync;
-use dfu_libusb::DfuLibusb;
-use dfu_libusb::Error as DfuLibusbError;
+use indicatif::{ProgressBar, ProgressStyle};
 
 use anyhow::Result as AResult;
 use log::error;
@@ -19,9 +17,6 @@ use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, find_matching_pr
 use crate::error::BmputilError;
 
 
-type DfuDevice = DfuSync<DfuLibusb<rusb::Context>, DfuLibusbError>;
-
-
 fn detach_command(matches: &ArgMatches) -> Result<(), BmputilError>
 {
     let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
@@ -31,12 +26,12 @@ fn detach_command(matches: &ArgMatches) -> Result<(), BmputilError>
     use crate::usb::DfuOperatingMode::*;
     match dev.operating_mode() {
         Runtime => println!("Requesting device detach from runtime mode to DFU mode..."),
-        FirmwareUpgrade => println!("Requesting device detach from runtime mode to DFU mode..."),
+        FirmwareUpgrade => println!("Requesting device detach from DFU mode to runtime mode..."),
     };
 
-    match dev.request_detach() {
+    match dev.detach_and_destroy() {
         Ok(()) => (),
-        Err((_device, e)) => {
+        Err(e) => {
             error!("Device failed to detach!");
             return Err(e);
         }
@@ -51,7 +46,7 @@ fn flash(matches: &ArgMatches) -> Result<(), BmputilError>
     let filename = matches.value_of("firmware_binary")
         .expect("No firmware file was specified!"); // Should be impossible, thanks to clap.
     let firmware_file = std::fs::File::open(filename)
-        .map_err(|e| BmputilError::FirmwareFileIOError { source: e, filename: filename.to_string() })?;
+        .map_err(|source| BmputilError::FirmwareFileIOError { source, filename: filename.to_string() })?;
 
     let file_size = firmware_file.metadata()
         .map_err(|source| BmputilError::FirmwareFileIOError { source, filename: filename.to_string() })?
@@ -59,28 +54,35 @@ fn flash(matches: &ArgMatches) -> Result<(), BmputilError>
     let file_size = u32::try_from(file_size)
         .expect("firmware filesize exceeded 32 bits! Firmware binary must be invalid");
 
-    let context = rusb::Context::new()
-        .expect("Failed to create libusb context");
 
     let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
     let mut results = find_matching_probes(&matcher);
-    let dev = results.pop_single("flash")?;
+    let mut dev: BlackmagicProbeDevice = results.pop_single("flash")?;
 
-    // If the device is in runtime mode, then we need to switch it to DFU mode
-    // before we can actually do the firmware upgrade.
+    println!("Found: {}", dev);
+
     if dev.operating_mode() == DfuOperatingMode::Runtime {
-        dev.request_detach()
-            .expect("Failed to detach device");
+        println!("Detaching and entering DFU mode...");
+        dev.detach_and_enumerate()?;
     }
-    thread::sleep(Duration::from_secs(1));
 
-    let (vid, pid) = (BlackmagicProbeDevice::VID, BlackmagicProbeDevice::PID_DFU);
+    // We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
+    // so it must be moved into the closure. However, since we need to call .finish() here,
+    // it must be owned by both. Hence: Rc<T>.
+    // Default template: `{wide_bar} {pos}/{len}`.
+    println!("Flashing...");
+    let progress_bar = ProgressBar::new(file_size as u64)
+        .with_style(ProgressStyle::default_bar()
+            .template(" {percent}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]")
+        );
+    let progress_bar = Rc::new(progress_bar);
+    let enclosed = Rc::clone(&progress_bar);
 
-    let mut device: DfuDevice = DfuLibusb::open(&context, vid.0, pid.0, 0, 0).unwrap()
-        .override_address(0x08002000);
+    dev.download(firmware_file, file_size, move |delta| {
+        enclosed.inc(delta as u64);
+    })?;
 
-    println!("Performing flash...");
-    device.download(firmware_file, file_size).unwrap();
+    progress_bar.finish();
 
     Ok(())
 }
