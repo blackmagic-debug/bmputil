@@ -401,50 +401,18 @@ impl BlackmagicProbeDevice
         Ok(())
     }
 
+    /// Requests the Black Magic Probe to detach, and re-initializes this struct with the new
+    /// device.
     pub fn detach_and_enumerate(&mut self) -> Result<(), BmputilError>
     {
-
         // Make sure we have our serial number before we try to detach,
         // so that we can find the DFU-mode device when it re-enumerates.
         let serial = self.serial_number()?.to_string();
         unsafe { self.request_detach()? };
 
-        // Give libusb a moment to at least register the disconnect before we try to do anything
-        // else.
-        thread::sleep(Duration::from_millis(200));
-
         // Now that we've detached, try to find the device again with the same serial number.
 
-        let matcher = BlackmagicProbeMatcher {
-            index: None,
-            serial: Some(serial),
-            port: None,
-        };
-
-        let mut dev = find_matching_probes(&matcher).pop_single("download");
-
-        // TODO: make this configurable?
-        const TIMEOUT: Duration = Duration::from_secs(5);
-        let start = Instant::now();
-
-        while let Err(BmputilError::DeviceNotFoundError) = dev {
-
-            // If it's been more than our timeout length, error out.
-            if start.duration_since(Instant::now()) > TIMEOUT {
-                error!(
-                    "Timed-out waiting for Black Magic Probe device to re-enumerate in DFU mode!"
-                );
-                return Err(BmputilError::DeviceReconfigureError { source: None });
-            }
-
-            // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
-            // don't need to peg the CPU waiting for it to come back up.
-            // TODO: make this configurable and/or optimize?
-            thread::sleep(Duration::from_millis(200));
-            dev = find_matching_probes(&matcher).pop_single("download");
-        }
-
-        let dev = dev?;
+        let dev = wait_for_probe_reboot(&serial, Duration::from_secs(5), "flash")?;
 
         // If we've made it here, then we have successfully re-found the device.
         // Re-initialize this structure from the new data.
@@ -696,6 +664,18 @@ impl BlackmagicProbeMatchResults
 
         Ok(self.found.remove(0))
     }
+
+    /// Like `pop_single()`, but does not print helpful diagnostics for edge cases.
+    pub(crate) fn pop_single_silent(&mut self) -> Result<BlackmagicProbeDevice, BmputilError>
+    {
+        if self.found.len() > 1 {
+            return Err(BmputilError::TooManyDevicesError);
+        } else if self.found.is_empty() {
+            return Err(BmputilError::DeviceNotFoundError);
+        }
+
+        return Ok(self.found.remove(0));
+    }
 }
 
 
@@ -836,6 +816,49 @@ pub fn find_matching_probes(matcher: &BlackmagicProbeMatcher) -> BlackmagicProbe
     // And finally, after all this, return all the devices we found, what devices were filtered
     // out, and any errors that occurred along the way.
     results
+}
+
+
+pub fn wait_for_probe_reboot(serial: &str, timeout: Duration, operation: &str) -> Result<BlackmagicProbeDevice, BmputilError>
+{
+    let silence_timeout = timeout / 2;
+
+    let matcher = BlackmagicProbeMatcher {
+        index: None,
+        serial: Some(serial.to_string()),
+        port: None,
+    };
+
+    let start = Instant::now();
+
+    let mut dev = find_matching_probes(&matcher).pop_single_silent();
+
+    while let Err(BmputilError::DeviceNotFoundError) = dev {
+
+        // If it's been more than the timeout length, error out.
+        if start.duration_since(Instant::now()) > timeout {
+            error!(
+                "Timed-out waiting for Black Magic Probe to re-enumerate!"
+            );
+            return Err(BmputilError::DeviceRebootError { source: None });
+        }
+
+        // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
+        // don't need to peg the CPU waiting for it to come back up.
+        // TODO: make this configurable and/or optimize?
+        thread::sleep(Duration::from_millis(200));
+
+        // If we've been trying for over half the full timeout, start logging warnings.
+        if start.duration_since(Instant::now()) > silence_timeout {
+            dev = find_matching_probes(&matcher).pop_single(operation);
+        } else {
+            dev = find_matching_probes(&matcher).pop_single_silent();
+        }
+    }
+
+    let dev = dev?;
+
+    Ok(dev)
 }
 
 

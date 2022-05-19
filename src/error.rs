@@ -6,7 +6,7 @@ use thiserror::Error;
 #[allow(dead_code)] // XXX FIXME
 pub enum BmputilError
 {
-    #[error("Failed to read firmware file")]
+    #[error("Failed to read firmware file {filename}")]
     FirmwareFileIOError
     {
         #[source]
@@ -46,7 +46,6 @@ pub enum BmputilError
         context: String,
     },
 
-    #[allow(dead_code)] // FIXME: this will presumably be used once we have more dynamic detection of re-enumeration.
     #[error("Blackmagic Probe device did not re-enumerate after requesting to switch to DFU mode")]
     DeviceReconfigureError
     {
@@ -78,6 +77,9 @@ pub enum BmputilError
 
     #[error("Other/unhandled libusb error (please report this so we can add better handling!)")]
     LibusbError(#[from] rusb::Error),
+
+    #[error("Other/unhandled dfu_libusb error (please report this so we can add better error handling!")]
+    DfuLibusbError(#[from] dfu_libusb::Error),
 }
 
 

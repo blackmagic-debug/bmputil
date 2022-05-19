@@ -1,5 +1,6 @@
-use std::str::FromStr;
 use std::rc::Rc;
+use std::str::FromStr;
+use std::time::Duration;
 
 use clap::{Command, Arg, ArgMatches};
 
@@ -58,6 +59,7 @@ fn flash(matches: &ArgMatches) -> Result<(), BmputilError>
     let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
     let mut results = find_matching_probes(&matcher);
     let mut dev: BlackmagicProbeDevice = results.pop_single("flash")?;
+    let serial = dev.serial_number()?.to_string();
 
     println!("Found: {}", dev);
 
@@ -78,11 +80,54 @@ fn flash(matches: &ArgMatches) -> Result<(), BmputilError>
     let progress_bar = Rc::new(progress_bar);
     let enclosed = Rc::clone(&progress_bar);
 
-    dev.download(firmware_file, file_size, move |delta| {
+    match dev.download(firmware_file, file_size, move |delta| {
         enclosed.inc(delta as u64);
-    })?;
+    }) {
+        Ok(v) => Ok(v),
+        Err(BmputilError::DfuLibusbError(dfu_libusb::Error::Io(source))) => Err(BmputilError::FirmwareFileIOError {
+            source,
+            filename: filename.to_string(),
+        }),
+        Err(e) => Err(e),
+    }?;
 
     progress_bar.finish();
+
+    // Now that we've flashed, try and re-enumerate the device one more time.
+    let mut dev = bmp::wait_for_probe_reboot(&serial, Duration::from_secs(5), "flash")
+        .map_err(|e| {
+            error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
+            e
+        })?;
+
+    let languages = dev
+        .handle()
+        .read_languages(Duration::from_secs(2))
+        .map_err(|e| {
+            error!("Error reading firmware version after flash! Invalid firmware?");
+            e
+        })?;
+
+    let desc = dev.device().device_descriptor().unwrap();
+
+    let product_string = dev
+        .handle()
+        .read_product_string(
+            *languages.first().unwrap(),
+            &desc,
+            Duration::from_secs(2),
+        )
+        .map_err(|e| {
+            error!("Error reading firmware version after flash! Invalid firmware?");
+            e
+        })?;
+
+    let version_string = product_string
+        .chars()
+        .skip("Black Magic Probe ".len())
+        .collect::<String>();
+
+    println!("Black Magic Probe successfully rebooted into firmware version {}", version_string);
 
     Ok(())
 }
