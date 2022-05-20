@@ -1,3 +1,7 @@
+#![cfg_attr(feature = "backtrace", feature(backtrace))]
+#[cfg(feature = "backtrace")]
+use std::backtrace::BacktraceStatus;
+
 use std::rc::Rc;
 use std::str::FromStr;
 use std::time::Duration;
@@ -6,7 +10,6 @@ use clap::{Command, Arg, ArgMatches};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-use anyhow::Result as AResult;
 use log::error;
 
 
@@ -15,10 +18,19 @@ mod error;
 mod bmp;
 use crate::usb::DfuOperatingMode;
 use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, find_matching_probes};
-use crate::error::BmputilError;
+use crate::error::{Error, ErrorKind, ErrorSource};
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! S
+{
+    ($expr:expr) => {
+        String::from($expr)
+    };
+}
 
 
-fn detach_command(matches: &ArgMatches) -> Result<(), BmputilError>
+fn detach_command(matches: &ArgMatches) -> Result<(), Error>
 {
     let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
     let mut results = find_matching_probes(&matcher);
@@ -30,28 +42,25 @@ fn detach_command(matches: &ArgMatches) -> Result<(), BmputilError>
         FirmwareUpgrade => println!("Requesting device detach from DFU mode to runtime mode..."),
     };
 
-    match dev.detach_and_destroy() {
-        Ok(()) => (),
-        Err(e) => {
-            error!("Device failed to detach!");
-            return Err(e);
-        }
-    };
+    dev.detach_and_destroy()
+        .map_err(|e| e.with_ctx("detaching device"))?;
 
     Ok(())
 }
 
 
-fn flash(matches: &ArgMatches) -> Result<(), BmputilError>
+fn flash(matches: &ArgMatches) -> Result<(), Error>
 {
     let filename = matches.value_of("firmware_binary")
         .expect("No firmware file was specified!"); // Should be impossible, thanks to clap.
     let firmware_file = std::fs::File::open(filename)
-        .map_err(|source| BmputilError::FirmwareFileIOError { source, filename: filename.to_string() })?;
+        .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))
+        .map_err(|e| e.with_ctx("reading firmware file to flash"))?;
 
     let file_size = firmware_file.metadata()
-        .map_err(|source| BmputilError::FirmwareFileIOError { source, filename: filename.to_string() })?
+        .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))?
         .len();
+
     let file_size = u32::try_from(file_size)
         .expect("firmware filesize exceeded 32 bits! Firmware binary must be invalid");
 
@@ -59,13 +68,16 @@ fn flash(matches: &ArgMatches) -> Result<(), BmputilError>
     let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
     let mut results = find_matching_probes(&matcher);
     let mut dev: BlackmagicProbeDevice = results.pop_single("flash")?;
-    let serial = dev.serial_number()?.to_string();
+    let serial = dev.serial_number()
+        .map_err(|e| e.with_ctx("reading device serial number"))?
+        .to_string();
 
     println!("Found: {}", dev);
 
     if dev.operating_mode() == DfuOperatingMode::Runtime {
         println!("Detaching and entering DFU mode...");
-        dev.detach_and_enumerate()?;
+        dev.detach_and_enumerate()
+            .map_err(|e| e.with_ctx("detaching device to DFU mode"))?;
     }
 
     // We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
@@ -80,15 +92,18 @@ fn flash(matches: &ArgMatches) -> Result<(), BmputilError>
     let progress_bar = Rc::new(progress_bar);
     let enclosed = Rc::clone(&progress_bar);
 
-    match dev.download(firmware_file, file_size, move |delta| {
+     match dev.download(firmware_file, file_size, move |delta| {
         enclosed.inc(delta as u64);
     }) {
         Ok(v) => Ok(v),
-        Err(BmputilError::DfuLibusbError(dfu_libusb::Error::Io(source))) => Err(BmputilError::FirmwareFileIOError {
-            source,
-            filename: filename.to_string(),
-        }),
-        Err(e) => Err(e),
+        Err(e) => match e.kind {
+            ErrorKind::External(ErrorSource::DfuLibusb(dfu_libusb::Error::Io(source))) => {
+                Err(ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(Box::new(source)))
+            },
+            _ => {
+                Err(e)
+            },
+        },
     }?;
 
     progress_bar.finish();
@@ -132,7 +147,7 @@ fn flash(matches: &ArgMatches) -> Result<(), BmputilError>
     Ok(())
 }
 
-fn info_command(matches: &ArgMatches) -> Result<(), BmputilError>
+fn info_command(matches: &ArgMatches) -> Result<(), Error>
 {
     let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
 
@@ -156,7 +171,7 @@ fn info_command(matches: &ArgMatches) -> Result<(), BmputilError>
 }
 
 
-fn main() -> AResult<()>
+fn main()
 {
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Warn)
@@ -217,11 +232,11 @@ fn main() -> AResult<()>
     let (subcommand, subcommand_matches) = matches.subcommand()
         .expect("No subcommand given!"); // Should be impossible, thanks to clap.
 
-    match subcommand {
-        "info" => info_command(subcommand_matches)?,
-        "flash" => flash(subcommand_matches)?,
+    let res = match subcommand {
+        "info" => info_command(subcommand_matches),
+        "flash" => flash(subcommand_matches),
         "debug" => match subcommand_matches.subcommand().unwrap() {
-            ("detach", detach_matches) => detach_command(detach_matches)?,
+            ("detach", detach_matches) => detach_command(detach_matches),
             _ => unreachable!(),
         },
 
@@ -229,5 +244,22 @@ fn main() -> AResult<()>
         &_ => unimplemented!(),
     };
 
-    Ok(())
+
+    // Unfortunately, we have to do the printing ourselves, as we need to print a note
+    // in the event that backtraces are supported but not enabled.
+    if let Err(e) = res {
+        print!("Error: {e}");
+        #[cfg(feature = "backtrace")]
+        {
+            if e.backtrace.status() == BacktraceStatus::Disabled {
+                println!("note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace.");
+            }
+        }
+
+        if cfg!(not(feature = "backtrace")) {
+            println!("note: recompile with nightly toolchain and run with `RUST_BACKTRACE=1` environment variable to display a backtrace.");
+        }
+
+        std::process::exit(1);
+    }
 }

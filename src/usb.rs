@@ -243,11 +243,10 @@ pub(crate) const CHECKED_LIBUSB_VERSION: &str = "1.0.26";
 macro_rules! libusb_cannot_fail
 {
     ($funcname:literal) => {
-        format!(
+        const_format::formatcp!(
             "As of libusb {}, {} cannot fail. This should be unreachable, unless libusb has updated.",
-            crate::usb::CHECKED_LIBUSB_VERSION,
+            $crate::usb::CHECKED_LIBUSB_VERSION,
             $funcname,
         )
-        .as_str()
     };
 }

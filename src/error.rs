@@ -1,85 +1,279 @@
 //! Module for error handling code.
 
+use std::fmt::{Display, Formatter};
+#[cfg(feature = "backtrace")]
+use std::backtrace::{Backtrace, BacktraceStatus};
+use std::error::Error as StdError;
+
 use thiserror::Error;
 
-#[derive(Debug, Error)]
-#[allow(dead_code)] // XXX FIXME
-pub enum BmputilError
+use crate::S;
+
+/// More convenient alias for `Box<dyn StdError + Send + Sync>`,
+/// which shows up in a few signatures and structs.
+type BoxedError = Box<dyn StdError + Send + Sync>;
+
+/// Kinds of errors for [Error]. Use [ErrorKind::new] and [ErrorKind::error_from] to generate the
+/// [Error] value for this ErrorKind.
+#[derive(Debug)]
+pub enum ErrorKind
 {
-    #[error("Failed to read firmware file {filename}")]
-    FirmwareFileIOError
+    /// Failed to read firmware file.
+    FirmwareFileIo(Option<String>),
+
+    /// Current operation only supports one Black Magic Probe but more tha none device was found.
+    TooManyDevices,
+
+    /// Black Magic Probe device not found.
+    DeviceNotFound,
+
+    /// Black Magic Probe found disconnected during an ongoing operation.
+    DeviceDisconnectDuringOperation,
+
+    /// Black Magic Probe device did not come back online (e.g. after switching to DFU mode
+    /// or flashing firmware).
+    DeviceReboot,
+
+    /// Black Magic Probe device returned bad data during configuration.
+    ///
+    /// This generally shouldn't be possible, but could happen if the cable is bad, the OS is
+    /// messing with things, or the firmware on the device is corrupted.
+    DeviceSeemsInvalid(/** invalid thing **/ String),
+
+    /// Unhandled external error.
+    External(ErrorSource),
+}
+
+impl ErrorKind
+{
+    /// Creates a new [Error] from this error kind.
+    ///
+    /// Enables convenient code like:
+    /// ```
+    /// return Err(ErrorKind::DeviceNotFound.new());
+    /// ```
+    #[inline(always)]
+    pub fn error(self) -> Error
     {
-        #[source]
-        source: std::io::Error,
-        filename: String,
-    },
+        Error::new(self, None)
+    }
 
-    #[error("More than one Blackmagic Probe device was found")]
-    TooManyDevicesError,
-
-    #[error("No connected Blackmagic Probe device was found! Check connection?")]
-    DeviceNotFoundError,
-
-    #[error("Access denied when attempting to {operation} to {context}")]
-    PermissionsError
+    /// Creates a new [Error] from this error kind, with the passed error as the source.
+    ///
+    /// Enables convenient code like:
+    /// ```
+    /// # let operation = || std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+    /// operation().map_err(|e| ErrorKind::DeviceNotFound.error_from(e))?;
+    /// ```
+    #[inline(always)]
+    pub fn error_from<E: StdError + Send + Sync + 'static>(self, source: E) -> Error
     {
-        #[source]
-        source: rusb::Error,
+        Error::new(self, Some(Box::new(source)))
+    }
+}
 
-        /// The USB/libusb operation that failed (e.g. `"send a control transfer"`).
-        operation: String,
-
-        /// The context that operation was being performed in (e.g.: `"read firmware version"`).
-        context: String,
-    },
-
-    #[error("Blackmagic Probe device found disconnected when attempting to {operation} to {context}")]
-    DeviceDisconnectDuringOperationError
+/// Constructs an [Error] for this [ErrorKind].
+impl From<ErrorKind> for Error
+{
+    /// Constructs an [Error] for this [ErrorKind].
+    fn from(other: ErrorKind) -> Self
     {
-        #[source]
-        source: rusb::Error,
+        other.error()
+    }
+}
 
-        /// The USB/libusb operation that failed (e.g.: `"send a control transfer"`).
-        operation: String,
-
-        /// The context that operation was being performed in (e.g.: `"read firmware version"`).
-        context: String,
-    },
-
-    #[error("Blackmagic Probe device did not re-enumerate after requesting to switch to DFU mode")]
-    DeviceReconfigureError
+impl Display for ErrorKind
+{
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result
     {
-        /// Source is optional because there may be no libusb error, if detecting connection is
-        /// done through e.g. checking device lists.
-        #[source]
-        source: Option<rusb::Error>,
-    },
+        use ErrorKind::*;
+        match self {
+            FirmwareFileIo(None) => write!(f, "failed to read firmware file")?,
+            FirmwareFileIo(Some(filename)) => write!(f, "failed to read firmware file {filename}")?,
+            TooManyDevices => write!(f, "current operation only supports one Black Magic Probe device but more than one device was found")?,
+            DeviceNotFound => write!(f, "Black Magic Probe device not found (check connection?)")?,
+            DeviceDisconnectDuringOperation => write!(f, "Black Magic Probe device found disconnected")?,
+            DeviceReboot => write!(f, "Black Magic Probe device did not come back online (invalid firmware?)")?,
+            DeviceSeemsInvalid(thing) => {
+                write!(
+                    f,
+                    "Black Magic Probe device returned bad data ({}) during configuration.\
+                    This generally shouldn't be possible. Maybe cable is bad, or OS is messing with things?",
+                    thing,
+                )?;
+            },
+            External(source) => {
+                use ErrorSource::*;
+                match source {
+                    StdIo(e) => {
+                        write!(f, "unhandled std::io::Error: {}", e)?;
+                    },
+                    Libusb(e) => {
+                        write!(f, "unhandled libusb error: {}", e)?;
+                    },
+                    DfuLibusb(e) => {
+                        write!(f, "unhandled dfu_libusb error: {}", e)?;
+                    },
+                };
+            },
+        };
 
-    #[allow(dead_code)] // FIXME: this will presumably be used once we, well, actually implement the post-flash check.
-    #[error("Blackmagic Probe device did not re-enumerate after flashing firmware; firmware may be invalid?")]
-    DeviceRebootError
+        Ok(())
+    }
+}
+
+
+#[derive(Debug)]
+/// Error type for Black Magic Probe operations. Easily constructed from [ErrorKind].
+pub struct Error
+{
+    pub kind: ErrorKind,
+    pub source: Option<BoxedError>,
+    #[cfg(feature = "backtrace")]
+    pub backtrace: Backtrace,
+    /// A string for additional context about what was being attempted when this error occurred.
+    ///
+    /// Example: "reading current firmware version".
+    pub context: Option<String>,
+}
+
+impl Error
+{
+    #[inline(always)]
+    pub fn new(kind: ErrorKind, source: Option<BoxedError>) -> Self
     {
-        #[source]
-        source: Option<rusb::Error>,
-    },
+        Self {
+            kind,
+            source,
+            context: None,
+            #[cfg(feature = "backtrace")]
+            backtrace: Backtrace::capture(),
+        }
+    }
 
-
-    #[error(
-        "Blackmagic Probe device returned bad data ({invalid_thing}) during configuration.\
-        This generally shouldn't be possible. Maybe cable is bad, or OS is messing with things?"
-    )]
-    DeviceSeemsInvalidError
+    #[allow(dead_code)]
+    /// Add additional context about what was being attempted when this error occurred.
+    ///
+    /// Example: "reading current firmware version".
+    pub fn with_ctx(mut self, ctx: &str) -> Self
     {
-        #[source]
-        source: Option<anyhow::Error>,
-        invalid_thing: String,
-    },
+        self.context = Some(ctx.to_string());
+        self
+    }
 
-    #[error("Other/unhandled libusb error (please report this so we can add better handling!)")]
-    LibusbError(#[from] rusb::Error),
+}
 
-    #[error("Other/unhandled dfu_libusb error (please report this so we can add better error handling!")]
-    DfuLibusbError(#[from] dfu_libusb::Error),
+impl Display for Error
+{
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result
+    {
+        if let Some(ctx) = &self.context {
+            writeln!(f, "(while {}): {}", ctx, self.kind)?;
+        } else {
+            writeln!(f, "{}", self.kind)?;
+        }
+
+        #[cfg(feature = "backtrace")]
+        {
+            if self.backtrace.status() == BacktraceStatus::Captured {
+                write!(f, "Backtrace:\n{}", self.backtrace)?;
+            }
+        }
+
+        if let Some(source) = &self.source {
+            writeln!(f, "\nCaused by: {}", source)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl StdError for Error
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)>
+    {
+
+        None
+    }
+
+    #[cfg(feature = "backtrace")]
+    fn backtrace(&self) -> Option<&Backtrace>
+    {
+        Some(&self.backtrace)
+    }
+}
+
+impl From<rusb::Error> for Error
+{
+    fn from(other: rusb::Error) -> Self
+    {
+        use ErrorKind::*;
+        match other {
+            rusb::Error::NoDevice => DeviceNotFound.error_from(other),
+            other => External(ErrorSource::Libusb(other)).error()
+        }
+    }
+}
+
+impl From<dfu_libusb::Error> for Error
+{
+    fn from(other: dfu_libusb::Error) -> Self
+    {
+        use ErrorKind::*;
+        use dfu_libusb::Error as Source;
+        match other {
+            dfu_libusb::Error::LibUsb(source) => {
+                External(ErrorSource::Libusb(source)).error_from(other)
+            },
+            dfu_libusb::Error::MemoryLayout(source) => {
+                DeviceSeemsInvalid(String::from("DFU interface memory layout string"))
+                    .error_from(source)
+            },
+            dfu_libusb::Error::MissingLanguage => {
+                DeviceSeemsInvalid(S!("no string descriptor languages"))
+                    .error_from(other)
+            },
+            Source::InvalidAlt => {
+                DeviceSeemsInvalid(S!("DFU interface (alt mode) not found"))
+                    .error_from(other)
+            },
+            Source::InvalidAddress => {
+                DeviceSeemsInvalid(S!("DFU interface memory layout string"))
+                    .error_from(other)
+            },
+            Source::InvalidInterface => {
+                DeviceSeemsInvalid(S!("DFU interface not found"))
+                    .error_from(other)
+            },
+            Source::InvalidInterfaceString => {
+                DeviceSeemsInvalid(S!("DFU interface memory layout string"))
+                    .error_from(other)
+            },
+            Source::FunctionalDescriptor(source) => {
+                DeviceSeemsInvalid(S!("DFU functional interface descriptor"))
+                    .error_from(source)
+            },
+            anything_else => {
+                External(ErrorSource::DfuLibusb(anything_else))
+                    .error()
+            },
+        }
+    }
+}
+
+
+/// Sources of external error in this library.
+#[derive(Debug, Error)]
+pub enum ErrorSource
+{
+    #[error(transparent)]
+    StdIo(#[from] std::io::Error),
+
+    #[error(transparent)]
+    Libusb(#[from] rusb::Error),
+
+    #[error(transparent)]
+    DfuLibusb(#[from] dfu_libusb::Error),
 }
 
 

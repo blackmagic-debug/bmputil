@@ -3,6 +3,14 @@ name = "bmputil"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Enable backtraces for errors. Requires nightly toolchain.
+# Automatically enabled if detect-backtrace feature is enabled (default).
+backtrace = []
+# Autoamtically detect if backtrace feature should be enabled by detecting the channel we're being compiled on.
+detect-backtrace = []
+default = ["detect-backtrace"]
+
 [dependencies]
 clap = { version = "3.0", default-features = false, features = ["std", "color"] }
 env_logger = "0.9"
@@ -10,9 +18,13 @@ dfu-core = { version = "0.2", features = ["std"] }
 dfu-libusb = "0.2"
 rusb = "0.9"
 log = "0.4"
+const_format = "0.2"
 anyhow = "1.0"
 thiserror = "1.0"
 indicatif = "0.16"
+
+[build-dependencies]
+rustc_version = "0.4"
 
 [profile.release]
 lto = "fat"

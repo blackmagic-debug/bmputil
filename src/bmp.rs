@@ -6,14 +6,15 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 use std::fmt::{self, Display, Formatter};
 
-use crate::{BmputilError, libusb_cannot_fail};
+use clap::ArgMatches;
+use log::{trace, info, warn, error};
+use rusb::{UsbContext, Direction, RequestType, Recipient};
+use dfu_libusb::DfuLibusb;
+
+use crate::libusb_cannot_fail;
+use crate::error::{Error, ErrorKind};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode, DfuMatch};
-
-use dfu_libusb::DfuLibusb;
-use log::{trace, info, warn, error};
-use clap::ArgMatches;
-use rusb::{UsbContext, Direction, RequestType, Recipient};
 
 type UsbDevice = rusb::Device<rusb::Context>;
 type UsbHandle = rusb::DeviceHandle<rusb::Context>;
@@ -39,7 +40,7 @@ impl BlackmagicProbeDevice
 
     /// Creates a [`BlackmagicProbeDevice`] struct from the first found connected Blackmagic Probe.
     #[allow(dead_code)]
-    pub fn first_found() -> Result<Self, BmputilError>
+    pub fn first_found() -> Result<Self, Error>
     {
         let context = rusb::Context::new()?;
         let devices = context
@@ -51,7 +52,7 @@ impl BlackmagicProbeDevice
         // Alas, this is the probably best way until Iterator::try_find is stable.
         // (https://github.com/rust-lang/rust/issues/63178).
         let (device, vid, pid) = loop {
-            let dev = devices.next().ok_or(BmputilError::DeviceNotFoundError)?;
+            let dev = devices.next().ok_or_else(|| ErrorKind::DeviceNotFound.error())?;
 
             let desc = dev.device_descriptor()
                 .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
@@ -86,9 +87,9 @@ impl BlackmagicProbeDevice
     /// using the first device for which `matcher_fn` returns `true`.
     /// However, it is not assumed that `matcher_fn` is in fact a valid Blackmagic Probe device.
     /// If the device matched by `matcher_fn` does not seem to be a valid Blackmagic Probe device,
-    /// this function returns `Err(BmputilError::DeviceNotFoundError)`.
+    /// this function returns `ErrorKind::DeviceNotFoundError`.
     #[allow(dead_code)]
-    pub fn from_matching<MatcherT>(matcher_fn: MatcherT) -> Result<Self, BmputilError>
+    pub fn from_matching<MatcherT>(matcher_fn: MatcherT) -> Result<Self, Error>
         where MatcherT: Fn(&UsbDevice) -> bool,
     {
         let context = rusb::Context::new()?;
@@ -97,7 +98,7 @@ impl BlackmagicProbeDevice
             .unwrap()
             .iter()
             .find(matcher_fn)
-            .ok_or(BmputilError::DeviceNotFoundError)?;
+            .ok_or_else(|| ErrorKind::DeviceNotFound.error())?;
 
         let desc = device.device_descriptor()
             .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
@@ -109,7 +110,7 @@ impl BlackmagicProbeDevice
         let mode = BmpVidPid::mode_from_vid_pid(vid, pid).ok_or_else(|| {
             warn!("Matcher function given to find a BMP device does not seem to have returned a BMP device!");
             warn!("The matcher function passed to BlackmagicProbeDevice::from_matching() is probably incorrect!");
-            BmputilError::DeviceNotFoundError
+            ErrorKind::DeviceNotFound.error()
         })?;
 
         let handle = device.open()?;
@@ -122,7 +123,7 @@ impl BlackmagicProbeDevice
         })
     }
 
-    pub fn from_usb_device(device: UsbDevice) -> Result<Self, BmputilError>
+    pub fn from_usb_device(device: UsbDevice) -> Result<Self, Error>
     {
         let desc = device.device_descriptor()
             .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
@@ -130,7 +131,7 @@ impl BlackmagicProbeDevice
         let mode = BmpVidPid::mode_from_vid_pid(vid, pid).ok_or_else(|| {
             warn!("Device passed to BlackmagicProbeDevice::from_usb_device() does not seem to be a BMP device!");
             warn!("The logic for finding this device is probably incorrect!");
-            BmputilError::DeviceNotFoundError
+            ErrorKind::DeviceNotFound.error()
         })?;
 
         let handle = device.open()?;
@@ -182,7 +183,7 @@ impl BlackmagicProbeDevice
     /// This struct caches the serial number in an [`std::cell::RefCell`],
     /// and thus returns a `Ref<str>` rather than the `&str` directly.
     /// Feel free to clone the result if you want a directly referenceable value.
-    pub fn serial_number(&self) -> Result<Ref<str>, BmputilError>
+    pub fn serial_number(&self) -> Result<Ref<str>, Error>
     {
         let serial = self.serial.borrow();
         if serial.is_some() {
@@ -194,10 +195,10 @@ impl BlackmagicProbeDevice
 
         let languages = self.handle.read_languages(Duration::from_secs(2))?;
         if languages.is_empty() {
-            return Err(BmputilError::DeviceSeemsInvalidError {
-                source: None,
-                invalid_thing: String::from("no string descriptor languages"),
-            });
+            return Err(
+                ErrorKind::DeviceSeemsInvalid(String::from("no string descriptor languages"))
+                    .error()
+            );
         }
 
         let language = languages.first().unwrap(); // Okay as we proved len > 0.
@@ -224,7 +225,7 @@ impl BlackmagicProbeDevice
     ///
     /// This does not execute any requests to the device, and only uses information already
     /// available from libusb's device structures.
-    pub fn dfu_descriptors(&self) -> Result<(u8, DfuFunctionalDescriptor), BmputilError>
+    pub fn dfu_descriptors(&self) -> Result<(u8, DfuFunctionalDescriptor), Error>
     {
         let configuration = match self.device.active_config_descriptor() {
             Ok(d) => d,
@@ -244,10 +245,11 @@ impl BlackmagicProbeDevice
                 match self.device.config_descriptor(1) {
                     Ok(d) => d,
                     Err(e) => {
-                        return Err(BmputilError::DeviceSeemsInvalidError {
-                            source: Some(e.into()),
-                            invalid_thing: String::from("no configuration descriptor exists"),
-                        });
+                        return Err(
+                            ErrorKind::DeviceSeemsInvalid(
+                                String::from("no configuration descriptor exists")
+                            ).error_from(e)
+                        );
                     },
                 }
             },
@@ -269,10 +271,7 @@ impl BlackmagicProbeDevice
                     desc.sub_class_code() == InterfaceSubClass::DFU.0
 
             })
-            .ok_or_else(|| BmputilError::DeviceSeemsInvalidError {
-                source: None,
-                invalid_thing: String::from("no DFU interfaces"),
-            })?;
+            .ok_or_else(|| ErrorKind::DeviceSeemsInvalid(String::from("no DFU interfaces")).error())?;
 
         // Get the data for all the "extra" descriptors that follow the interface descriptor.
         let extra_descriptors: Vec<_> = GenericDescriptorRef::multiple_from_bytes(dfu_interface_descriptor.extra());
@@ -287,16 +286,16 @@ impl BlackmagicProbeDevice
             .unwrap(); // Unwrap fine as we already set the length two lines above.
 
         let dfu_func_desc = DfuFunctionalDescriptor::copy_from_bytes(dfu_func_desc_bytes)
-            .map_err(|desc_convert_err| BmputilError::DeviceSeemsInvalidError {
-                source: Some(desc_convert_err.into()),
-                invalid_thing: String::from("DFU functional descriptor"),
+            .map_err(|source| {
+                ErrorKind::DeviceSeemsInvalid(String::from("DFU functional descriptor"))
+                    .error_from(source)
             })?;
 
         Ok((dfu_interface_descriptor.interface_number(), dfu_func_desc))
     }
 
     /// Requests the device to leave DFU mode, using the DefuSe extensions.
-    fn leave_dfu_mode(&mut self) -> Result<(), BmputilError>
+    fn leave_dfu_mode(&mut self) -> Result<(), Error>
     {
         let (iface_number, _func_desc) = self.dfu_descriptors()?;
         self.handle.claim_interface(iface_number)?;
@@ -348,7 +347,7 @@ impl BlackmagicProbeDevice
     }
 
     /// Performs a DFU_DETACH request to enter DFU mode.
-    fn enter_dfu_mode(&mut self) -> Result<(), BmputilError>
+    fn enter_dfu_mode(&mut self) -> Result<(), Error>
     {
         let (iface_number, func_desc) = self.dfu_descriptors()?;
         self.handle.claim_interface(iface_number)?;
@@ -386,7 +385,7 @@ impl BlackmagicProbeDevice
     /// if the device successfully detached. Further requests will fail, and functions like
     /// `dfu_descriptors()` may return now-incorrect data.
     ///
-    pub unsafe fn request_detach(&mut self) -> Result<(), BmputilError>
+    pub unsafe fn request_detach(&mut self) -> Result<(), Error>
     {
         use DfuOperatingMode::*;
         let res = match self.mode {
@@ -403,11 +402,13 @@ impl BlackmagicProbeDevice
 
     /// Requests the Black Magic Probe to detach, and re-initializes this struct with the new
     /// device.
-    pub fn detach_and_enumerate(&mut self) -> Result<(), BmputilError>
+    pub fn detach_and_enumerate(&mut self) -> Result<(), Error>
     {
         // Make sure we have our serial number before we try to detach,
         // so that we can find the DFU-mode device when it re-enumerates.
-        let serial = self.serial_number()?.to_string();
+        let serial = self.serial_number()
+            .map_err(|e| e.with_ctx("reading device serial number"))?
+            .to_string();
         unsafe { self.request_detach()? };
 
         // Now that we've detached, try to find the device again with the same serial number.
@@ -425,7 +426,7 @@ impl BlackmagicProbeDevice
     ///
     /// Currently there is not a way to recover this instance if this function errors.
     /// You'll just have to create another one.
-    pub fn detach_and_destroy(mut self) -> Result<(), BmputilError>
+    pub fn detach_and_destroy(mut self) -> Result<(), Error>
     {
         unsafe { self.request_detach()? };
 
@@ -436,7 +437,7 @@ impl BlackmagicProbeDevice
     ///
     /// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
     /// the flashing process.
-    pub fn download<R, P>(&mut self, firmware: R, length: u32, progress: P) -> Result<(), BmputilError>
+    pub fn download<R, P>(&mut self, firmware: R, length: u32, progress: P) -> Result<(), Error>
     where
         R: Read,
         P: Fn(usize) + 'static,
@@ -457,7 +458,19 @@ impl BlackmagicProbeDevice
 
         info!("Performing flash...");
 
-        dfu_dev.download(firmware, length)?;
+        dfu_dev.download(firmware, length)
+            .map_err(|source| {
+                match source {
+                    dfu_libusb::Error::LibUsb(rusb::Error::NoDevice) => {
+                        error!("Black Magic Probe device disconnected during the flash process!");
+                        warn!(
+                            "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
+                        );
+                        ErrorKind::DeviceDisconnectDuringOperation.error_from(source)
+                    }
+                    _ => source.into(),
+                }
+            })?;
 
         info!("Flash complete!");
 
@@ -588,13 +601,13 @@ pub struct BlackmagicProbeMatchResults
 {
     pub found: Vec<BlackmagicProbeDevice>,
     pub filtered_out: Vec<UsbDevice>,
-    pub errors: Vec<BmputilError>,
+    pub errors: Vec<Error>,
 }
 
 impl BlackmagicProbeMatchResults
 {
     /// Pops all found devices, handling printing error and warning cases.
-    pub(crate) fn pop_all(&mut self) -> Result<Vec<BlackmagicProbeDevice>, BmputilError>
+    pub(crate) fn pop_all(&mut self) -> Result<Vec<BlackmagicProbeDevice>, Error>
     {
         if self.found.is_empty() {
             if !self.filtered_out.is_empty() {
@@ -605,14 +618,14 @@ impl BlackmagicProbeMatchResults
                     suffix,
                     verb,
                 );
-                warn!("Filter arguments (--serial, --index, --port may be incorrect.");
+                warn!("Filter arguments (--serial, --index, --port) may be incorrect.");
             }
 
             if !self.errors.is_empty() {
                 warn!("Device not found and errors occurred when searching for devices.");
                 warn!("One of these may be why the Blackmagic Probe device was not found: {:?}", self.errors.as_slice());
             }
-            return Err(BmputilError::DeviceNotFoundError);
+            return Err(ErrorKind::DeviceNotFound.error());
         }
 
         if !self.errors.is_empty() {
@@ -621,11 +634,11 @@ impl BlackmagicProbeMatchResults
             warn!("Other device errors: {:?}", self.errors.as_slice());
         }
 
-        return Ok(mem::take(&mut self.found));
+        Ok(mem::take(&mut self.found))
     }
 
     /// Pops a single found device, handling printing error and warning cases.
-    pub(crate) fn pop_single(&mut self, operation: &str) -> Result<BlackmagicProbeDevice, BmputilError>
+    pub(crate) fn pop_single(&mut self, operation: &str) -> Result<BlackmagicProbeDevice, Error>
     {
         if self.found.is_empty() {
             if !self.filtered_out.is_empty() {
@@ -643,7 +656,7 @@ impl BlackmagicProbeMatchResults
                 warn!("Device not found and errors occurred when searching for devices.");
                 warn!("One of these may be why the Blackmagic Probe device was not found: {:?}", self.errors.as_slice());
             }
-            return Err(BmputilError::DeviceNotFoundError);
+            return Err(ErrorKind::DeviceNotFound.error());
         }
 
         if self.found.len() > 1 {
@@ -653,7 +666,7 @@ impl BlackmagicProbeMatchResults
                 self.found.len()
             );
             error!("Hint: try bmputil info and revise your filter arguments (--serial, --index, --port).");
-            return Err(BmputilError::TooManyDevicesError);
+            return Err(ErrorKind::TooManyDevices.error());
         }
 
         if !self.errors.is_empty() {
@@ -666,15 +679,15 @@ impl BlackmagicProbeMatchResults
     }
 
     /// Like `pop_single()`, but does not print helpful diagnostics for edge cases.
-    pub(crate) fn pop_single_silent(&mut self) -> Result<BlackmagicProbeDevice, BmputilError>
+    pub(crate) fn pop_single_silent(&mut self) -> Result<BlackmagicProbeDevice, Error>
     {
         if self.found.len() > 1 {
-            return Err(BmputilError::TooManyDevicesError);
+            return Err(ErrorKind::TooManyDevices.error());
         } else if self.found.is_empty() {
-            return Err(BmputilError::DeviceNotFoundError);
+            return Err(ErrorKind::DeviceNotFound.error());
         }
 
-        return Ok(self.found.remove(0));
+        Ok(self.found.remove(0))
     }
 }
 
@@ -692,9 +705,6 @@ impl BlackmagicProbeMatchResults
 /// The `index` matcher *includes* devices that errored when attempting to match them.
 pub fn find_matching_probes(matcher: &BlackmagicProbeMatcher) -> BlackmagicProbeMatchResults
 {
-    //let mut found: Vec<BlackmagicProbeDevice> = Vec::new();
-    //let mut filtered_out: Vec<UsbDevice> = Vec::new();
-    //let mut errors: Vec<BmputilError> = Vec::new();
     let mut results = BlackmagicProbeMatchResults {
         found: Vec::new(),
         filtered_out: Vec::new(),
@@ -731,7 +741,7 @@ pub fn find_matching_probes(matcher: &BlackmagicProbeMatcher) -> BlackmagicProbe
     for (index, dev) in devices.enumerate() {
 
         // If we're trying to match against a serial number, try to open the device.
-        let handle = if let Some(_) = matcher.serial {
+        let handle = if matcher.serial.is_some() {
             match dev.open() {
                 Ok(h) => Some(h),
                 Err(e) => {
@@ -804,7 +814,7 @@ pub fn find_matching_probes(matcher: &BlackmagicProbeMatcher) -> BlackmagicProbe
             match BlackmagicProbeDevice::from_usb_device(dev) {
                 Ok(bmpdev) => results.found.push(bmpdev),
                 Err(e) => {
-                    results.errors.push(e.into());
+                    results.errors.push(e);
                     continue;
                 },
             };
@@ -819,7 +829,7 @@ pub fn find_matching_probes(matcher: &BlackmagicProbeMatcher) -> BlackmagicProbe
 }
 
 
-pub fn wait_for_probe_reboot(serial: &str, timeout: Duration, operation: &str) -> Result<BlackmagicProbeDevice, BmputilError>
+pub fn wait_for_probe_reboot(serial: &str, timeout: Duration, operation: &str) -> Result<BlackmagicProbeDevice, Error>
 {
     let silence_timeout = timeout / 2;
 
@@ -833,14 +843,14 @@ pub fn wait_for_probe_reboot(serial: &str, timeout: Duration, operation: &str) -
 
     let mut dev = find_matching_probes(&matcher).pop_single_silent();
 
-    while let Err(BmputilError::DeviceNotFoundError) = dev {
+    while let Err(ErrorKind::DeviceNotFound) = dev.as_ref().map_err(|e| &e.kind) {
 
         // If it's been more than the timeout length, error out.
         if start.duration_since(Instant::now()) > timeout {
             error!(
                 "Timed-out waiting for Black Magic Probe to re-enumerate!"
             );
-            return Err(BmputilError::DeviceRebootError { source: None });
+            return Err(ErrorKind::DeviceReboot.error_from(dev.unwrap_err()));
         }
 
         // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
