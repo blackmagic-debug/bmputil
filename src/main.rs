@@ -248,7 +248,7 @@ fn main()
     // Unfortunately, we have to do the printing ourselves, as we need to print a note
     // in the event that backtraces are supported but not enabled.
     if let Err(e) = res {
-        print!("Error: {e}");
+        print!("Error: {}", e);
         #[cfg(feature = "backtrace")]
         {
             if e.backtrace.status() == BacktraceStatus::Disabled {

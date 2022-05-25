@@ -89,7 +89,7 @@ impl Display for ErrorKind
         use ErrorKind::*;
         match self {
             FirmwareFileIo(None) => write!(f, "failed to read firmware file")?,
-            FirmwareFileIo(Some(filename)) => write!(f, "failed to read firmware file {filename}")?,
+            FirmwareFileIo(Some(filename)) => write!(f, "failed to read firmware file {}", filename)?,
             TooManyDevices => write!(f, "current operation only supports one Black Magic Probe device but more than one device was found")?,
             DeviceNotFound => write!(f, "Black Magic Probe device not found (check connection?)")?,
             DeviceDisconnectDuringOperation => write!(f, "Black Magic Probe device found disconnected")?,
