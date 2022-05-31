@@ -1,17 +1,18 @@
 use std::mem;
 use std::thread;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::cell::{RefCell, Ref};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 use std::fmt::{self, Display, Formatter};
+use std::array::TryFromSliceError;
 
 use clap::ArgMatches;
-use log::{trace, info, warn, error};
+use log::{trace, debug, info, warn, error};
 use rusb::{UsbContext, Direction, RequestType, Recipient};
 use dfu_libusb::DfuLibusb;
 
-use crate::libusb_cannot_fail;
+use crate::{libusb_cannot_fail, S};
 use crate::error::{Error, ErrorKind};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode, DfuMatch};
@@ -297,6 +298,7 @@ impl BlackmagicProbeDevice
     /// Requests the device to leave DFU mode, using the DefuSe extensions.
     fn leave_dfu_mode(&mut self) -> Result<(), Error>
     {
+        debug!("Attempting to leave DFU mode...");
         let (iface_number, _func_desc) = self.dfu_descriptors()?;
         self.handle.claim_interface(iface_number)?;
 
@@ -437,7 +439,7 @@ impl BlackmagicProbeDevice
     ///
     /// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
     /// the flashing process.
-    pub fn download<R, P>(&mut self, firmware: R, length: u32, progress: P) -> Result<(), Error>
+    pub fn download<R, P>(&mut self, firmware: R, length: u32, firmware_type: BmpFirmwareType, progress: P) -> Result<(), Error>
     where
         R: Read,
         P: Fn(usize) + 'static,
@@ -454,7 +456,9 @@ impl BlackmagicProbeDevice
             0,
         )?
         .with_progress(progress)
-        .override_address(0x0800_2000); // TODO: this should be checked against the binary.
+        .override_address(firmware_type.load_address());
+
+        debug!("Load address: 0x{:08x}", firmware_type.load_address());
 
         info!("Performing flash...");
 
@@ -519,6 +523,119 @@ impl Display for BlackmagicProbeDevice
 
         write!(f, "{}\n  Serial: {}  \n", product_string, serial)?;
         write!(f, "  Port:   {}-{}", bus, path)?;
+
+        Ok(())
+    }
+}
+
+/// Represents a conceptual Vector Table for Armv7 processors.
+pub struct Armv7mVectorTable<'b>
+{
+    bytes: &'b [u8],
+}
+
+impl<'b> Armv7mVectorTable<'b>
+{
+    fn word(&self, index: usize) -> Result<u32, TryFromSliceError>
+    {
+        let array: [u8; 4] = self.bytes[(index)..(index + 4)]
+            .try_into()?;
+
+        Ok(u32::from_le_bytes(array))
+    }
+
+
+    /// Construct a conceptual Armv7m Vector Table from a bytes slice.
+    pub fn from_bytes(bytes: &'b [u8]) -> Self
+    {
+        if bytes.len() < (4 * 2) {
+            panic!("Data passed is not long enough for an Armv7m Vector Table!");
+        }
+
+        Self {
+            bytes,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn stack_pointer(&self) -> Result<u32, TryFromSliceError>
+    {
+        self.word(0)
+    }
+
+    pub fn reset_vector(&self) -> Result<u32, TryFromSliceError>
+    {
+        self.word(1)
+    }
+
+    #[allow(dead_code)]
+    pub fn exception(&self, exception_number: u32) -> Result<u32, TryFromSliceError>
+    {
+        self.word((exception_number + 1) as usize)
+    }
+}
+
+
+/// Firmware types for the Black Magic Probe.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum BmpFirmwareType
+{
+    /// The bootloader. For native probes this is linked at 0x0800_0000
+    Bootloader,
+    /// The main application. For native probes this is linked at 0x0800_2000.
+    Application,
+}
+
+impl BmpFirmwareType
+{
+    // FIXME: Make these more configurable based on the device?
+    pub const BOOTLOADER_START:  u32 = 0x0800_0000;
+    pub const APPLICATION_START: u32 = 0x0800_2000;
+
+    /// Detect the kind of firmware from the given binary by examining its reset vector address.
+    ///
+    /// On success, this function returns the cursor back to where it was before reading.
+    pub fn detect_from_firmware<R: Read + Seek>(mut firmware: R) -> Result<Self, Error>
+    {
+        let mut buffer = [0u8; (4 * 2)];
+        firmware.read_exact(&mut buffer)
+            .map_err(|e| ErrorKind::FirmwareFileIo(None).error_from(e))?;
+
+        // Seek back to effectively undo the read we just did.
+        let read = buffer.len() as i64;
+        firmware.seek(SeekFrom::Current(-read))
+            .map_err(|e| ErrorKind::FirmwareFileIo(None).error_from(e))?;
+
+
+        let vector_table = Armv7mVectorTable::from_bytes(&buffer);
+        let reset_vector = vector_table.reset_vector()
+            .map_err(|e| ErrorKind::InvalidFirmware(Some(S!("vector table too short"))).error_from(e))?;
+
+        if reset_vector > Self::APPLICATION_START {
+            return Ok(Self::Application);
+        } else {
+            return Ok(Self::Bootloader);
+        }
+    }
+
+    /// Get the load address for firmware of this type.
+    pub fn load_address(&self) -> u32
+    {
+        match self {
+            Self::Bootloader => Self::BOOTLOADER_START,
+            Self::Application => Self::APPLICATION_START,
+        }
+    }
+}
+
+impl Display for BmpFirmwareType
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
+    {
+        match self {
+            Self::Bootloader => write!(f, "bootloader")?,
+            Self::Application => write!(f, "application")?,
+        };
 
         Ok(())
     }

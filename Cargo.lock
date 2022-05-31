@@ -54,6 +54,7 @@ dependencies = [
  "log",
  "rusb",
  "rustc_version",
+ "termcolor",
  "thiserror",
 ]
 

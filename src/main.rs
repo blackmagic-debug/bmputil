@@ -3,21 +3,21 @@
 use std::backtrace::BacktraceStatus;
 
 use std::rc::Rc;
+use std::io::Write;
 use std::str::FromStr;
 use std::time::Duration;
 
 use clap::{Command, Arg, ArgMatches};
-
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use indicatif::{ProgressBar, ProgressStyle};
-
-use log::error;
+use log::{debug, warn, error};
 
 
 mod usb;
 mod error;
 mod bmp;
 use crate::usb::DfuOperatingMode;
-use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, find_matching_probes};
+use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, BmpFirmwareType, find_matching_probes};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
 #[macro_export]
@@ -57,6 +57,45 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
         .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))
         .map_err(|e| e.with_ctx("reading firmware file to flash"))?;
 
+    // Detect what kind of firmware this is.
+    let firmware_type = BmpFirmwareType::detect_from_firmware(&firmware_file)
+        .map_err(|e| e.with_ctx("detecting firmware type"))?;
+    debug!("Firmware file was detected as {}", firmware_type);
+
+    // But allow the user to override that type, if they *really* know what they are doing.
+    let firmware_type = if let Some(location) = matches.value_of("override-firmware-type") {
+        if let Some("really") = matches.value_of("allow-dangerous-options") {
+            warn!("Overriding firmware-type detection and flashing to user-specified location ({}) instead!", location);
+        } else {
+            // We're ignoring errors for setting the color because the most important thing is
+            // getting the message itself out.
+            // If the messages themselves don't write, though, then we might as well just panic.
+            let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+            let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
+            write!(&mut stderr, "WARNING: ").expect("failed to write to stderr");
+            let _res = stderr.reset();
+            writeln!(
+                &mut stderr,
+                "--override-firmware-type is used to override the firmware type detection and flash \
+                a firmware binary to a location other than the one that it seems to be designed for.\n\
+                This is a potentially destructive operation and can result in an unbootable device! \
+                (can require a second, external JTAG debugger and manual wiring to fix!)\n\
+                \nDo not use this option unless you are a firmware developer and really know what you are doing!\n\
+                \nIf you are sure this is really what you want to do, run again with --allow-dangerous-options=really"
+            ).expect("failed to write to stderr");
+            std::process::exit(1);
+        };
+        if location == "bootloader" {
+            BmpFirmwareType::Bootloader
+        } else if location == "application" {
+            BmpFirmwareType::Application
+        } else {
+            unreachable!("Clap ensures invalid option cannot be passed to --override-firmware-type");
+        }
+    } else {
+        firmware_type
+    };
+
     let file_size = firmware_file.metadata()
         .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))?
         .len();
@@ -92,7 +131,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let progress_bar = Rc::new(progress_bar);
     let enclosed = Rc::clone(&progress_bar);
 
-     match dev.download(firmware_file, file_size, move |delta| {
+     match dev.download(firmware_file, file_size, firmware_type, move |delta| {
         enclosed.inc(delta as u64);
     }) {
         Ok(v) => Ok(v),
@@ -108,12 +147,22 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
 
     progress_bar.finish();
 
-    // Now that we've flashed, try and re-enumerate the device one more time.
     let mut dev = bmp::wait_for_probe_reboot(&serial, Duration::from_secs(5), "flash")
         .map_err(|e| {
             error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
             e
         })?;
+
+    std::thread::sleep(Duration::from_millis(1000));
+
+    dev.detach_and_enumerate()
+        .map_err(|e| {
+            error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
+            e
+        })?;
+
+    dev.detach_and_enumerate()?;
+
 
     let languages = dev
         .handle()
@@ -205,6 +254,14 @@ fn main()
             .global(true)
             .help("Use the device on the given USB port")
         )
+        .arg(Arg::new("allow-dangerous-options")
+            .long("allow-dangerous-options")
+            .global(true)
+            .takes_value(true)
+            .possible_value("really")
+            .hide(true)
+            .help("Allow usage of advanced, dangerous options that can result in unbootable devices (use with heavy caution!)")
+        )
         .subcommand(Command::new("info")
             .display_order(0)
             .about("Print information about connected Blackmagic Probe devices")
@@ -215,6 +272,22 @@ fn main()
             .arg(Arg::new("firmware_binary")
                 .takes_value(true)
                 .required(true)
+            )
+            .arg(Arg::new("override-firmware-type")
+                .long("override-firmware-type")
+                .required(false)
+                .takes_value(true)
+                .possible_values(&["bootloader", "application"])
+                .hide_short_help(true)
+                .help("flash the specified firmware space regardless of autodetected firmware type")
+            )
+            .arg(Arg::new("force-override-flash")
+                .long("force-override-flash")
+                .required(false)
+                .takes_value(true)
+                .possible_value("really")
+                .hide(true)
+                .help("forcibly override firmware-type autodetection and flash anyway (may result in an unbootable device!)")
             )
         )
         .subcommand(Command::new("debug")

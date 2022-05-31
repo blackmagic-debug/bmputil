@@ -21,6 +21,9 @@ pub enum ErrorKind
     /// Failed to read firmware file.
     FirmwareFileIo(Option<String>),
 
+    /// Specified firmware seems invalid.
+    InvalidFirmware(/** why **/ Option<String>),
+
     /// Current operation only supports one Black Magic Probe but more tha none device was found.
     TooManyDevices,
 
@@ -102,6 +105,8 @@ impl Display for ErrorKind
                     thing,
                 )?;
             },
+            InvalidFirmware(None) => write!(f, "specified firmware does not seem valid")?,
+            InvalidFirmware(Some(why)) => write!(f, "specified firmware does not seem valid: {}", why)?,
             External(source) => {
                 use ErrorSource::*;
                 match source {
