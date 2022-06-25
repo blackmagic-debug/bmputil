@@ -108,6 +108,8 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let mut results = find_matching_probes(&matcher);
     let mut dev: BlackmagicProbeDevice = results.pop_single("flash")?;
 
+    let port = dev.port();
+
     println!("Found: {}", dev);
 
     if dev.operating_mode() == DfuOperatingMode::Runtime {
@@ -148,7 +150,9 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
 
     progress_bar.finish();
 
-    let mut dev = bmp::wait_for_probe_reboot(&dev.port(), Duration::from_secs(5), "flash")
+    drop(dev); // Force libusb to free the device.
+
+    let mut dev = bmp::wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")
         .map_err(|e| {
             error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
             e
