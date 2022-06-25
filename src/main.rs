@@ -154,16 +154,6 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
             e
         })?;
 
-    std::thread::sleep(Duration::from_millis(1000));
-
-    dev.detach_and_enumerate()
-        .map_err(|e| {
-            error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
-            e
-        })?;
-
-    dev.detach_and_enumerate()?;
-
 
     let languages = dev
         .handle()
