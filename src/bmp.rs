@@ -13,7 +13,7 @@ use rusb::{UsbContext, Direction, RequestType, Recipient};
 use dfu_libusb::DfuLibusb;
 
 use crate::{libusb_cannot_fail, S};
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, ErrorSource};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode, DfuMatch};
 
@@ -218,6 +218,26 @@ impl BlackmagicProbeDevice
         Ok(Ref::map(self.serial.borrow(), |s| s.as_deref().unwrap()))
     }
 
+
+    /// Returns a string that represents the full port of the device, in the format of
+    /// `<bus>-<port>.<subport>.<subport...>`.
+    ///
+    /// This is theoretically reliable, but is also OS-reported, so it doesn't *have* to be, alas.
+    pub fn port(&self) -> String
+    {
+        let bus = self.device.bus_number();
+        let path = self.device
+            .port_numbers()
+            .expect("unreachable: rusb always provides a properly sized array to libusb_get_port_numbers()")
+            .into_iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<String>>()
+            .as_slice()
+            .join(".");
+
+        format!("{}-{}", bus, path)
+    }
+
     /// Find and return the DFU functional descriptor and its interface number for the connected Blackmagic Probe device.
     ///
     /// Unfortunately this only returns the DFU interface's *number* and not the interface or
@@ -406,16 +426,11 @@ impl BlackmagicProbeDevice
     /// device.
     pub fn detach_and_enumerate(&mut self) -> Result<(), Error>
     {
-        // Make sure we have our serial number before we try to detach,
-        // so that we can find the DFU-mode device when it re-enumerates.
-        let serial = self.serial_number()
-            .map_err(|e| e.with_ctx("reading device serial number"))?
-            .to_string();
         unsafe { self.request_detach()? };
 
-        // Now that we've detached, try to find the device again with the same serial number.
+        // Now that we've detached, try to find the device again on that same port.
 
-        let dev = wait_for_probe_reboot(&serial, Duration::from_secs(5), "flash")?;
+        let dev = wait_for_probe_reboot(&self.port(), Duration::from_secs(5), "flash")?;
 
         // If we've made it here, then we have successfully re-found the device.
         // Re-initialize this structure from the new data.
@@ -439,9 +454,9 @@ impl BlackmagicProbeDevice
     ///
     /// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
     /// the flashing process.
-    pub fn download<R, P>(&mut self, firmware: R, length: u32, firmware_type: BmpFirmwareType, progress: P) -> Result<(), Error>
+    pub fn download<'r, R, P>(&mut self, firmware: &'r R, length: u32, firmware_type: BmpFirmwareType, progress: P) -> Result<(), Error>
     where
-        R: Read,
+        &'r R: Read,
         P: Fn(usize) + 'static,
     {
         if self.mode == DfuOperatingMode::Runtime {
@@ -462,7 +477,7 @@ impl BlackmagicProbeDevice
 
         info!("Performing flash...");
 
-        dfu_dev.download(firmware, length)
+        let res = dfu_dev.download(firmware, length)
             .map_err(|source| {
                 match source {
                     dfu_libusb::Error::LibUsb(rusb::Error::NoDevice) => {
@@ -474,7 +489,47 @@ impl BlackmagicProbeDevice
                     }
                     _ => source.into(),
                 }
-            })?;
+            });
+
+        if let Err(ErrorKind::External(ErrorSource::DfuLibusb(dfu_libusb::Error::Dfu(dfu_core::Error::StateError(dfu_core::State::DfuError))))) = res.as_ref().map_err(|e| &e.kind) {
+
+            warn!("Device reported an error when trying to flash; going to clear status and try one more time...");
+
+            thread::sleep(Duration::from_millis(200));
+
+            let request_type = rusb::request_type(
+                Direction::Out,
+                RequestType::Class,
+                Recipient::Interface,
+            );
+
+            self.handle.write_control(
+                request_type,
+                DfuRequest::ClrStatus as u8,
+                0,
+                0, // iface number
+                &[],
+                Duration::from_secs(2),
+            )?;
+
+            dfu_dev.download(firmware, length)
+                .map_err(|source| {
+                    match source {
+                        dfu_libusb::Error::LibUsb(rusb::Error::NoDevice) => {
+                            error!("Black Magic Probe device disconnected during the flash process!");
+                            warn!(
+                                "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
+                            );
+                            ErrorKind::DeviceDisconnectDuringOperation.error_from(source)
+                        }
+                        _ => source.into(),
+                    }
+                })?;
+
+
+        } else {
+            res?;
+        }
 
         info!("Flash complete!");
 
@@ -511,18 +566,8 @@ impl Display for BlackmagicProbeDevice
         let serial = self.serial_number()
             .expect("Failed to read serial number from Black Magic Probe device");
 
-        let bus = self.device.bus_number();
-        let path = self.device
-            .port_numbers()
-            .unwrap()
-            .into_iter()
-            .map(|v| v.to_string())
-            .collect::<Vec<String>>()
-            .as_slice()
-            .join(".");
-
         write!(f, "{}\n  Serial: {}  \n", product_string, serial)?;
-        write!(f, "  Port:   {}-{}", bus, path)?;
+        write!(f, "  Port:   {}", self.port())?;
 
         Ok(())
     }
@@ -538,7 +583,8 @@ impl<'b> Armv7mVectorTable<'b>
 {
     fn word(&self, index: usize) -> Result<u32, TryFromSliceError>
     {
-        let array: [u8; 4] = self.bytes[(index)..(index + 4)]
+        let start = index * 4;
+        let array: [u8; 4] = self.bytes[(start)..(start + 4)]
             .try_into()?;
 
         Ok(u32::from_le_bytes(array))
@@ -606,10 +652,19 @@ impl BmpFirmwareType
         firmware.seek(SeekFrom::Current(-read))
             .map_err(|e| ErrorKind::FirmwareFileIo(None).error_from(e))?;
 
-
         let vector_table = Armv7mVectorTable::from_bytes(&buffer);
         let reset_vector = vector_table.reset_vector()
             .map_err(|e| ErrorKind::InvalidFirmware(Some(S!("vector table too short"))).error_from(e))?;
+
+        debug!("Detected reset vector in firmware file: 0x{:08x}", reset_vector);
+
+        // Sanity check.
+        if (reset_vector & 0x08FF_FFFF) != reset_vector {
+            return Err(ErrorKind::InvalidFirmware(Some(format!(
+                "firmware reset vector seems to be outside of reasonable bounds: 0x{:08x}",
+                reset_vector,
+            ))).error());
+        }
 
         if reset_vector > Self::APPLICATION_START {
             return Ok(Self::Application);
@@ -638,6 +693,15 @@ impl Display for BmpFirmwareType
         };
 
         Ok(())
+    }
+}
+
+impl Default for BmpFirmwareType
+{
+    /// Defaults to [`BmpFirmwareType::Application`].
+    fn default() -> Self
+    {
+        BmpFirmwareType::Application
     }
 }
 
@@ -946,14 +1010,23 @@ pub fn find_matching_probes(matcher: &BlackmagicProbeMatcher) -> BlackmagicProbe
 }
 
 
-pub fn wait_for_probe_reboot(serial: &str, timeout: Duration, operation: &str) -> Result<BlackmagicProbeDevice, Error>
+/// Waits for a Black Magic Probe to reboot, erroring after a timeout.
+///
+/// This function takes a port string to attempt to keep track of a single physical device
+/// across USB resets.
+///
+/// This would take a serial number, but serial numbers can actually change between firmware
+/// versions, and thus also between application and bootloader mode, so serial number is not a
+/// reliable way to keep track of a single device across USB resets.
+// TODO: test how reliable the port path is on multiple platforms.
+pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> Result<BlackmagicProbeDevice, Error>
 {
     let silence_timeout = timeout / 2;
 
     let matcher = BlackmagicProbeMatcher {
         index: None,
-        serial: Some(serial.to_string()),
-        port: None,
+        serial: None,
+        port: Some(port.to_string()),
     };
 
     let start = Instant::now();
@@ -962,8 +1035,10 @@ pub fn wait_for_probe_reboot(serial: &str, timeout: Duration, operation: &str) -
 
     while let Err(ErrorKind::DeviceNotFound) = dev.as_ref().map_err(|e| &e.kind) {
 
+        trace!("Waiting for probe reboot: {} ms", Instant::now().duration_since(start).as_millis());
+
         // If it's been more than the timeout length, error out.
-        if start.duration_since(Instant::now()) > timeout {
+        if Instant::now().duration_since(start) > timeout {
             error!(
                 "Timed-out waiting for Black Magic Probe to re-enumerate!"
             );
@@ -976,8 +1051,11 @@ pub fn wait_for_probe_reboot(serial: &str, timeout: Duration, operation: &str) -
         thread::sleep(Duration::from_millis(200));
 
         // If we've been trying for over half the full timeout, start logging warnings.
-        if start.duration_since(Instant::now()) > silence_timeout {
+        if Instant::now().duration_since(start) > silence_timeout {
             dev = find_matching_probes(&matcher).pop_single(operation);
+            if let Err(ErrorKind::DeviceNotFound) = dev.as_ref().map_err(|e| &e.kind) {
+                warn!("Note: current filters: {:?}", &matcher);
+            }
         } else {
             dev = find_matching_probes(&matcher).pop_single_silent();
         }

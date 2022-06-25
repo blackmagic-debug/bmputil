@@ -107,9 +107,6 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
     let mut results = find_matching_probes(&matcher);
     let mut dev: BlackmagicProbeDevice = results.pop_single("flash")?;
-    let serial = dev.serial_number()
-        .map_err(|e| e.with_ctx("reading device serial number"))?
-        .to_string();
 
     println!("Found: {}", dev);
 
@@ -123,7 +120,11 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     // so it must be moved into the closure. However, since we need to call .finish() here,
     // it must be owned by both. Hence: Rc<T>.
     // Default template: `{wide_bar} {pos}/{len}`.
-    println!("Flashing...");
+    if firmware_type == BmpFirmwareType::Application {
+        println!("Flashing...");
+    } else {
+        println!("Flashing bootloader...");
+    }
     let progress_bar = ProgressBar::new(file_size as u64)
         .with_style(ProgressStyle::default_bar()
             .template(" {percent}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]")
@@ -131,7 +132,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let progress_bar = Rc::new(progress_bar);
     let enclosed = Rc::clone(&progress_bar);
 
-     match dev.download(firmware_file, file_size, firmware_type, move |delta| {
+    match dev.download(&firmware_file, file_size, firmware_type, move |delta| {
         enclosed.inc(delta as u64);
     }) {
         Ok(v) => Ok(v),
@@ -147,7 +148,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
 
     progress_bar.finish();
 
-    let mut dev = bmp::wait_for_probe_reboot(&serial, Duration::from_secs(5), "flash")
+    let mut dev = bmp::wait_for_probe_reboot(&dev.port(), Duration::from_secs(5), "flash")
         .map_err(|e| {
             error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
             e
