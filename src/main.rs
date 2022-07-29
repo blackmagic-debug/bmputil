@@ -144,11 +144,6 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     // so it must be moved into the closure. However, since we need to call .finish() here,
     // it must be owned by both. Hence: Rc<T>.
     // Default template: `{wide_bar} {pos}/{len}`.
-    if firmware_type == BmpFirmwareType::Application {
-        println!("Flashing...");
-    } else {
-        println!("Flashing bootloader...");
-    }
     let progress_bar = ProgressBar::new(file_size as u64)
         .with_style(ProgressStyle::default_bar()
             .template(" {percent}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]")
@@ -156,7 +151,15 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let progress_bar = Rc::new(progress_bar);
     let enclosed = Rc::clone(&progress_bar);
 
+    println!("Erasing flash...");
     match dev.download(&firmware_file, file_size, firmware_type, move |delta| {
+        if enclosed.position() == 0 {
+            if firmware_type == BmpFirmwareType::Application {
+                enclosed.println("Flashing...");
+            } else {
+                enclosed.println("Flashing bootloader...");
+            }
+        }
         enclosed.inc(delta as u64);
     }) {
         Ok(v) => Ok(v),
