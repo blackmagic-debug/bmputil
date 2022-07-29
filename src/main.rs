@@ -17,7 +17,6 @@ use log::{debug, warn, error};
 mod usb;
 mod error;
 mod bmp;
-use crate::usb::DfuOperatingMode;
 use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, BmpFirmwareType, find_matching_probes};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
@@ -58,9 +57,37 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
         .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))
         .map_err(|e| e.with_ctx("reading firmware file to flash"))?;
 
+
     // Detect what kind of firmware this is.
-    let firmware_type = BmpFirmwareType::detect_from_firmware(&firmware_file)
-        .map_err(|e| e.with_ctx("detecting firmware type"))?;
+    let firmware_type = BmpFirmwareType::detect_from_firmware(&firmware_file);
+    let firmware_type = if let Err(e @ Error { kind: ErrorKind::FirmwareIsElf | ErrorKind::FirmwareIsHex, ..}) = firmware_type {
+
+        let kind = match e.kind {
+            ErrorKind::FirmwareIsElf => "ELF",
+            ErrorKind::FirmwareIsHex => "Intel HEX",
+            _ => unreachable!("ErrorKind can only be FirmwareIsElf or FirmwareIsHex"),
+        };
+
+        // We're ignoring errors for setting the color because the most important thing
+        // is getting the message itself out.
+        // If the messages themselves don't write, though, then we might as well just panic.
+        let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+        let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
+        write!(&mut stderr, "Error: ")
+            .expect("failed to write to stderr");
+        let _res = stderr.reset();
+        writeln!(
+            &mut stderr,
+            "The specified firmware file appears to be an {kind} file, but {kind} files are not \
+            currently supported. Please use a binary file (e.g. blackmagic.bin) to flash",
+            kind = kind,
+        )
+        .expect("failed to write to stderr");
+        std::process::exit(1);
+    } else {
+        firmware_type?
+    };
+
     debug!("Firmware file was detected as {}", firmware_type);
 
     // But allow the user to override that type, if they *really* know what they are doing.
@@ -312,7 +339,7 @@ fn main()
     // Unfortunately, we have to do the printing ourselves, as we need to print a note
     // in the event that backtraces are supported but not enabled.
     if let Err(e) = res {
-        print!("Error: {}", e);
+        println!("Error: {}", e);
         #[cfg(feature = "backtrace")]
         {
             if e.backtrace.status() == BacktraceStatus::Disabled {

@@ -24,6 +24,12 @@ pub enum ErrorKind
     /// Specified firmware seems invalid.
     InvalidFirmware(/** why **/ Option<String>),
 
+    /// Specified firmware is an ELF, which are not currently supported.
+    FirmwareIsElf,
+
+    /// Specified firmware is Intel HEX, which is not currently supported.
+    FirmwareIsHex,
+
     /// Current operation only supports one Black Magic Probe but more tha none device was found.
     TooManyDevices,
 
@@ -107,6 +113,8 @@ impl Display for ErrorKind
             },
             InvalidFirmware(None) => write!(f, "specified firmware does not seem valid")?,
             InvalidFirmware(Some(why)) => write!(f, "specified firmware does not seem valid: {}", why)?,
+            FirmwareIsElf => write!(f, "specified firmware is an ELF file, which are not currently supported")?,
+            FirmwareIsHex => write!(f, "specified firmware is Intel HEX, which is not currently supported")?,
             External(source) => {
                 use ErrorSource::*;
                 match source {
@@ -166,6 +174,14 @@ impl Error
         self
     }
 
+    #[allow(dead_code)]
+    /// Removes previously added context.
+    pub fn without_ctx(mut self) -> Self
+    {
+        self.context = None;
+        self
+    }
+
 }
 
 impl Display for Error
@@ -173,9 +189,9 @@ impl Display for Error
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result
     {
         if let Some(ctx) = &self.context {
-            writeln!(f, "(while {}): {}", ctx, self.kind)?;
+            write!(f, "(while {}): {}", ctx, self.kind)?;
         } else {
-            writeln!(f, "{}", self.kind)?;
+            write!(f, "{}", self.kind)?;
         }
 
         #[cfg(feature = "backtrace")]

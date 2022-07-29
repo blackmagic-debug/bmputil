@@ -677,6 +677,14 @@ impl BmpFirmwareType
         firmware.read_exact(&mut buffer)
             .map_err(|e| ErrorKind::FirmwareFileIo(None).error_from(e))?;
 
+        if &buffer[0..4] == b"\x7fELF" {
+            return Err(ErrorKind::FirmwareIsElf.error());
+        }
+
+        if &buffer[0..1] == b":" {
+            return Err(ErrorKind::FirmwareIsHex.error());
+        }
+
         // Seek back to effectively undo the read we just did.
         let read = buffer.len() as i64;
         firmware.seek(SeekFrom::Current(-read))
@@ -690,7 +698,6 @@ impl BmpFirmwareType
 
         // Sanity check.
         if (reset_vector & 0x0800_0000) != 0x0800_0000 {
-            error!("firmware reset vecotr seems to be outside of reasonable bounds");
             return Err(ErrorKind::InvalidFirmware(Some(format!(
                 "firmware reset vector seems to be outside of reasonable bounds: 0x{:08x}",
                 reset_vector,
