@@ -689,7 +689,8 @@ impl BmpFirmwareType
         debug!("Detected reset vector in firmware file: 0x{:08x}", reset_vector);
 
         // Sanity check.
-        if (reset_vector & 0x08FF_FFFF) != reset_vector {
+        if (reset_vector & 0x0800_0000) != 0x0800_0000 {
+            error!("firmware reset vecotr seems to be outside of reasonable bounds");
             return Err(ErrorKind::InvalidFirmware(Some(format!(
                 "firmware reset vector seems to be outside of reasonable bounds: 0x{:08x}",
                 reset_vector,
