@@ -1,7 +1,7 @@
 use std::mem;
 use std::thread;
 use std::io::{Read, Seek, SeekFrom};
-use std::cell::{RefCell, Ref};
+use std::cell::{RefCell, Ref, RefMut};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 use std::fmt::{self, Display, Formatter};
@@ -25,8 +25,8 @@ type UsbHandle = rusb::DeviceHandle<rusb::Context>;
 #[derive(Debug, PartialEq)]
 pub struct BlackmagicProbeDevice
 {
-    device: rusb::Device<rusb::Context>,
-    handle: rusb::DeviceHandle<rusb::Context>,
+    device: RefCell<Option<rusb::Device<rusb::Context>>>,
+    handle: RefCell<Option<rusb::DeviceHandle<rusb::Context>>>,
     mode: DfuOperatingMode,
 
     /// RefCell for interior-mutability-based caching.
@@ -74,9 +74,9 @@ impl BlackmagicProbeDevice
         let handle = device.open()?;
 
         Ok(Self {
-            device,
+            device: RefCell::new(Some(device)),
             mode,
-            handle,
+            handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
         })
     }
@@ -117,9 +117,9 @@ impl BlackmagicProbeDevice
         let handle = device.open()?;
 
         Ok(Self {
-            device,
+            device: RefCell::new(Some(device)),
             mode,
-            handle,
+            handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
         })
     }
@@ -139,39 +139,49 @@ impl BlackmagicProbeDevice
 
 
         Ok(Self {
-            device,
+            device: RefCell::new(Some(device)),
             mode,
-            handle,
+            handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
         })
     }
 
     /// Get the [`rusb::Device<rusb::Context>`] associated with the connected Blackmagic Probe.
     #[allow(dead_code)]
-    pub fn device(&mut self) -> &UsbDevice
+    pub fn device(&self) -> Ref<UsbDevice>
     {
-        &self.device
+        let dev = self.device.borrow();
+        Ref::map(dev, |d| d.as_ref().expect("Unreachable: self.device is None"))
     }
 
     /// Violate struct invariants if you want. I'm not the boss of you.
     #[allow(dead_code)]
-    pub unsafe fn device_mut(&mut self) -> &mut UsbDevice
+    pub unsafe fn device_mut(&mut self) -> RefMut<UsbDevice>
     {
-        &mut self.device
+        let dev = self.device.borrow_mut();
+        RefMut::map(dev, |d| d.as_mut().expect("Unreachable: self.device is None"))
     }
 
     /// Get the [`rusb::DeviceHandle<rusb::Context>`] associated with the connected Blackmagic Probe.
     #[allow(dead_code)]
-    pub fn handle(&self) -> &UsbHandle
+    pub fn handle(&self) -> Ref<UsbHandle>
     {
-        &self.handle
+        let handle = self.handle.borrow();
+        Ref::map(handle, |h| h.as_ref().expect("Unreachable: self.handle is None"))
     }
 
     /// Violate struct invariants if you want. I'm not the boss of you.
     #[allow(dead_code)]
-    pub unsafe fn handle_mut(&mut self) -> &mut UsbHandle
+    pub unsafe fn handle_mut(&mut self) -> RefMut<UsbHandle>
     {
-        &mut self.handle
+        let handle = self.handle.borrow_mut();
+        RefMut::map(handle, |h| h.as_mut().expect("Unreachable: self.handle is None"))
+    }
+
+    /// The safe but internal version of [handle_mut].
+    fn _handle_mut(&mut self) -> RefMut<UsbHandle>
+    {
+        unsafe { self.handle_mut() }
     }
 
     pub fn operating_mode(&self) -> DfuOperatingMode
@@ -194,7 +204,7 @@ impl BlackmagicProbeDevice
         // self.serial as mutable later.
         drop(serial);
 
-        let languages = self.handle.read_languages(Duration::from_secs(2))?;
+        let languages = self.handle().read_languages(Duration::from_secs(2))?;
         if languages.is_empty() {
             return Err(
                 ErrorKind::DeviceSeemsInvalid(String::from("no string descriptor languages"))
@@ -204,10 +214,11 @@ impl BlackmagicProbeDevice
 
         let language = languages.first().unwrap(); // Okay as we proved len > 0.
 
-        let serial = self.handle
+        let serial = self
+            .handle()
             .read_serial_number_string(
                 *language,
-                &self.device.device_descriptor().unwrap(),
+                &self.device().device_descriptor().unwrap(),
                 Duration::from_secs(2),
             )?;
 
@@ -225,8 +236,9 @@ impl BlackmagicProbeDevice
     /// This is theoretically reliable, but is also OS-reported, so it doesn't *have* to be, alas.
     pub fn port(&self) -> String
     {
-        let bus = self.device.bus_number();
-        let path = self.device
+        let bus = self.device().bus_number();
+        let path = self
+            .device()
             .port_numbers()
             .expect("unreachable: rusb always provides a properly sized array to libusb_get_port_numbers()")
             .into_iter()
@@ -248,7 +260,7 @@ impl BlackmagicProbeDevice
     /// available from libusb's device structures.
     pub fn dfu_descriptors(&self) -> Result<(u8, DfuFunctionalDescriptor), Error>
     {
-        let configuration = match self.device.active_config_descriptor() {
+        let configuration = match self.device().active_config_descriptor() {
             Ok(d) => d,
             Err(rusb::Error::NotFound) => {
                 // In the unlikely even that the OS reports the device as unconfigured
@@ -263,7 +275,7 @@ impl BlackmagicProbeDevice
 
                 // USB configurations are 1-indexed, as 0 is considered
                 // to be "unconfigured".
-                match self.device.config_descriptor(1) {
+                match self.device().config_descriptor(1) {
                     Ok(d) => d,
                     Err(e) => {
                         return Err(
@@ -320,7 +332,7 @@ impl BlackmagicProbeDevice
     {
         debug!("Attempting to leave DFU mode...");
         let (iface_number, _func_desc) = self.dfu_descriptors()?;
-        self.handle.claim_interface(iface_number)?;
+        self._handle_mut().claim_interface(iface_number)?;
 
         let request_type = rusb::request_type(
             Direction::Out,
@@ -329,7 +341,7 @@ impl BlackmagicProbeDevice
         );
 
         // Perform the zero-length DFU_DNLOAD request.
-        let _response = self.handle.write_control(
+        let _response = self.handle().write_control(
             request_type, // bmRequestType
             DfuRequest::Dnload as u8, // bRequest
             0, // wValue
@@ -346,7 +358,7 @@ impl BlackmagicProbeDevice
         );
 
         let mut buf: [u8; 6] = [0; 6];
-        let status = self.handle.read_control(
+        let status = self.handle().read_control(
             request_type, // bmRequestType
             DfuRequest::GetStatus as u8, // bRequest
             0, // wValue
@@ -358,7 +370,7 @@ impl BlackmagicProbeDevice
         trace!("Device status after zero-length DNLOAD is 0x{:02x}", status);
         info!("DFU_GETSTATUS request completed. Device should now re-enumerate into runtime mode.");
 
-        match self.handle.release_interface(iface_number) {
+        match self._handle_mut().release_interface(iface_number) {
             // Ignore if the device has already disconnected.
             Err(rusb::Error::NoDevice) => Ok(()),
             other => other,
@@ -372,7 +384,7 @@ impl BlackmagicProbeDevice
     fn enter_dfu_mode(&mut self) -> Result<(), Error>
     {
         let (iface_number, func_desc) = self.dfu_descriptors()?;
-        self.handle.claim_interface(iface_number)?;
+        self._handle_mut().claim_interface(iface_number)?;
 
         let request_type = rusb::request_type(
             Direction::Out,
@@ -381,17 +393,20 @@ impl BlackmagicProbeDevice
         );
         let timeout_ms = func_desc.wDetachTimeOut;
 
-        let _response = self.handle.write_control(
+        let _response = self.handle().write_control(
             request_type, // bmpRequestType
             DfuRequest::Detach as u8, // bRequest
             timeout_ms, // wValue
             iface_number as u16, // wIndex
             &[], // buffer
-            Duration::from_secs(2), // timeout for libusb
-        )?;
+            Duration::from_secs(1), // timeout for libusb
+        )
+        .map_err(|source| Error::from(source))
+        .map_err(|e| e.with_ctx("entering DFU mode"))?;
+
         info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
-        match self.handle.release_interface(iface_number) {
+        match self._handle_mut().release_interface(iface_number) {
             // Ignore if the device has already disconnected.
             Err(rusb::Error::NoDevice) => Ok(()),
             other => other,
@@ -426,11 +441,20 @@ impl BlackmagicProbeDevice
     /// device.
     pub fn detach_and_enumerate(&mut self) -> Result<(), Error>
     {
+        // Save the port for finding the device again after.
+        let port = self.port();
+
         unsafe { self.request_detach()? };
 
-        // Now that we've detached, try to find the device again on that same port.
+        // Now drop the device so libusb doesn't re-grab the same thing.
+        drop(self.device.take());
+        drop(self.handle.take());
 
-        let dev = wait_for_probe_reboot(&self.port(), Duration::from_secs(5), "flash")?;
+        thread::sleep(Duration::from_millis(250));
+
+        // Now try to find the device again on that same port.
+
+        let dev = wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")?;
 
         // If we've made it here, then we have successfully re-found the device.
         // Re-initialize this structure from the new data.
@@ -464,7 +488,7 @@ impl BlackmagicProbeDevice
         }
 
         let mut dfu_dev = DfuLibusb::open(
-            self.device.context(),
+            self.device().context(),
             Self::VID.0,
             Self::PID_DFU.0,
             0,
@@ -495,7 +519,7 @@ impl BlackmagicProbeDevice
 
             warn!("Device reported an error when trying to flash; going to clear status and try one more time...");
 
-            thread::sleep(Duration::from_millis(200));
+            thread::sleep(Duration::from_millis(250));
 
             let request_type = rusb::request_type(
                 Direction::Out,
@@ -503,7 +527,7 @@ impl BlackmagicProbeDevice
                 Recipient::Interface,
             );
 
-            self.handle.write_control(
+            self.handle().write_control(
                 request_type,
                 DfuRequest::ClrStatus as u8,
                 0,
@@ -541,7 +565,11 @@ impl BlackmagicProbeDevice
     #[allow(dead_code)]
     pub fn into_inner_parts(self) -> (UsbDevice, UsbHandle, DfuOperatingMode)
     {
-        (self.device, self.handle, self.mode)
+        (
+            self.device.into_inner().expect("Unreachable: self.device is None"),
+            self.handle.into_inner().expect("Unreachable: self.handle is None"),
+            self.mode
+        )
     }
 }
 
@@ -551,14 +579,16 @@ impl Display for BlackmagicProbeDevice
     {
         // FIXME: this function needs proper error handling.
 
-        let languages = self.handle
+        let languages = self
+            .handle()
             .read_languages(Duration::from_secs(2))
             .expect("Failed to read supported languages from Black Magic Probe device");
 
-        let product_string = self.handle
+        let product_string = self
+            .handle()
             .read_product_string(
                 *languages.first().unwrap(),
-                &self.device.device_descriptor().unwrap(),
+                &self.device().device_descriptor().unwrap(),
                 Duration::from_secs(2),
             )
             .unwrap();

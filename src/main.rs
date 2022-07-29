@@ -2,6 +2,7 @@
 #[cfg(feature = "backtrace")]
 use std::backtrace::BacktraceStatus;
 
+use std::thread;
 use std::rc::Rc;
 use std::io::Write;
 use std::str::FromStr;
@@ -112,12 +113,6 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
 
     println!("Found: {}", dev);
 
-    if dev.operating_mode() == DfuOperatingMode::Runtime {
-        println!("Detaching and entering DFU mode...");
-        dev.detach_and_enumerate()
-            .map_err(|e| e.with_ctx("detaching device to DFU mode"))?;
-    }
-
     // We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
     // so it must be moved into the closure. However, since we need to call .finish() here,
     // it must be owned by both. Hence: Rc<T>.
@@ -151,8 +146,9 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     progress_bar.finish();
 
     drop(dev); // Force libusb to free the device.
+    thread::sleep(Duration::from_millis(250));
 
-    let mut dev = bmp::wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")
+    let dev = bmp::wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")
         .map_err(|e| {
             error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
             e
