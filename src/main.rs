@@ -146,7 +146,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     // Default template: `{wide_bar} {pos}/{len}`.
     let progress_bar = ProgressBar::new(file_size as u64)
         .with_style(ProgressStyle::default_bar()
-            .template(" {percent}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]")
+            .template(" {percent:>3}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]")
         );
     let progress_bar = Rc::new(progress_bar);
     let enclosed = Rc::clone(&progress_bar);
