@@ -582,7 +582,11 @@ impl Display for BlackmagicProbeDevice
         let languages = self
             .handle()
             .read_languages(Duration::from_secs(2))
-            .expect("Failed to read supported languages from Black Magic Probe device");
+            .map_err(|e| {
+                let e = Error::from(e);
+                error!("Failed to read supported languages from Black Magic Probe device: {}", e);
+                fmt::Error
+            })?;
 
         let product_string = self
             .handle()
@@ -591,10 +595,18 @@ impl Display for BlackmagicProbeDevice
                 &self.device().device_descriptor().unwrap(),
                 Duration::from_secs(2),
             )
-            .unwrap();
+            .map_err(|e| {
+                let e = Error::from(e);
+                error!("Failed to read product string from Black Magic Probe device: {}", e);
+                fmt::Error
+            })?;
 
         let serial = self.serial_number()
-            .expect("Failed to read serial number from Black Magic Probe device");
+            .map_err(|e| {
+                let e = Error::from(e);
+                error!("Failed to read serial number from Black Magic Probe device: {}", e);
+                fmt::Error
+            })?;
 
         write!(f, "{}\n  Serial: {}  \n", product_string, serial)?;
         write!(f, "  Port:   {}", self.port())?;

@@ -197,7 +197,7 @@ impl Display for Error
         #[cfg(feature = "backtrace")]
         {
             if self.backtrace.status() == BacktraceStatus::Captured {
-                write!(f, "Backtrace:\n{}", self.backtrace)?;
+                write!(f, "\nBacktrace:\n{}", self.backtrace)?;
             }
         }
 

@@ -138,7 +138,13 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
 
     let port = dev.port();
 
-    println!("Found: {}", dev);
+    // If we can't get the string descriptors, try to go ahead with flashing anyway.
+    // It's unlikely that other control requests will succeed, but the OS might be messing with
+    // the string descriptor stuff.
+    let _ = writeln!(std::io::stdout(), "Found: {}", dev)
+        .map_err(|e| {
+            error!("Failed to read string data from Black Magic Probe: {}\nTrying to continue anyway...", e);
+        });
 
     // We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
     // so it must be moved into the closure. However, since we need to call .finish() here,
