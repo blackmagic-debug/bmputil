@@ -24,12 +24,6 @@ pub enum ErrorKind
     /// Specified firmware seems invalid.
     InvalidFirmware(/** why **/ Option<String>),
 
-    /// Specified firmware is an ELF, which are not currently supported.
-    FirmwareIsElf,
-
-    /// Specified firmware is Intel HEX, which is not currently supported.
-    FirmwareIsHex,
-
     /// Current operation only supports one Black Magic Probe but more tha none device was found.
     TooManyDevices,
 
@@ -113,8 +107,6 @@ impl Display for ErrorKind
             },
             InvalidFirmware(None) => write!(f, "specified firmware does not seem valid")?,
             InvalidFirmware(Some(why)) => write!(f, "specified firmware does not seem valid: {}", why)?,
-            FirmwareIsElf => write!(f, "specified firmware is an ELF file, which are not currently supported")?,
-            FirmwareIsHex => write!(f, "specified firmware is Intel HEX, which is not currently supported")?,
             External(source) => {
                 use ErrorSource::*;
                 match source {
@@ -126,6 +118,9 @@ impl Display for ErrorKind
                     },
                     DfuLibusb(e) => {
                         write!(f, "unhandled dfu_libusb error: {}", e)?;
+                    },
+                    Goblin(e) => {
+                        write!(f, "unhandled ELF parsing error: {}", e)?;
                     },
                 };
             },
@@ -282,6 +277,17 @@ impl From<dfu_libusb::Error> for Error
     }
 }
 
+impl From<goblin::error::Error> for Error
+{
+    fn from(other: goblin::error::Error) -> Self
+    {
+        use ErrorKind::*;
+
+        InvalidFirmware(None)
+            .error_from(External(ErrorSource::Goblin(other)).error())
+    }
+}
+
 
 /// Sources of external error in this library.
 #[derive(Debug, Error)]
@@ -295,6 +301,9 @@ pub enum ErrorSource
 
     #[error(transparent)]
     DfuLibusb(#[from] dfu_libusb::Error),
+
+    #[error(transparent)]
+    Goblin(#[from] goblin::error::Error),
 }
 
 

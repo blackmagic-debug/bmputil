@@ -5,6 +5,7 @@ use std::backtrace::BacktraceStatus;
 use std::thread;
 use std::rc::Rc;
 use std::io::Write;
+use std::io::Read;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -13,11 +14,11 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, warn, error};
 
-
 mod usb;
 mod error;
 mod bmp;
-use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, BmpFirmwareType, find_matching_probes};
+mod elf;
+use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, FirmwareType, FirmwareFormat, find_matching_probes};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
 #[macro_export]
@@ -27,6 +28,28 @@ macro_rules! S
     ($expr:expr) => {
         String::from($expr)
     };
+}
+
+
+fn intel_hex_error() -> !
+{
+    // We're ignoring errors for setting the color because the most important thing
+    // is getting the message itself out.
+    // If the messages themselves don't write, though, then we might as well just panic.
+    let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+    let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
+    write!(&mut stderr, "Error: ")
+        .expect("failed to write to stderr");
+    let _res = stderr.reset();
+    writeln!(
+        &mut stderr,
+        "The specified firmware file appears to be an Intel HEX file, but Intel HEX files are not \
+        currently supported. Please use a binary file (e.g. blackmagic.bin), \
+        or an ELF (e.g. blackmagic.elf) to flash.",
+    )
+    .expect("failed to write to stderr");
+
+    std::process::exit(1);
 }
 
 
@@ -57,36 +80,32 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
         .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))
         .map_err(|e| e.with_ctx("reading firmware file to flash"))?;
 
+    let mut firmware_file = std::io::BufReader::new(firmware_file);
+
+    let mut firmware_data = Vec::new();
+    firmware_file.read_to_end(&mut firmware_data).unwrap();
+
+    // FirmwareFormat::detect_from_firmware() needs at least 4 bytes, and
+    // FirmwareType::detect_from_firmware() needs at least 8 bytes,
+    // but also if we don't even have 8 bytes there's _no way_ this is valid firmware.
+    if firmware_data.len() < 8 {
+        return Err(
+            ErrorKind::InvalidFirmware(Some(S!("less than 8 bytes long"))).error()
+        );
+    }
+
+    // Extract the actual firmware data from the file, based on the format we're using.
+    let format = FirmwareFormat::detect_from_firmware(&firmware_data);
+    let firmware_data = match format {
+        FirmwareFormat::Binary => firmware_data,
+        FirmwareFormat::Elf => elf::extract_binary(&firmware_data)?,
+        FirmwareFormat::IntelHex => intel_hex_error(), // FIXME: implement this.
+    };
+
 
     // Detect what kind of firmware this is.
-    let firmware_type = BmpFirmwareType::detect_from_firmware(&firmware_file);
-    let firmware_type = if let Err(e @ Error { kind: ErrorKind::FirmwareIsElf | ErrorKind::FirmwareIsHex, ..}) = firmware_type {
-
-        let kind = match e.kind {
-            ErrorKind::FirmwareIsElf => "ELF",
-            ErrorKind::FirmwareIsHex => "Intel HEX",
-            _ => unreachable!("ErrorKind can only be FirmwareIsElf or FirmwareIsHex"),
-        };
-
-        // We're ignoring errors for setting the color because the most important thing
-        // is getting the message itself out.
-        // If the messages themselves don't write, though, then we might as well just panic.
-        let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-        let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
-        write!(&mut stderr, "Error: ")
-            .expect("failed to write to stderr");
-        let _res = stderr.reset();
-        writeln!(
-            &mut stderr,
-            "The specified firmware file appears to be an {kind} file, but {kind} files are not \
-            currently supported. Please use a binary file (e.g. blackmagic.bin) to flash",
-            kind = kind,
-        )
-        .expect("failed to write to stderr");
-        std::process::exit(1);
-    } else {
-        firmware_type?
-    };
+    let firmware_type = FirmwareType::detect_from_firmware(&firmware_data)
+        .map_err(|e| e.with_ctx("detecting firmware type"))?;
 
     debug!("Firmware file was detected as {}", firmware_type);
 
@@ -114,9 +133,9 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
             std::process::exit(1);
         };
         if location == "bootloader" {
-            BmpFirmwareType::Bootloader
+            FirmwareType::Bootloader
         } else if location == "application" {
-            BmpFirmwareType::Application
+            FirmwareType::Application
         } else {
             unreachable!("Clap ensures invalid option cannot be passed to --override-firmware-type");
         }
@@ -124,10 +143,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
         firmware_type
     };
 
-    let file_size = firmware_file.metadata()
-        .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))?
-        .len();
-
+    let file_size = firmware_data.len();
     let file_size = u32::try_from(file_size)
         .expect("firmware filesize exceeded 32 bits! Firmware binary must be invalid");
 
@@ -158,9 +174,9 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let enclosed = Rc::clone(&progress_bar);
 
     println!("Erasing flash...");
-    match dev.download(&firmware_file, file_size, firmware_type, move |delta| {
+    match dev.download(&*firmware_data, file_size, firmware_type, move |delta| {
         if enclosed.position() == 0 {
-            if firmware_type == BmpFirmwareType::Application {
+            if firmware_type == FirmwareType::Application {
                 enclosed.println("Flashing...");
             } else {
                 enclosed.println("Flashing bootloader...");

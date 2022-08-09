@@ -1,6 +1,6 @@
 use std::mem;
 use std::thread;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::cell::{RefCell, Ref, RefMut};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -478,9 +478,10 @@ impl BlackmagicProbeDevice
     ///
     /// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
     /// the flashing process.
-    pub fn download<'r, R, P>(&mut self, firmware: &'r R, length: u32, firmware_type: BmpFirmwareType, progress: P) -> Result<(), Error>
+    pub fn download<'r, R, P>(&mut self, firmware: &'r R, length: u32, firmware_type: FirmwareType, progress: P) -> Result<(), Error>
     where
         &'r R: Read,
+        R: ?Sized,
         P: Fn(usize) + 'static,
     {
         if self.mode == DfuOperatingMode::Runtime {
@@ -666,7 +667,7 @@ impl<'b> Armv7mVectorTable<'b>
 
 /// Firmware types for the Black Magic Probe.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum BmpFirmwareType
+pub enum FirmwareType
 {
     /// The bootloader. For native probes this is linked at 0x0800_0000
     Bootloader,
@@ -674,7 +675,7 @@ pub enum BmpFirmwareType
     Application,
 }
 
-impl BmpFirmwareType
+impl FirmwareType
 {
     // FIXME: Make these more configurable based on the device?
     pub const BOOTLOADER_START:  u32 = 0x0800_0000;
@@ -682,25 +683,10 @@ impl BmpFirmwareType
 
     /// Detect the kind of firmware from the given binary by examining its reset vector address.
     ///
-    /// On success, this function returns the cursor back to where it was before reading.
-    pub fn detect_from_firmware<R: Read + Seek>(mut firmware: R) -> Result<Self, Error>
+    /// This function panics if `firmware.len() < 8`.
+    pub fn detect_from_firmware(firmware: &[u8]) -> Result<Self, Error>
     {
-        let mut buffer = [0u8; (4 * 2)];
-        firmware.read_exact(&mut buffer)
-            .map_err(|e| ErrorKind::FirmwareFileIo(None).error_from(e))?;
-
-        if &buffer[0..4] == b"\x7fELF" {
-            return Err(ErrorKind::FirmwareIsElf.error());
-        }
-
-        if &buffer[0..1] == b":" {
-            return Err(ErrorKind::FirmwareIsHex.error());
-        }
-
-        // Seek back to effectively undo the read we just did.
-        let read = buffer.len() as i64;
-        firmware.seek(SeekFrom::Current(-read))
-            .map_err(|e| ErrorKind::FirmwareFileIo(None).error_from(e))?;
+        let buffer = &firmware[0..(4 * 2)];
 
         let vector_table = Armv7mVectorTable::from_bytes(&buffer);
         let reset_vector = vector_table.reset_vector()
@@ -733,7 +719,7 @@ impl BmpFirmwareType
     }
 }
 
-impl Display for BmpFirmwareType
+impl Display for FirmwareType
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
     {
@@ -746,14 +732,47 @@ impl Display for BmpFirmwareType
     }
 }
 
-impl Default for BmpFirmwareType
+impl Default for FirmwareType
 {
-    /// Defaults to [`BmpFirmwareType::Application`].
+    /// Defaults to [`FirmwareType::Application`].
     fn default() -> Self
     {
-        BmpFirmwareType::Application
+        FirmwareType::Application
     }
 }
+
+
+/// File formats that Black Magic Probe firmware can be in.
+pub enum FirmwareFormat
+{
+    /// Raw binary format. Made with `objcopy -O binary`. Typical file extension: `.bin`.
+    Binary,
+
+    /// The Unix ELF executable binary format. Typical file extension: `.elf`.
+    Elf,
+
+    /// Intel HEX. Typical file extensions: `.hex`, `.ihex`.
+    IntelHex,
+}
+
+impl FirmwareFormat
+{
+
+    /// Detect the kind of firmware from its data.
+    ///
+    /// Panics if `firmware.len() < 4`.
+    pub fn detect_from_firmware(firmware: &[u8]) -> Self
+    {
+        if &firmware[0..4] == b"\x7fELF" {
+            FirmwareFormat::Elf
+        } else if &firmware[0..1] == b":" {
+            FirmwareFormat::IntelHex
+        } else {
+            FirmwareFormat::Binary
+        }
+    }
+}
+
 
 
 #[derive(Debug, Clone, Default)]
@@ -810,7 +829,7 @@ impl BlackmagicProbeMatcher
     {
         self.index
     }
-    
+
     /// Get any serial number previously set with `.serial()`.
     #[allow(dead_code)]
     pub fn get_serial(&self) -> Option<&str>
