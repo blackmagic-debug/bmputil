@@ -119,6 +119,9 @@ impl Display for ErrorKind
                     DfuLibusb(e) => {
                         write!(f, "unhandled dfu_libusb error: {}", e)?;
                     },
+                    Goblin(e) => {
+                        write!(f, "unhandled ELF parsing error: {}", e)?;
+                    },
                 };
             },
         };
@@ -274,6 +277,17 @@ impl From<dfu_libusb::Error> for Error
     }
 }
 
+impl From<goblin::error::Error> for Error
+{
+    fn from(other: goblin::error::Error) -> Self
+    {
+        use ErrorKind::*;
+
+        InvalidFirmware(None)
+            .error_from(External(ErrorSource::Goblin(other)).error())
+    }
+}
+
 
 /// Sources of external error in this library.
 #[derive(Debug, Error)]
@@ -287,6 +301,9 @@ pub enum ErrorSource
 
     #[error(transparent)]
     DfuLibusb(#[from] dfu_libusb::Error),
+
+    #[error(transparent)]
+    Goblin(#[from] goblin::error::Error),
 }
 
 

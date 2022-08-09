@@ -98,7 +98,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let format = FirmwareFormat::detect_from_firmware(&firmware_data);
     let firmware_data = match format {
         FirmwareFormat::Binary => firmware_data,
-        FirmwareFormat::Elf => elf::extract(&firmware_data),
+        FirmwareFormat::Elf => elf::extract_binary(&firmware_data)?,
         FirmwareFormat::IntelHex => intel_hex_error(), // FIXME: implement this.
     };
 
