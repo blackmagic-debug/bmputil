@@ -177,6 +177,12 @@ impl Error
         self
     }
 
+    #[cfg(feature = "backtrace")]
+    #[allow(dead_code)]
+    fn backtrace(&self) -> Option<&Backtrace>
+    {
+        Some(&self.backtrace)
+    }
 }
 
 impl Display for Error
@@ -208,14 +214,7 @@ impl StdError for Error
 {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)>
     {
-
-        None
-    }
-
-    #[cfg(feature = "backtrace")]
-    fn backtrace(&self) -> Option<&Backtrace>
-    {
-        Some(&self.backtrace)
+        self.source.as_deref().map(|e| e as &dyn StdError)
     }
 }
 
