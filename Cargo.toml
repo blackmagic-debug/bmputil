@@ -14,8 +14,8 @@ default = ["detect-backtrace"]
 [dependencies]
 clap = { version = "3.0", default-features = false, features = ["std", "color"] }
 env_logger = "0.9"
-dfu-core = { version = "0.2", features = ["std"] }
-dfu-libusb = "0.2"
+dfu-core = { version = "0.4.2", features = ["std"] }
+dfu-libusb = "0.3"
 rusb = "0.9"
 log = "0.4"
 const_format = "0.2"
@@ -30,7 +30,3 @@ rustc_version = "0.4"
 
 [profile.release]
 lto = "fat"
-
-[patch.crates-io]
-# Required until dfu-libusb updates its dfu-core dependency.
-dfu-core = { git = "https://github.com/dfu-rs/dfu-core", rev = "refs/pull/9/head" }

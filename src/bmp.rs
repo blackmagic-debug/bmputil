@@ -526,9 +526,10 @@ impl BlackmagicProbeDevice
             Self::PID_DFU.0,
             0,
             0,
-        )?
-        .with_progress(progress)
-        .override_address(firmware_type.load_address());
+        )?;
+        dfu_dev
+            .with_progress(progress)
+            .override_address(firmware_type.load_address());
 
         debug!("Load address: 0x{:08x}", firmware_type.load_address());
 
