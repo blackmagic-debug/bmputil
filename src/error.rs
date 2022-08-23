@@ -13,7 +13,7 @@ use crate::S;
 /// which shows up in a few signatures and structs.
 type BoxedError = Box<dyn StdError + Send + Sync>;
 
-/// Kinds of errors for [Error]. Use [ErrorKind::new] and [ErrorKind::error_from] to generate the
+/// Kinds of errors for [Error]. Use [ErrorKind::error] and [ErrorKind::error_from] to generate the
 /// [Error] value for this ErrorKind.
 #[derive(Debug)]
 pub enum ErrorKind
@@ -53,7 +53,7 @@ impl ErrorKind
     ///
     /// Enables convenient code like:
     /// ```
-    /// return Err(ErrorKind::DeviceNotFound.new());
+    /// return Err(ErrorKind::DeviceNotFound.error());
     /// ```
     #[inline(always)]
     pub fn error(self) -> Error

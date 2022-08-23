@@ -250,6 +250,38 @@ impl BlackmagicProbeDevice
         format!("{}-{}", bus, path)
     }
 
+    /// Return a string suitable for display to the user.
+    ///
+    /// Note: this performs USB IO to retrieve the necessary string descriptors, if those strings
+    /// have not yet been retrieved previously (and thus not yet cached).
+    pub fn display(&self) -> Result<String, Error>
+    {
+        let handle = self.handle();
+        let mut languages = handle
+            .read_languages(Duration::from_secs(2))
+            .map_err(|e| Error::from(e).with_ctx("reading supported string descriptor langauges"))?;
+
+        let first_lang = languages.pop()
+            .ok_or_else(|| ErrorKind::DeviceSeemsInvalid(S!("no supported string descriptor languages")).error())?;
+
+        let dev_desc = &self
+            .device()
+            .device_descriptor()
+            .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
+
+        let product_string = handle
+            .read_product_string(
+                first_lang,
+                dev_desc,
+                Duration::from_secs(2),
+            )
+            .map_err(|e| ErrorKind::DeviceSeemsInvalid(S!("no product string descriptor")).error_from(e))?;
+
+        let serial = self.serial_number()?;
+
+        Ok(format!("{}\n  Serial: {}\n  Port:  {}", product_string, serial, self.port()))
+    }
+
     /// Find and return the DFU functional descriptor and its interface number for the connected Blackmagic Probe device.
     ///
     /// Unfortunately this only returns the DFU interface's *number* and not the interface or
@@ -578,39 +610,18 @@ impl Display for BlackmagicProbeDevice
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error>
     {
-        // FIXME: this function needs proper error handling.
+        let display_str = match self.display() {
+            Ok(s) => s,
+            Err(e) => {
+                // Display impls are only supposed to propagate formatter IO errors, e.g.
+                // from the write!() call below, not internal errors.
+                // https://doc.rust-lang.org/stable/std/fmt/index.html#formatting-traits.
+                error!("Error formatting BlackMagicProbeDevice: {}", e);
+                format!("Unknown Black Magic Probe (error occurred fetching device details)")
+            }
+        };
 
-        let languages = self
-            .handle()
-            .read_languages(Duration::from_secs(2))
-            .map_err(|e| {
-                let e = Error::from(e);
-                error!("Failed to read supported languages from Black Magic Probe device: {}", e);
-                fmt::Error
-            })?;
-
-        let product_string = self
-            .handle()
-            .read_product_string(
-                *languages.first().unwrap(),
-                &self.device().device_descriptor().unwrap(),
-                Duration::from_secs(2),
-            )
-            .map_err(|e| {
-                let e = Error::from(e);
-                error!("Failed to read product string from Black Magic Probe device: {}", e);
-                fmt::Error
-            })?;
-
-        let serial = self.serial_number()
-            .map_err(|e| {
-                let e = Error::from(e);
-                error!("Failed to read serial number from Black Magic Probe device: {}", e);
-                fmt::Error
-            })?;
-
-        write!(f, "{}\n  Serial: {}  \n", product_string, serial)?;
-        write!(f, "  Port:   {}", self.port())?;
+        write!(f, "{}", display_str)?;
 
         Ok(())
     }
