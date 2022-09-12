@@ -18,6 +18,7 @@ mod usb;
 mod error;
 mod bmp;
 mod elf;
+mod windows;
 use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, FirmwareType, FirmwareFormat, find_matching_probes};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
@@ -270,7 +271,19 @@ fn main()
         .parse_default_env()
         .init();
 
-    let parser = Command::new("Blackmagic Probe Firmware Manager")
+    let mut parser = Command::new("Blackmagic Probe Firmware Manager");
+    if cfg!(windows) {
+        parser = parser
+            .arg(Arg::new("windows-wdi-install-mode")
+                .long("windows-wdi-install-mode")
+                .required(false)
+                .takes_value(true)
+                .global(true)
+                .hide(true)
+                .help("Internal argument used when re-executing this command to acquire admin for installing drivers")
+            );
+    }
+    parser = parser
         .arg_required_else_help(true)
         .arg(Arg::new("serial_number")
             .short('s')
@@ -342,8 +355,15 @@ fn main()
             )
         );
 
+
     let matches = parser.get_matches();
 
+    // FIXME: This should be more conditional, and should possibly have dedicated subcommands.
+    #[cfg(windows)]
+    {
+        // If we're on Windows, then make sure we can actually access the device.
+        windows::ensure_access(matches.value_of("windows-wdi-install-mode").map(|v| v.parse().unwrap()));
+    }
 
     let (subcommand, subcommand_matches) = matches.subcommand()
         .expect("No subcommand given!"); // Should be impossible, thanks to clap.
