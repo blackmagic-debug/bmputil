@@ -38,8 +38,6 @@ features = ["std", "setupapi", "winuser"]
 
 [build-dependencies]
 rustc_version = "0.4"
-
-[target.'cfg(windows)'.build-dependencies]
 static_vcruntime = "2.0"
 
 [profile.release]

@@ -8,7 +8,7 @@ use rustc_version::{version_meta, Channel};
 
 fn main()
 {
-    // Statically link the Visual C runtime.
+    // Statically link the Visual C runtime on Windows.
     static_vcruntime::metabuild();
 
     // If detect-backtrace is enabled (default), detect if we're on nightly or not.
