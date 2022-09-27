@@ -1,22 +1,20 @@
+use std::ffi::c_void;
 use std::ptr;
 use std::mem;
 use std::env;
 use std::iter;
 use std::str::FromStr;
 use std::io::Error as IoError;
-use std::ffi::CString;
 use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::OsStrExt;
 
-use libc::{intptr_t, c_int, c_uint, c_char, FILE, fileno, setvbuf, _IONBF};
+use libc::{intptr_t, c_int, c_uint, c_long, c_char, FILE};
 use log::{info, warn};
 
 use winapi::um::wincon::{FreeConsole, AttachConsole};
 #[allow(unused_imports)]
 use winapi::um::winbase::{STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
 use winapi::um::consoleapi::AllocConsole;
-use winapi::um::processenv::GetStdHandle;
-use winapi::shared::minwindef::DWORD;
 use deelevate::{Token, PrivilegeLevel};
 
 use crate::usb::{Vid, Pid, DfuMatch};
@@ -114,6 +112,25 @@ macro_rules! winapi_neg
 }
 
 
+/// Internal struct for FILE* on Windows. See [restore_cstdio]'s implementation for details.
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct UcrtStdioStreamData
+{
+    _ptr: *mut FILE,
+    _base: *mut i8,
+    _cnt: c_int,
+    _flags: c_long,
+    /// Note: this is what is returned by _fileno()
+    _file: c_long,
+    _charbuf: c_int,
+    _bufsiz: c_int,
+    _tmpfname: *mut i8,
+    _lock: *mut c_void,
+}
+
+
+
 /// When our admin process is created, it does not inherit stdin, stdout, and stderr from the parent process.
 /// AttachConsole(parent_pid) easily connects the admin process to the parent console, but, surprisingly
 /// enough, that only restores stdio for *Rust*, and not C. How could this possibly be the case?
@@ -123,6 +140,8 @@ macro_rules! winapi_neg
 /// Microsoft C Runtime's stdio global state with the Windows console subsystem state.
 pub fn restore_cstdio(parent_pid: u32) -> Result<(), IoError>
 {
+
+    // First, free whatever console Windows gave us by default, and attach to the parent's console.
     unsafe {
         FreeConsole();
         if let Err(_e) = winapi_bool!(AttachConsole(parent_pid)) {
@@ -133,48 +152,29 @@ pub fn restore_cstdio(parent_pid: u32) -> Result<(), IoError>
         }
     }
 
-
-    type ResourceGroup = (DWORD, CString, c_int, fn() -> *mut FILE);
-
     // Resync for each of stdin, stdout, and stderr.
-    let stdio_resources: Vec<ResourceGroup> = vec![
-        // FIXME: This function is supposed to restore stdin, stdout, and stderr, but _dup2 seems to fail for stdin.
-        // I'm not certain why, but in the meantime, we'll skip restoring stdin since we don't need it.
-        //(STD_INPUT_HANDLE, CString::new("r").unwrap(), STDIN_FILENO, stdinf),
-        (STD_OUTPUT_HANDLE, CString::new("w").unwrap(), STDOUT_FILENO, stdoutf),
-        (STD_ERROR_HANDLE, CString::new("w").unwrap(), STDERR_FILENO, stderrf),
-    ];
 
-    for resource_group in stdio_resources {
-        let (std_handle, mode, std_fileno, std_file_fn) = resource_group;
+    let res = unsafe { libc::freopen(b"CONIN$\0".as_ptr() as *const i8, b"w\0".as_ptr() as *const i8, stdinf()) };
+    if res.is_null() {
+        Err::<(), _>(IoError::last_os_error())
+            .expect("Failed to resynchronize stdin");
+    }
 
-        // Get the console subsystem handle attached to stdin/stdout/stderr.
-        let win_handle = unsafe { winapi_handle!(GetStdHandle(std_handle)) }
-            .expect("GetStdHandle() failed");
+    let res = unsafe { libc::freopen(b"CONOUT$\0".as_ptr() as *const i8, b"wt\0".as_ptr() as *const i8, stdoutf()) };
+    if res.is_null() {
+        Err::<(), _>(IoError::last_os_error())
+            .expect("Failed to resynchronize stdout");
+    }
 
-        // Then open that console subsystem handle as an Windows internal file descriptor
-        // (not the same thing as the Unix-y file descriptor you get with `fileno()`).
-        let win_fd = unsafe { winapi_neg!(_open_osfhandle(win_handle as intptr_t, _O_TEXT)) }
-            .expect("_open_osfhandle() failed");
-
-        // Now open that Windows internal file descriptor as a C FILE*.
-        let c_stdio_file = unsafe { _fdopen(win_fd, mode.as_ptr()) };
-        if c_stdio_file.is_null() {
-            return Err::<(), _>(IoError::last_os_error());
-        }
-
-        // And finally, point stdout/stderr to the FILE* that we opened for this console.
-        let _ = unsafe { winapi_neg!(_dup2(fileno(c_stdio_file), std_fileno)) }
-            .expect("_dup2() failed");
-
-
-        // Also, make stdio unbuffered.
-        // That being said, setvbuf() only seems to succeed for stdout.
-        // I can only assume that's because stdin isn't buffered in the first place, and stderr on Windows
-        // uses the same console handle as stdout.
-        // Either way, we're ignoring failures for this function call.
-        let _ = unsafe { winapi_bool!(setvbuf(std_file_fn(), ptr::null_mut(), _IONBF, 0)) };
-
+    // HACK: on some¹ systems, using the same technique for stderr seems to break both stderr and stdout, for some
+    // reason. So instead we'll copy the internal FILE* structure used for stdout to the stderr global.
+    //
+    // ¹It worked just fine on my personal dev machine and one other personal Windows machine, but didn't work in a
+    // fresh VM, so who knows.
+    let out = stdoutf() as *mut UcrtStdioStreamData;
+    let err = stderrf() as *mut UcrtStdioStreamData;
+    unsafe {
+        *err = *out;
     }
 
     Ok(())
