@@ -479,6 +479,8 @@ impl BlackmagicProbeDevice
         if cfg!(not(windows)) {
             unsafe { self.request_detach()? };
         } else {
+            // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
+            // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
             use crate::ErrorSource::Libusb;
             let res = unsafe { self.request_detach() };
             if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
@@ -510,7 +512,19 @@ impl BlackmagicProbeDevice
     /// You'll just have to create another one.
     pub fn detach_and_destroy(mut self) -> Result<(), Error>
     {
-        unsafe { self.request_detach()? };
+        if cfg!(not(windows)) {
+            unsafe { self.request_detach()? };
+        } else {
+            // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
+            // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
+            use crate::ErrorSource::Libusb;
+            let res = unsafe { self.request_detach() };
+            if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
+                warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
+            } else {
+                res?;
+            }
+        }
 
         Ok(())
     }
