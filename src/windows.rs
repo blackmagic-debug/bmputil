@@ -214,7 +214,15 @@ pub fn ensure_access(parent_pid: Option<u32>)
 {
     // Find all driverless Black Magic Probe DFU "devices"
     // (interfaces are considered devices in Windows terminology).
-    let mut devices: Vec<_> = wdi::create_list(Default::default())
+
+    let devices: Result<_, _> = wdi::create_list(Default::default());
+
+    // If no devices were found at all, return.
+    if let Err(wdi::Error::NoDevice) = devices {
+        return;
+    }
+
+    let mut devices: Vec<_> = devices
         .expect("Unable to get a list of connected devices")
         .into_iter()
         .filter(|d| {
