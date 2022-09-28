@@ -434,7 +434,7 @@ impl BlackmagicProbeDevice
             Duration::from_secs(1), // timeout for libusb
         )
         .map_err(|source| Error::from(source))
-        .map_err(|e| e.with_ctx("entering DFU mode"))?;
+        .map_err(|e| e.with_ctx("sending control request"))?;
 
         info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
@@ -476,7 +476,17 @@ impl BlackmagicProbeDevice
         // Save the port for finding the device again after.
         let port = self.port();
 
-        unsafe { self.request_detach()? };
+        if cfg!(not(windows)) {
+            unsafe { self.request_detach()? };
+        } else {
+            use crate::ErrorSource::Libusb;
+            let res = unsafe { self.request_detach() };
+            if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
+                warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
+            } else {
+                res?;
+            }
+        }
 
         // Now drop the device so libusb doesn't re-grab the same thing.
         drop(self.device.take());
@@ -485,7 +495,6 @@ impl BlackmagicProbeDevice
         thread::sleep(Duration::from_millis(250));
 
         // Now try to find the device again on that same port.
-
         let dev = wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")?;
 
         // If we've made it here, then we have successfully re-found the device.
