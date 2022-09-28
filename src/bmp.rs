@@ -517,8 +517,26 @@ impl BlackmagicProbeDevice
         P: Fn(usize) + 'static,
     {
         if self.mode == DfuOperatingMode::Runtime {
-            self.detach_and_enumerate()?;
+            match self.detach_and_enumerate() {
+                Ok(_) => (),
+                Err(e) => {
+                    error!("{}", e);
+                    thread::sleep(Duration::from_secs(10));
+                    // Try again.
+                    self.detach_and_enumerate()?;
+                }
+            }
         }
+
+        // HACK: You can't have multiple open handles to the same WinUSB device in the same process,
+        // and DfuLibusb::open() opens a handle, so we have to drop ours.
+        if cfg!(windows) {
+            if let Some(handle) = self.handle.take() {
+                drop(handle);
+            }
+            thread::sleep(Duration::from_millis(250));
+        }
+
 
         let mut dfu_dev = DfuLibusb::open(
             self.device().context(),
