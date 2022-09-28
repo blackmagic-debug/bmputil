@@ -231,7 +231,8 @@ pub fn ensure_access(parent_pid: Option<u32>)
                 &&
                 match d.compatible_id.as_ref() {
                     Some(compatible_id) => {
-                        compatible_id.starts_with(r"USB\Class_fe&SubClass_01")
+                        // Windows is inconsistent about the case things in the Compatible ID string.
+                        compatible_id.to_lowercase().starts_with(r"usb\class_fe&subclass_01")
                     },
                     None => true,
                 }
