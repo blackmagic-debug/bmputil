@@ -18,6 +18,7 @@ mod usb;
 mod error;
 mod bmp;
 mod elf;
+#[cfg(windows)]
 mod windows;
 use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, FirmwareType, FirmwareFormat, find_matching_probes};
 use crate::error::{Error, ErrorKind, ErrorSource};
