@@ -101,7 +101,6 @@ dependencies = [
  "goblin",
  "indicatif",
  "libc",
- "libwdi-sys",
  "log",
  "rusb",
  "rustc_version",
@@ -494,11 +493,13 @@ dependencies = [
 [[package]]
 name = "libwdi-sys"
 version = "0.1.0"
-source = "git+https://github.com/Qyriad/wdi-rs#bd0dff3bbf2c25de023f8abe8dd9fcf8a9f4ebf0"
+source = "git+https://github.com/Qyriad/wdi-rs#5f1f1912eaa31eb747fb9e8a3270d63f935239e5"
 dependencies = [
  "bindgen",
  "cc",
  "diffy",
+ "env_logger",
+ "log",
  "winapi",
 ]
 
@@ -1143,7 +1144,7 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 [[package]]
 name = "wdi"
 version = "0.1.0"
-source = "git+https://github.com/Qyriad/wdi-rs#bd0dff3bbf2c25de023f8abe8dd9fcf8a9f4ebf0"
+source = "git+https://github.com/Qyriad/wdi-rs#5f1f1912eaa31eb747fb9e8a3270d63f935239e5"
 dependencies = [
  "libwdi-sys",
  "winapi",

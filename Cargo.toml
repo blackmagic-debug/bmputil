@@ -28,7 +28,6 @@ libc = "0.2.132"
 
 [target.'cfg(windows)'.dependencies]
 wdi = { "git" = "https://github.com/Qyriad/wdi-rs" }
-libwdi-sys = { "git" = "https://github.com/Qyriad/wdi-rs" }
 deelevate = "0.2.0"
 libc = "0.2.132"
 
