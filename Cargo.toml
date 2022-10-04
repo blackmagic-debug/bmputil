@@ -9,7 +9,9 @@ edition = "2021"
 backtrace = []
 # Autoamtically detect if backtrace feature should be enabled by detecting the channel we're being compiled on.
 detect-backtrace = []
-default = ["detect-backtrace"]
+# Automatically build libusb and statically link it instead of using system libusb.
+vendored = ["rusb/vendored"]
+default = ["detect-backtrace", "vendored"]
 
 [dependencies]
 clap = { version = "3.0", default-features = false, features = ["std", "color"] }

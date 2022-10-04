@@ -493,7 +493,7 @@ dependencies = [
 [[package]]
 name = "libwdi-sys"
 version = "0.1.0"
-source = "git+https://github.com/Qyriad/wdi-rs#5f1f1912eaa31eb747fb9e8a3270d63f935239e5"
+source = "git+https://github.com/Qyriad/wdi-rs#2c49e424c3b345f4b4d5e6c72dd298a5ec933f9e"
 dependencies = [
  "bindgen",
  "cc",
@@ -1054,18 +1054,18 @@ checksum = "949517c0cf1bf4ee812e2e07e08ab448e3ae0d23472aee8a06c985f0c8815b16"
 
 [[package]]
 name = "thiserror"
-version = "1.0.36"
+version = "1.0.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a99cb8c4b9a8ef0e7907cd3b617cc8dc04d571c4e73c8ae403d80ac160bb122"
+checksum = "10deb33631e3c9018b9baf9dcbbc4f737320d2b576bac10f6aefa048fa407e3e"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.36"
+version = "1.0.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a891860d3c8d66fec8e73ddb3765f90082374dbaaa833407b904a94f1a7eb43"
+checksum = "982d17546b47146b28f7c22e3d08465f6b8903d0ea13c1660d9d84a6e7adcdbb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1144,7 +1144,7 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 [[package]]
 name = "wdi"
 version = "0.1.0"
-source = "git+https://github.com/Qyriad/wdi-rs#5f1f1912eaa31eb747fb9e8a3270d63f935239e5"
+source = "git+https://github.com/Qyriad/wdi-rs#2c49e424c3b345f4b4d5e6c72dd298a5ec933f9e"
 dependencies = [
  "libwdi-sys",
  "winapi",
