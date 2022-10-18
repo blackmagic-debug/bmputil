@@ -12,6 +12,7 @@ use std::os::windows::ffi::OsStrExt;
 
 use libc::{intptr_t, c_int, c_uint, c_long, c_char, FILE};
 use log::{trace, debug, info, warn, error};
+use bstr::ByteSlice;
 use lazy_static::lazy_static;
 use winreg::enums::*;
 use winreg::RegKey;
@@ -150,6 +151,8 @@ pub fn restore_cstdio(parent_pid: u32) -> Result<(), IoError>
     // First, free whatever console Windows gave us by default, and attach to the parent's console.
     unsafe {
         FreeConsole();
+        // Why not ATTACH_PARENT_PROCESS? Well it worked on my machine, but didn't work in a VM.
+        // This seems to work better, for some reason.
         if let Err(_e) = winapi_bool!(AttachConsole(parent_pid)) {
             // If we can't attach the previous console, then allocate a new console instead.
             // This will pop up a new window for the user, but that's better than no output
@@ -193,11 +196,25 @@ fn os_str_to_null_terminated_vec(s: &OsStr) -> Vec<u16>
 }
 
 
+/// Install drivers for each libwdi [wdi::DeviceInfo] in `devices`. Must be called from admin.
 fn admin_install_drivers(devices: &mut [wdi::DeviceInfo])
 {
+    // TODO: cd into a tempdir so libwdi doesn't spill files into the user's cwd?
+
+    // NOTE: the sleeps in this function are a mitigation for inconsistent errors I've had when
+    // testing this. Windows doesn't always seem to like doing all of these operations in quick
+    // succession, and sometimes, somehow, the process seems to lock itself(?) out of accessing the
+    // intermediate files libwdi creates for this.
+
     for dev in devices.into_iter() {
 
-        println!("Installing for {:?}", &dev);
+        let hwid_str = dev.hardware_id
+            .as_ref()
+            .expect("BMP WDI DeviceInfo always have hardware_id set")
+            .to_str_lossy()
+            .to_string();
+
+        println!("Installing for {}", &hwid_str);
 
         thread::sleep(Duration::from_secs(1));
 
@@ -210,8 +227,12 @@ fn admin_install_drivers(devices: &mut [wdi::DeviceInfo])
         println!("About to install driver. This may take multiple minutes and there will be NO PROGRESS REPORTING!");
         println!("Installing driver...");
 
+        thread::sleep(Duration::from_secs(1));
+
         wdi::install_driver(dev, "usb_driver", "usb_device.inf", &mut Default::default())
             .unwrap();
+
+        println!("Driver successfully installed for {}", &hwid_str);
     }
 }
 
@@ -245,69 +266,6 @@ lazy_static! {
         upper_filter: None,
         driver_version: 0,
     };
-}
-
-//const APP_MODE_REG_ENTRY = r"
-
-
-/// Checks if a subkey, exists and has values.
-///
-/// This function explicitly ignores case, as the Windows registry is case-preserving but case-insensitive.
-pub fn reg_key_exists_and_has_values(base: &RegKey, subkey_name: &str) -> IoResult<bool>
-{
-    trace!("Checking if registry key {:?} has subkey {:?} and subkey has values", &base, &subkey_name);
-
-    // Stores the subkey as a [RegKey], under Some() if found.
-    let mut subkey = None;
-
-    let needle = subkey_name.to_ascii_lowercase();
-
-    for subkey_of_base in base.enum_keys() {
-
-        let subkey_of_base = subkey_of_base
-            .map_err(|e| {
-                debug!("Error enumerating subkeys for reg key {:?}: {}", &base, &e);
-                e
-            })?;
-
-        // Make sure this subkey has the same (case insensitive) name as the one we're looking for
-        // and not just any old subkey.
-        let subkey_lowercase = subkey_of_base.to_ascii_lowercase();
-        if subkey_lowercase == needle {
-            subkey = Some(subkey_of_base);
-            break;
-        }
-    }
-
-    // Ok(false) indicating that confirmed such a subkey does *not* exist.
-    let subkey = match subkey {
-        Some(v) => v,
-        None => return Ok(false),
-    };
-
-    let subkey = base.open_subkey(&subkey)
-        .map_err(|e| {
-            debug!("Error opening registry subkey {}: {}", &subkey, &e);
-            e
-        })?;
-
-    for value in subkey.enum_values() {
-
-        // Failing to enum values doesn't necessarily mean there are or are not values.
-        let _value = value
-            .map_err(|e| {
-                debug!("Error enumerating values for reg key {:?}: {}", &subkey, &e);
-                e
-            })?;
-
-        // But if we were able to get here, then we successfully retrieved a value of this subkey.
-        // We're done!
-        return Ok(true);
-    }
-
-    // If we've gotten here, then there weren't any errors, but the subkey didn't have any values.
-
-    Ok(false)
 }
 
 
@@ -397,12 +355,11 @@ pub fn hwid_bound_to_driver(hardware_id: &str, enumerator: &str) -> IoResult<Vec
 }
 
 
-
 /// This function ensures that all connected Black Magic Probe devices have the necessary drivers installed, via libwdi.
-pub fn ensure_access(parent_pid: Option<u32>)
+// FIXME: This should return a Result, and should probably return what devices had drivers
+pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool)
 {
-
-    // Check if the libusb driver has been installed for BMP devices yet.
+    // Check if the WinUSB driver has been installed for BMP devices yet.
 
     debug!("Checking Windows registry driver database to determine if WinUSB is bound to BMP device nodes");
 
@@ -411,13 +368,13 @@ pub fn ensure_access(parent_pid: Option<u32>)
     match hwid_bound_to_driver("VID_1D50&PID_6018&MI_04", "USB") {
         Ok(driver_names) if driver_names.len() == 0 => {
             devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
-            info!("Scheduling libusb driver installation for app mode BMP device...");
+            info!("Scheduling WinUSB driver installation for app mode BMP device...");
         }
 
         // If an error occurred checking, then install the driver just in case.
         Err(_e) => {
             devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
-            info!("Scheduling libusb driver installation for app mode BMP device...");
+            info!("Scheduling WinUSB driver installation for app mode BMP device...");
         }
 
         Ok(driver_names) => {
@@ -444,6 +401,9 @@ pub fn ensure_access(parent_pid: Option<u32>)
 
     // If both drivers are installed already, there's nothing to do.
     if devices_needing_driver.len() == 0 {
+        if explicitly_requested {
+            println!("WinUSB drivers are already installed; nothing to do.");
+        }
         return;
     }
 
@@ -478,8 +438,9 @@ pub fn ensure_access(parent_pid: Option<u32>)
         }
 
         admin_install_drivers(&mut devices_needing_driver);
+        println!("Successfully installed drivers for {} USB interfaces.", devices_needing_driver.len());
 
-        // TODO: use the Windows SetupAPI to get the device instance ID of the BMP so we can restart it and re-enumerate it.
+        // TODO: use the Windows SetupAPI to get the device instance ID of the BMP so we can restart it and re-enumerate it, if necessary.
         // https://docs.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinstanceida
 
         // Now that we're done, nothing more to do in the admin process.
@@ -551,8 +512,8 @@ pub fn ensure_access(parent_pid: Option<u32>)
     let mut exit_code = 0;
     if unsafe { winapi::um::processthreadsapi::GetExitCodeProcess(hproc, &mut exit_code) } != 0 {
         if exit_code != 0 {
-            warn!("Elevated process exited with {}; driver installation may not have succeeded", exit_code);
-            return;
+            error!("Elevated process exited with {}; driver installation probably failed", exit_code);
+            std::process::exit(exit_code as i32);
         } else {
             info!("Exiting parent process. Elevated process exited successfully.");
         }
@@ -563,6 +524,6 @@ pub fn ensure_access(parent_pid: Option<u32>)
 
     println!(
         "Driver installation should be complete. \
-        You may need to unplug the device and plug it back in before things work.."
+        You may need to unplug the device and plug it back in before things work."
     );
 }
