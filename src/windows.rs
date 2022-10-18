@@ -13,24 +13,14 @@ use std::os::windows::ffi::OsStrExt;
 use libc::{intptr_t, c_int, c_uint, c_long, c_char, FILE};
 use log::{trace, debug, info, warn, error};
 use lazy_static::lazy_static;
-use bstr::{ByteVec, ByteSlice};
 use winreg::enums::*;
 use winreg::RegKey;
 
-use winapi::shared::minwindef::DWORD;
-use winapi::shared::winerror::ERROR_NO_MORE_ITEMS;
-use winapi::um::setupapi::SPDRP_DRIVER;
 use winapi::um::wincon::{FreeConsole, AttachConsole};
 #[allow(unused_imports)]
 use winapi::um::winbase::{STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
 use winapi::um::consoleapi::AllocConsole;
 use deelevate::{Token, PrivilegeLevel};
-
-use crate::S;
-use crate::usb::{Vid, Pid, DfuMatch};
-use crate::bmp::BmpVidPid;
-use crate::winfn::*;
-
 
 /// From fnctl.h
 /// ```c
@@ -85,6 +75,7 @@ pub fn stderrf() -> *mut FILE
 /// Transforms the return value into a Rust-y Result.
 ///
 /// In this case, a return value of 0 is considered an error.
+#[allow(unused_macros)]
 macro_rules! winapi_bool
 {
     ($e:expr) => {
@@ -100,6 +91,7 @@ macro_rules! winapi_bool
 /// Transforms the return value into a Rust-y Result.
 ///
 /// In this case, a return value of INVALID_HANDLE_VALUE is considered an error.
+#[allow(unused_macros)]
 macro_rules! winapi_handle
 {
     ($e:expr) => {
@@ -114,6 +106,7 @@ macro_rules! winapi_handle
 /// Transforms the return value into a Rust-y Result.
 ///
 /// In this case, a return value of -1 is considered an error.
+#[allow(unused_macros)]
 macro_rules! winapi_neg
 {
     ($e:expr) => {
@@ -200,59 +193,6 @@ fn os_str_to_null_terminated_vec(s: &OsStr) -> Vec<u16>
 }
 
 
-use winapi::um::setupapi::SP_DEVINFO_DATA;
-
-//unsafe fn GetPropFromDevInfo(infoset_handle: *mut c_void, devinfo: &mut SP_DEVINFO_DATA, prop: DWORD) -> IoResult<Vec<u8>>
-//{
-    //use winapi::um::setupapi::SetupDiGetDeviceRegistryPropertyA;
-
-    //let mut size: DWORD = 0;
-
-    //let success = SetupDiGetDeviceRegistryPropertyA(
-        //infoset_handle,
-        //devinfo,
-        //prop,
-        //ptr::null_mut(), // PropertyRegDataType.
-        //ptr::null_mut(), // PropertyBuffer.
-        //0, // PropertyBufferSize.
-        //&mut size, // RequiredSize.
-    //);
-
-    //if success == 0 {
-
-        //// Ignore ERROR_INSUFFICIENT_BUFFER.
-        //use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
-
-        //let e = IoError::last_os_error();
-        //if let Some(code) = e.raw_os_error() {
-            //if (code as DWORD) != ERROR_INSUFFICIENT_BUFFER {
-                //return Err(e);
-            //}
-        //}
-    //}
-
-    //let mut buffer = vec![0u8; size as usize];
-
-    //let success = SetupDiGetDeviceRegistryPropertyA(
-        //infoset_handle,
-        //devinfo,
-        //prop,
-        //ptr::null_mut(),
-        //buffer.as_mut_ptr(),
-        //size,
-        //ptr::null_mut(),
-    //);
-
-    //if success == 0 {
-        //dbg!(success);
-        //return Err(std::io::Error::last_os_error());
-    //}
-
-    //Ok(buffer)
-
-//}
-
-
 fn admin_install_drivers(devices: &mut [wdi::DeviceInfo])
 {
     for dev in devices.into_iter() {
@@ -310,33 +250,55 @@ lazy_static! {
 //const APP_MODE_REG_ENTRY = r"
 
 
-/// Checks if a subkey, ignoring case, exists and has values.
-pub fn reg_ikey_exists_and_has_values(base: &RegKey, subkey_name: String) -> IoResult<bool>
+/// Checks if a subkey, exists and has values.
+///
+/// This function explicitly ignores case, as the Windows registry is case-preserving but case-insensitive.
+pub fn reg_key_exists_and_has_values(base: &RegKey, subkey_name: &str) -> IoResult<bool>
 {
+    trace!("Checking if registry key {:?} has subkey {:?} and subkey has values", &base, &subkey_name);
 
-    let mut sub = None;
+    // Stores the subkey as a [RegKey], under Some() if found.
+    let mut subkey = None;
+
     let needle = subkey_name.to_ascii_lowercase();
 
-    for key in base.enum_keys() {
-        let key = key?;
-        let lower = key.to_ascii_lowercase();
-        if lower == needle {
-            sub = Some(key);
+    for subkey_of_base in base.enum_keys() {
+
+        let subkey_of_base = subkey_of_base
+            .map_err(|e| {
+                debug!("Error enumerating subkeys for reg key {:?}: {}", &base, &e);
+                e
+            })?;
+
+        // Make sure this subkey has the same (case insensitive) name as the one we're looking for
+        // and not just any old subkey.
+        let subkey_lowercase = subkey_of_base.to_ascii_lowercase();
+        if subkey_lowercase == needle {
+            subkey = Some(subkey_of_base);
             break;
         }
     }
 
-    let sub = match sub {
+    // Ok(false) indicating that confirmed such a subkey does *not* exist.
+    let subkey = match subkey {
         Some(v) => v,
         None => return Ok(false),
     };
 
-    let subkey = base.open_subkey(sub)?;
+    let subkey = base.open_subkey(&subkey)
+        .map_err(|e| {
+            debug!("Error opening registry subkey {}: {}", &subkey, &e);
+            e
+        })?;
 
     for value in subkey.enum_values() {
 
         // Failing to enum values doesn't necessarily mean there are or are not values.
-        let _value = value?;
+        let _value = value
+            .map_err(|e| {
+                debug!("Error enumerating values for reg key {:?}: {}", &subkey, &e);
+                e
+            })?;
 
         // But if we were able to get here, then we successfully retrieved a value of this subkey.
         // We're done!
@@ -349,147 +311,145 @@ pub fn reg_ikey_exists_and_has_values(base: &RegKey, subkey_name: String) -> IoR
 }
 
 
+/// Checks what drivers a device with a given [enumerator] and [HardwareId] is bound to, if any, via the Windows registry.
+/// Returns the INF names of any bound drivers.
+///
+/// `hardware_id` should *not* include the enumerator name. e.g. no leading `USB\`.
+///
+/// This function checks `HKLM:\SYSTEM\DriverDatabase\DeviceIds\{enumerator}\{hardware_id}`.
+/// The Windows registry is case in-sensitive.
+///
+/// [enumerator]: (https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw)
+/// [HardwareId]: (https://learn.microsoft.com/en-us/windows-hardware/drivers/install/hardware-ids)
+pub fn hwid_bound_to_driver(hardware_id: &str, enumerator: &str) -> IoResult<Vec<String>>
+{
+    debug!("Checking what drivers device {} under enumerator {} is bound to", hardware_id, enumerator);
+
+    let mut driver_names: Vec<String> = Vec::new();
+
+    let hwid_lower = hardware_id.to_lowercase();
+
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+
+
+    // Open the driver database for the given enumerator.
+
+    // The registry key name for a driver database for `enumerator` is
+    // `HKLM:\SYSTEM\DriverDatabase\DeviceIds\{enumerator}`.
+    let mut driver_db_subkey_name = String::from(r"SYSTEM\DriverDatabase\DeviceIds\");
+    driver_db_subkey_name.push_str(enumerator);
+
+    trace!(r"Opening HKLM:\{}", &driver_db_subkey_name);
+    let driver_db_for_enum = hklm.open_subkey(&driver_db_subkey_name)
+        .map_err(|e| {
+            error!("Error opening USB driver database in registry: {}", &e);
+            e
+        })?;
+
+
+    // Subkey of the driver DB are Windows HardwareId strings, without the leading enumerator name.
+
+    for dev_key_name in driver_db_for_enum.enum_keys() {
+        let dev_key_name: String = dev_key_name
+            .map_err(|e| {
+                warn!("Error enumerating registry subkeys of {:?}: {}", &driver_db_for_enum, &e);
+                e
+            })?;
+
+        let dev_key_lower = dev_key_name.to_lowercase();
+
+        // If this subkey has the same name as the hardware ID we're looking for...
+        if dev_key_lower == hwid_lower {
+
+            // Then check if it has any drivers listed, or if it's empty.
+            // Usually, however, unbound devices will not have a subkey of their enumerator at all.
+
+            trace!(r"Opening HKLM:\{}\{}", &driver_db_subkey_name, &dev_key_name);
+            let dev_key = driver_db_for_enum.open_subkey(&dev_key_name)
+                .map_err(|e| {
+                    warn!("Error opening know-to-exist subkey {:?} when checking bound drivers: {}", &dev_key_name, &e);
+                    e
+                })?;
+
+            for driver_regval in dev_key.enum_values() {
+
+                let (driver_name, _driver_value) = driver_regval
+                    .map_err(|e| {
+                        warn!(
+                            "Error enumerating values of key {:?} when checking bound drivers: {}",
+                            &dev_key,
+                            &e,
+                        );
+                        e
+                    })?;
+
+                // Values of `HKLM:\SYSTEM\DriverDatabase\DeviceIds\{enumerator}\{hwid}` are of type
+                // REG_BINARY, but I have no idea what the format is. The name, however, is the name of
+                // the INF file bound to the device, e.g. `oem15.inf`, and that's what we want.
+                driver_names.push(driver_name);
+
+            }
+
+        }
+    }
+
+    Ok(driver_names)
+}
+
+
 
 /// This function ensures that all connected Black Magic Probe devices have the necessary drivers installed, via libwdi.
 pub fn ensure_access(parent_pid: Option<u32>)
 {
 
     // Check if the libusb driver has been installed for BMP devices yet.
-    use winapi::um::setupapi::{SetupDiGetClassDevsW, SetupDiEnumDeviceInfo};
-    use winapi::um::setupapi::{DIGCF_PRESENT, DIGCF_ALLCLASSES};
-    use winapi::um::setupapi::SP_DEVINFO_DATA;
-    use winapi::um::setupapi::SPDRP_HARDWAREID;
-    use winapi::um::setupapi::SPDRP_COMPATIBLEIDS;
-    use winapi::um::setupapi::SetupDiGetDeviceRegistryPropertyA;
-    use winapi::shared::devguid::GUID_DEVCLASS_USB;
 
-    use bstr::ByteSlice;
+    debug!("Checking Windows registry driver database to determine if WinUSB is bound to BMP device nodes");
 
+    let mut devices_needing_driver: Vec<wdi::DeviceInfo> = Vec::with_capacity(2);
 
-    debug!("Checking Windows registry driver database to determine if WinUSB is bound to BMP devices");
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let usb_driver_db = hklm.open_subkey(r"SYSTEM\DriverDatabase\DeviceIds\USB")
-        .expect("Unable to open USB driver database in registry");
+    match hwid_bound_to_driver("VID_1D50&PID_6018&MI_04", "USB") {
+        Ok(driver_names) if driver_names.len() == 0 => {
+            devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
+            info!("Scheduling libusb driver installation for app mode BMP device...");
+        }
 
+        // If an error occurred checking, then install the driver just in case.
+        Err(_e) => {
+            devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
+            info!("Scheduling libusb driver installation for app mode BMP device...");
+        }
 
-    let app_mode = reg_ikey_exists_and_has_values(&usb_driver_db, S!("VID_1D50&PID_6018&MI_04"));
-    trace!("Checking if app mode BMP needs driver: {:?}", app_mode);
-    let app_mode_needs_driver = match app_mode {
-        Ok(true) => false,
-        _ => true,
-    };
-
-    let dfu_mode = reg_ikey_exists_and_has_values(&usb_driver_db, S!("VID_1D50&PID_6017"));
-    trace!("Checking if DFU mode BMP needs driver: {:?}", dfu_mode);
-    let dfu_mode_needs_driver = match dfu_mode {
-        Ok(true) => false,
-        _ => true,
-    };
-
-    //dbg!((app_mode_needs_driver, dfu_mode_needs_driver));
-
-    //let devinfo_set = DevInfoSet::from_enumerator(OsStr::new("USB"))
-        //.expect("Failed to enumerate a device info set");
-    //for mut dev in devinfo_set.iter() {
-
-        //let hwid_raw = dev.prop(SPDRP_HARDWAREID)
-            //.expect("Failed to get hardware ID for device");
-
-        //let lowercase = hwid_raw.to_ascii_lowercase();
-
-        //if lowercase.starts_with(br"usb\vid_1d50&pid_6018") && lowercase.contains_str("mi_04") {
-
-            //app_mode_found = true;
-            //let driver_raw = dev.prop(SPDRP_DRIVER);
-
-            //// Windows returns ERROR_NO_MORE_ITEMS if there is no driver.
-            //// But we might as well consider it necessary to install the driver if *any* error occurred,
-            //// here, as I haven't found a reason that it would fail if the driver *were* installed.
-            //// Therefore, we only consider installation of the driver unnecessary if there was *no* error.
-            //// However, if the error is *not* ERROR_NO_MORE_ITEMS, then we should at least log it.
-            //if let Err(e) = driver_raw.as_ref() {
-                //const NO_MORE_ITEMS: i32 = ERROR_NO_MORE_ITEMS as i32;
-                //if let Some(NO_MORE_ITEMS) = e.raw_os_error() {
-                    ////error!("Error retrieving device driver: {}", e);
-                //} else {
-                    //error!("Error retrieving device driver: {}", e);
-                //}
-            //}
-            //if driver_raw.is_ok() {
-                //app_mode_needs_driver = false;
-            //} else {
-            //}
-
-            //dbg!(hwid_raw.as_bstr());
-            ////dbg!(driver_raw.as_ref().map(|d| d.as_bstr()));
-
-        //} else if lowercase.starts_with(br"usb\vid_1d50&pid_6017") {
-
-            //dfu_mode_found = true;
-
-            //let driver_raw = dev.prop(SPDRP_DRIVER);
-
-            //// Windows returns ERROR_NO_MORE_ITEMS if there is no driver.
-            //// But we might as well consider it necessary to install the driver if *any* error occred,
-            //// here, as I haven't found a reason that it would fail if the driver *were* installed.
-            //// Therefore, we only consider installation of the driver unnecessary if there was *no* error.
-            //if driver_raw.is_ok() {
-                //dfu_mode_needs_driver = false;
-            //} else {
-            //}
-
-            //dbg!(hwid_raw.as_bstr());
-            ////dbg!(driver_raw.as_ref().map(|d| d.as_bstr()));
-        //}
-    //}
-
-    if app_mode_needs_driver {
-        info!("Application mode BMP device needs libusb driver");
+        Ok(driver_names) => {
+            trace!("App mode BMP bound to drivers: {:?}", driver_names);
+        },
     }
 
-    if dfu_mode_needs_driver {
-        info!("DFU mode BMP device needs libusb driver");
-    }
+    match hwid_bound_to_driver("VID_1D50&PID_6017", "USB") {
+        Ok(driver_names) if driver_names.len() == 0 => {
+            devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
+            info!("Scheduling WinUSB driver installation for DFU mode BMP device...");
+        }
 
+        // If an error occurred checking, then install the driver just in case.
+        Err(_e) => {
+            devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
+            info!("Scheduling WinUSB driver installation for DFU mode BMP device...");
+        }
+
+        Ok(driver_names) => {
+            trace!("DFU mode BMP bound to drivers: {:?}", driver_names);
+        },
+    }
 
     // If both drivers are installed already, there's nothing to do.
-    if app_mode_needs_driver == false && dfu_mode_needs_driver == false {
+    if devices_needing_driver.len() == 0 {
         return;
     }
 
-    //// Find all driverless Black Magic Probe DFU "devices"
-    //// (interfaces are considered devices in Windows terminology).
-    //let devices: Result<_, _> = wdi::create_list(Default::default());
 
-    //// If no devices were found at all, return.
-    //if let Err(wdi::Error::NoDevice) = devices {
-        //return;
-    //}
-
-    //let mut devices: Vec<_> = devices
-        //.expect("Unable to get a list of connected devices")
-        //.into_iter()
-        //.filter(|d| {
-            //BmpVidPid::mode_from_vid_pid(Vid(d.vid), Pid(d.pid))
-                //.is_some()
-                //&&
-                //match d.compatible_id.as_ref() {
-                    //Some(compatible_id) => {
-                        //// Windows is inconsistent about the case things in the Compatible ID string.
-                        //compatible_id.to_lowercase().starts_with(r"usb\class_fe&subclass_01")
-                    //},
-                    //None => true,
-                //}
-        //})
-        //.collect();
-
-    //// If there aren't any driverless Black Magic Probe DFU interfaces, then there's nothing to do.
-    //if devices.is_empty() {
-        //return;
-    //}
-
-    println!("The libusb driver needs to be installed for the Black Magic Probe device before continuing. Standby...");
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    println!("The WinUSB driver needs to be installed for the Black Magic Probe device before continuing. Standby...");
+    thread::sleep(Duration::from_secs(1));
 
     // If we're here, that means we're installing drivers.
     // So we need admin.
@@ -510,98 +470,14 @@ pub fn ensure_access(parent_pid: Option<u32>)
         if let Some(pid) = parent_pid {
             match restore_cstdio(pid) {
                 Ok(_) => (),
-                Err(e) => {
+                Err(_e) => {
                     // FIXME:
                     todo!("Create a log file!");
                 }
             }
         }
 
-        //dbg!(&devices[0]);
-
-        //let app_dev = wdi::DeviceInfo {
-            //vid: 0x1d50,
-            //pid: 0x6018,
-            //is_composite: true,
-            //mi: 4,
-            //desc: S!("Black Magic DFU (Interface 4)"),
-            //driver: None,
-            ////device_id: Some(S!(r"USB\VID_1D50&PID_6018&MI_04\\9&3A0E46FB&9&0004")),
-            //device_id: None,
-            //hardware_id: Some(S!(r"USB\VID_1D50&PID_6018&REV_0100&MI_04")),
-            //compatible_id: Some(S!(r"USB\Class_fe&SubClass_01&Prot_01")),
-            //upper_filter: None,
-            //driver_version: 0,
-        //};
-
-        //let dfu_dev = wdi::DeviceInfo {
-            //vid: 0x1d50,
-            //pid: 0x6017,
-            //is_composite: false,
-            //mi: 0,
-            //desc: S!("Black Magic Probe DFU"),
-            //driver: None,
-            //device_id: None,
-            //hardware_id: Some(S!(r"USB\VID_1D50&PID_6017&REV_0100")),
-            //compatible_id: Some(S!(r"USB\Cass_FE&SubClass_01&Prot_02")),
-            //upper_filter: None,
-            //driver_version: 0,
-        //};
-
-        //let mut devices = [dev, dfu_dev];
-        let mut devices: Vec<wdi::DeviceInfo> = Vec::with_capacity(2);
-        if app_mode_needs_driver {
-            devices.push(APP_MODE_WDI_INFO.clone());
-        }
-        if dfu_mode_needs_driver {
-            devices.push(DFU_MODE_WDI_INFO.clone());
-        }
-        admin_install_drivers(&mut devices);
-
-        //admin_install_drivers(&mut devices);
-
-        println!("Installed for application mode; now installing for DFU mode...");
-
-        // Reboot the device into DFU mode so we can install the drivers there too.
-        let matcher = crate::BlackmagicProbeMatcher::new();
-        let mut results = crate::find_matching_probes(&matcher);
-        let devices = results.pop_all()
-            .expect("Unable to open BMP device after installing driver");
-
-        for mut dev in devices {
-            if dev.operating_mode() == crate::usb::DfuOperatingMode::Runtime {
-                dev.detach_and_destroy()
-                    .expect("Failed to detach BMP device to DFU mode after installing driver");
-            }
-        }
-
-        // Now that we've detached all devices, install drivers again.
-        let mut devices: Result<_, _> = wdi::create_list(Default::default());
-        if let Err(wdi::Error::NoDevice) = devices {
-            return;
-        }
-
-        let mut devices: Vec<_> = devices
-            .expect("Unable to get a list of connected devices")
-            .into_iter()
-            .filter(|d| {
-                BmpVidPid::mode_from_vid_pid(Vid(d.vid), Pid(d.pid))
-                    .is_some()
-                    &&
-                    match d.compatible_id.as_ref() {
-                        Some(compatible_id) => {
-                            compatible_id.to_lowercase().starts_with(br"usb\class_fe&subclass_01")
-                        },
-                        None => true,
-                    }
-            })
-            .collect();
-
-            if devices.is_empty() {
-                return;
-            }
-
-            admin_install_drivers(&mut devices);
+        admin_install_drivers(&mut devices_needing_driver);
 
         // TODO: use the Windows SetupAPI to get the device instance ID of the BMP so we can restart it and re-enumerate it.
         // https://docs.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinstanceida

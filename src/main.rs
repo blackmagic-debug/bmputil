@@ -20,8 +20,6 @@ mod bmp;
 mod elf;
 #[cfg(windows)]
 mod windows;
-#[cfg(windows)]
-mod winfn;
 use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, FirmwareType, FirmwareFormat, find_matching_probes};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
