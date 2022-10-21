@@ -1175,9 +1175,6 @@ pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> 
         // If we've been trying for over half the full timeout, start logging warnings.
         if Instant::now().duration_since(start) > silence_timeout {
             dev = find_matching_probes(&matcher).pop_single(operation);
-            if let Err(ErrorKind::DeviceNotFound) = dev.as_ref().map_err(|e| &e.kind) {
-                warn!("Note: current filters: {:?}", &matcher);
-            }
         } else {
             dev = find_matching_probes(&matcher).pop_single_silent();
         }
