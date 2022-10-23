@@ -31,6 +31,9 @@ pub struct BlackmagicProbeDevice
 
     /// RefCell for interior-mutability-based caching.
     serial: RefCell<Option<String>>,
+
+    /// RefCell for interior-mutability-based caching.
+    port: RefCell<Option<String>>,
 }
 
 impl BlackmagicProbeDevice
@@ -78,6 +81,7 @@ impl BlackmagicProbeDevice
             mode,
             handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
+            port: RefCell::new(None),
         })
     }
 
@@ -121,6 +125,7 @@ impl BlackmagicProbeDevice
             mode,
             handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
+            port: RefCell::new(None),
         })
     }
 
@@ -143,6 +148,7 @@ impl BlackmagicProbeDevice
             mode,
             handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
+            port: RefCell::new(None),
         })
     }
 
@@ -236,6 +242,10 @@ impl BlackmagicProbeDevice
     /// This is theoretically reliable, but is also OS-reported, so it doesn't *have* to be, alas.
     pub fn port(&self) -> String
     {
+        if let Some(port) = self.port.borrow().as_ref() {
+            return port.to_string();
+        }
+
         let bus = self.device().bus_number();
         let path = self
             .device()
@@ -247,7 +257,11 @@ impl BlackmagicProbeDevice
             .as_slice()
             .join(".");
 
-        format!("{}-{}", bus, path)
+        let port = format!("{}-{}", bus, path);
+        let ret = port.clone();
+        self.port.replace(Some(port));
+
+        ret
     }
 
     /// Return a string suitable for display to the user.
@@ -540,15 +554,8 @@ impl BlackmagicProbeDevice
         P: Fn(usize) + 'static,
     {
         if self.mode == DfuOperatingMode::Runtime {
-            match self.detach_and_enumerate() {
-                Ok(_) => (),
-                Err(e) => {
-                    error!("{}", e);
-                    thread::sleep(Duration::from_secs(10));
-                    // Try again.
-                    self.detach_and_enumerate()?;
-                }
-            }
+            self.detach_and_enumerate()
+                .map_err(|e| e.with_ctx("detaching device for download"))?;
         }
 
         // HACK: You can't have multiple open handles to the same WinUSB device in the same process,
