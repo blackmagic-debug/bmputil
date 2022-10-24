@@ -31,6 +31,9 @@ pub struct BlackmagicProbeDevice
 
     /// RefCell for interior-mutability-based caching.
     serial: RefCell<Option<String>>,
+
+    /// RefCell for interior-mutability-based caching.
+    port: RefCell<Option<String>>,
 }
 
 impl BlackmagicProbeDevice
@@ -78,6 +81,7 @@ impl BlackmagicProbeDevice
             mode,
             handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
+            port: RefCell::new(None),
         })
     }
 
@@ -121,6 +125,7 @@ impl BlackmagicProbeDevice
             mode,
             handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
+            port: RefCell::new(None),
         })
     }
 
@@ -143,6 +148,7 @@ impl BlackmagicProbeDevice
             mode,
             handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
+            port: RefCell::new(None),
         })
     }
 
@@ -236,6 +242,10 @@ impl BlackmagicProbeDevice
     /// This is theoretically reliable, but is also OS-reported, so it doesn't *have* to be, alas.
     pub fn port(&self) -> String
     {
+        if let Some(port) = self.port.borrow().as_ref() {
+            return port.to_string();
+        }
+
         let bus = self.device().bus_number();
         let path = self
             .device()
@@ -247,7 +257,11 @@ impl BlackmagicProbeDevice
             .as_slice()
             .join(".");
 
-        format!("{}-{}", bus, path)
+        let port = format!("{}-{}", bus, path);
+        let ret = port.clone();
+        self.port.replace(Some(port));
+
+        ret
     }
 
     /// Return a string suitable for display to the user.
@@ -434,7 +448,7 @@ impl BlackmagicProbeDevice
             Duration::from_secs(1), // timeout for libusb
         )
         .map_err(|source| Error::from(source))
-        .map_err(|e| e.with_ctx("entering DFU mode"))?;
+        .map_err(|e| e.with_ctx("sending control request"))?;
 
         info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
@@ -476,7 +490,19 @@ impl BlackmagicProbeDevice
         // Save the port for finding the device again after.
         let port = self.port();
 
-        unsafe { self.request_detach()? };
+        if cfg!(not(windows)) {
+            unsafe { self.request_detach()? };
+        } else {
+            // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
+            // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
+            use crate::ErrorSource::Libusb;
+            let res = unsafe { self.request_detach() };
+            if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
+                warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
+            } else {
+                res?;
+            }
+        }
 
         // Now drop the device so libusb doesn't re-grab the same thing.
         drop(self.device.take());
@@ -485,7 +511,6 @@ impl BlackmagicProbeDevice
         thread::sleep(Duration::from_millis(250));
 
         // Now try to find the device again on that same port.
-
         let dev = wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")?;
 
         // If we've made it here, then we have successfully re-found the device.
@@ -501,7 +526,19 @@ impl BlackmagicProbeDevice
     /// You'll just have to create another one.
     pub fn detach_and_destroy(mut self) -> Result<(), Error>
     {
-        unsafe { self.request_detach()? };
+        if cfg!(not(windows)) {
+            unsafe { self.request_detach()? };
+        } else {
+            // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
+            // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
+            use crate::ErrorSource::Libusb;
+            let res = unsafe { self.request_detach() };
+            if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
+                warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
+            } else {
+                res?;
+            }
+        }
 
         Ok(())
     }
@@ -517,8 +554,19 @@ impl BlackmagicProbeDevice
         P: Fn(usize) + 'static,
     {
         if self.mode == DfuOperatingMode::Runtime {
-            self.detach_and_enumerate()?;
+            self.detach_and_enumerate()
+                .map_err(|e| e.with_ctx("detaching device for download"))?;
         }
+
+        // HACK: You can't have multiple open handles to the same WinUSB device in the same process,
+        // and DfuLibusb::open() opens a handle, so we have to drop ours.
+        if cfg!(windows) {
+            if let Some(handle) = self.handle.take() {
+                drop(handle);
+            }
+            thread::sleep(Duration::from_millis(250));
+        }
+
 
         let mut dfu_dev = DfuLibusb::open(
             self.device().context(),
@@ -1134,9 +1182,6 @@ pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> 
         // If we've been trying for over half the full timeout, start logging warnings.
         if Instant::now().duration_since(start) > silence_timeout {
             dev = find_matching_probes(&matcher).pop_single(operation);
-            if let Err(ErrorKind::DeviceNotFound) = dev.as_ref().map_err(|e| &e.kind) {
-                warn!("Note: current filters: {:?}", &matcher);
-            }
         } else {
             dev = find_matching_probes(&matcher).pop_single_silent();
         }

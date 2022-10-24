@@ -18,6 +18,8 @@ mod usb;
 mod error;
 mod bmp;
 mod elf;
+#[cfg(windows)]
+mod windows;
 use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, FirmwareType, FirmwareFormat, find_matching_probes};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
@@ -262,7 +264,6 @@ fn info_command(matches: &ArgMatches) -> Result<(), Error>
     Ok(())
 }
 
-
 fn main()
 {
     env_logger::Builder::new()
@@ -270,7 +271,19 @@ fn main()
         .parse_default_env()
         .init();
 
-    let parser = Command::new("Blackmagic Probe Firmware Manager")
+    let mut parser = Command::new("Blackmagic Probe Firmware Manager");
+    if cfg!(windows) {
+        parser = parser
+            .arg(Arg::new("windows-wdi-install-mode")
+                .long("windows-wdi-install-mode")
+                .required(false)
+                .takes_value(true)
+                .global(true)
+                .hide(true)
+                .help("Internal argument used when re-executing this command to acquire admin for installing drivers")
+            );
+    }
+    parser = parser
         .arg_required_else_help(true)
         .arg(Arg::new("serial_number")
             .short('s')
@@ -332,28 +345,70 @@ fn main()
                 .hide(true)
                 .help("forcibly override firmware-type autodetection and flash anyway (may result in an unbootable device!)")
             )
-        )
-        .subcommand(Command::new("debug")
-            .display_order(10)
-            .about("Advanced utility commands for developers")
-            .arg_required_else_help(true)
-            .subcommand(Command::new("detach")
-                .about("Request device to switch from runtime mode to DFU mode or vice versa")
-            )
         );
+
+    let mut debug_subcmd = Command::new("debug")
+        .display_order(10)
+        .about("Advanced utility commands for developers")
+        .arg_required_else_help(true)
+        .subcommand_required(true)
+        .subcommand(Command::new("detach")
+            .about("Request device to switch from runtime mode to DFU mode or vice versa")
+        );
+
+    if cfg!(windows) {
+        debug_subcmd = debug_subcmd
+            // TODO: add a way to uninstall drivers from bmputil as well.
+            .subcommand(Command::new("install-drivers")
+                .about("Install USB drivers for BMP devices, and quit")
+            );
+    }
+
+    parser = parser.subcommand(debug_subcmd);
+
 
     let matches = parser.get_matches();
 
-
     let (subcommand, subcommand_matches) = matches.subcommand()
         .expect("No subcommand given!"); // Should be impossible, thanks to clap.
+
+    // Minor HACK: these Windows specific subcommands and operations need to be checked and handled
+    // before the others.
+    #[cfg(windows)]
+    {
+        // If the install-driver subcommand was explicitly specified, then perform that operation
+        // and exit.
+        match subcommand {
+            "debug" => match subcommand_matches.subcommand() {
+                Some(("install-drivers", _install_driver_matches)) => {
+                    windows::ensure_access(
+                        matches
+                            .value_of("windows-wdi-install-mode")
+                            .map(|v| v.parse().unwrap()),
+                        true,
+                    );
+                    std::process::exit(0);
+                },
+                _ => (),
+            },
+            _ => (),
+        }
+
+        // Otherwise, potentially install drivers, but still do whatever else the user wanted.
+        windows::ensure_access(
+            matches
+                .value_of("windows-wdi-install-mode")
+                .map(|v| v.parse().unwrap()),
+            false,
+        );
+    }
 
     let res = match subcommand {
         "info" => info_command(subcommand_matches),
         "flash" => flash(subcommand_matches),
         "debug" => match subcommand_matches.subcommand().unwrap() {
             ("detach", detach_matches) => detach_command(detach_matches),
-            _ => unreachable!(),
+            other => unreachable!("Unhandled subcommand {:?}", other),
         },
 
 

@@ -8,6 +8,9 @@ use rustc_version::{version_meta, Channel};
 
 fn main()
 {
+    // Statically link the Visual C runtime on Windows.
+    static_vcruntime::metabuild();
+
     // If detect-backtrace is enabled (default), detect if we're on nightly or not.
     // If we're on nightly, enable backtraces automatically.
     match std::env::var_os("CARGO_FEATURE_DETECT_BACKTRACE") {
