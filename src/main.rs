@@ -20,7 +20,7 @@ mod bmp;
 mod elf;
 #[cfg(windows)]
 mod windows;
-use crate::bmp::{BlackmagicProbeDevice, BlackmagicProbeMatcher, FirmwareType, FirmwareFormat, find_matching_probes};
+use crate::bmp::{BmpDevice, BmpMatcher, FirmwareType, FirmwareFormat, find_matching_probes};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
 #[macro_export]
@@ -57,7 +57,7 @@ fn intel_hex_error() -> !
 
 fn detach_command(matches: &ArgMatches) -> Result<(), Error>
 {
-    let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
+    let matcher = BmpMatcher::from_clap_matches(matches);
     let mut results = find_matching_probes(&matcher);
     let dev = results.pop_single("detach")?;
 
@@ -150,9 +150,10 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
         .expect("firmware filesize exceeded 32 bits! Firmware binary must be invalid");
 
 
-    let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
+    let matcher = BmpMatcher::from_clap_matches(matches);
     let mut results = find_matching_probes(&matcher);
-    let mut dev: BlackmagicProbeDevice = results.pop_single("flash")?;
+    // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
+    let mut dev: BmpDevice = results.pop_single("flash")?;
 
     let port = dev.port();
 
@@ -243,7 +244,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
 
 fn info_command(matches: &ArgMatches) -> Result<(), Error>
 {
-    let matcher = BlackmagicProbeMatcher::from_clap_matches(matches);
+    let matcher = BmpMatcher::from_clap_matches(matches);
 
     let mut results = find_matching_probes(&matcher);
 
@@ -271,7 +272,7 @@ fn main()
         .parse_default_env()
         .init();
 
-    let mut parser = Command::new("Blackmagic Probe Firmware Manager");
+    let mut parser = Command::new("Black Magic Probe Firmware Manager");
     if cfg!(windows) {
         parser = parser
             .arg(Arg::new("windows-wdi-install-mode")
@@ -320,11 +321,11 @@ fn main()
         )
         .subcommand(Command::new("info")
             .display_order(0)
-            .about("Print information about connected Blackmagic Probe devices")
+            .about("Print information about connected Black Magic Probe devices")
         )
         .subcommand(Command::new("flash")
             .display_order(1)
-            .about("Flash new firmware onto a Blackmagic Probe device")
+            .about("Flash new firmware onto a Black Magic Probe device")
             .arg(Arg::new("firmware_binary")
                 .takes_value(true)
                 .required(true)
