@@ -22,6 +22,17 @@ If you are working on patches or contributions to the tool, you can obviously us
 **Note:** This tool is not yet listed on crates.io. So unfortunately you can't install it using cargo directly yet.
 **Note:** We don't currently have pre-built binaries/installers available. But they are planned.
 
+## Windows
+
+Installation is done with the above instructions, with one additional prerequisite. You will need to install the [Windows
+Driver Kit 8.0 redistributable components](https://go.microsoft.com/fwlink/p/?LinkID=253170) (link from
+[this](https://learn.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads) page). If you are cross
+compiling to Windows, you will need to set the `WDK_DIR` environment variable to the path of the extracted WDK
+redistributable components.
+
+bmputil on Windows will also attempt to automatically setup driver installation on first run. This is extra
+experimental, and will require administrator access on the first run.
+
 
 ## Features
 
