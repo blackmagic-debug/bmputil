@@ -41,7 +41,7 @@ impl SectionHeaderExt for SectionHeader
         let start_idx = self.sh_offset as usize;
         let size = self.sh_size;
         let end_idx = start_idx + size as usize;
-        let data: &[u8] = &parent_data.get(start_idx..end_idx)
+        let data: &[u8] = parent_data.get(start_idx..end_idx)
             .ok_or_else(|| GoblinError::Malformed(format!(
                 "ELF section header does not point to a valid section (offset [{}..{}])",
                 start_idx,

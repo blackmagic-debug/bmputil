@@ -77,7 +77,7 @@ pub enum DfuRequest
 /// into this mode at the host's request.
 /// \[[USB DFU Device Class Spec § 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=11)
 /// and [§ 4.2](https://usb.org/sites/default/files/DFU_1.1.pdf#page=14)\].
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum DfuOperatingMode
 {
     Runtime,
@@ -90,7 +90,7 @@ pub trait DfuMatch
 }
 
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GenericDescriptorRef<'a>
 {
     pub raw: &'a [u8],
@@ -152,7 +152,7 @@ impl<'a> GenericDescriptorRef<'a>
 }
 
 
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Error)]
 pub enum DescriptorConvertError
 {
     #[error(
@@ -183,7 +183,7 @@ pub enum DescriptorConvertError
 /// `repr(packed)` would allow you to easily create unaligned references, and thus this
 /// struct does not match the memory layout of the data sent over the USB bus. Sadface indeed.
 #[allow(non_snake_case)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct DfuFunctionalDescriptor
 {

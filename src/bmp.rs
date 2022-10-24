@@ -22,7 +22,7 @@ type UsbHandle = rusb::DeviceHandle<rusb::Context>;
 
 
 /// Semantically represents a Black Magic Probe USB device.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct BmpDevice
 {
     device: RefCell<Option<rusb::Device<rusb::Context>>>,
@@ -405,7 +405,7 @@ impl BmpDevice
             &[], // buffer
             Duration::from_secs(1), // timeout for libusb
         )
-        .map_err(|source| Error::from(source))
+        .map_err(Error::from)
         .map_err(|e| e.with_ctx("sending control request"))?;
 
         info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
@@ -624,7 +624,7 @@ impl Display for BmpDevice
                 // from the write!() call below, not internal errors.
                 // https://doc.rust-lang.org/stable/std/fmt/index.html#formatting-traits.
                 error!("Error formatting BlackMagicProbeDevice: {}", e);
-                format!("Unknown Black Magic Probe (error occurred fetching device details)")
+                S!("Unknown Black Magic Probe (error occurred fetching device details)")
             }
         };
 
@@ -706,7 +706,7 @@ impl FirmwareType
     {
         let buffer = &firmware[0..(4 * 2)];
 
-        let vector_table = Armv7mVectorTable::from_bytes(&buffer);
+        let vector_table = Armv7mVectorTable::from_bytes(buffer);
         let reset_vector = vector_table.reset_vector()
             .map_err(|e| ErrorKind::InvalidFirmware(Some(S!("vector table too short"))).error_from(e))?;
 
@@ -721,9 +721,9 @@ impl FirmwareType
         }
 
         if reset_vector > Self::APPLICATION_START {
-            return Ok(Self::Application);
+            Ok(Self::Application)
         } else {
-            return Ok(Self::Bootloader);
+            Ok(Self::Bootloader)
         }
     }
 
