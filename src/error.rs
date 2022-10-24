@@ -130,15 +130,19 @@ impl Display for ErrorKind
     }
 }
 
-
 #[derive(Debug)]
 /// Error type for Black Magic Probe operations. Easily constructed from [ErrorKind].
 pub struct Error
 {
     pub kind: ErrorKind,
     pub source: Option<BoxedError>,
+
+    /// Stores the backtrace for this error.
+    ///
+    /// Backtraces are apparently pretty large. This struct was 136 bytes without the box, which was annoying clippy.
     #[cfg(feature = "backtrace")]
-    pub backtrace: Backtrace,
+    pub backtrace: Box<Backtrace>,
+
     /// A string for additional context about what was being attempted when this error occurred.
     ///
     /// Example: "reading current firmware version".
@@ -155,7 +159,7 @@ impl Error
             source,
             context: None,
             #[cfg(feature = "backtrace")]
-            backtrace: Backtrace::capture(),
+            backtrace: Box::new(Backtrace::capture()),
         }
     }
 
