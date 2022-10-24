@@ -1,3 +1,27 @@
+//! This module handles Windows-specific code, mostly the installation of drivers for Black Magic Probe USB interfaces.
+//!
+//! "Installation" is a somewhat overloaded term, in Windows. Behind the scenes this module, using
+//! [libwdi](https://github.com/pbatard/libwdi) (with [wdi-rs](https://github.com/Qyriad/wdi-rs) as the Rust interface),
+//! adds an [INF file](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/overview-of-inf-files)
+//! that binds [WinUSB.sys](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/winusb-installation) to
+//! the Windows device nodes for the app-mode Black Magic Probe VID/PID DFU interface (as interfaces get their own
+//! devnodes in Windows) and the DFU-mode VID/PID (which has no interfaces). The INF file, as far as I can tell, gets
+//! placed to `C:\Windows\INF`, with a name like `oem10.inf`. The Windows Registry gets a value that corresponds to
+//! this at `HKLM:\SYSTEM\DriverDatabase\DeviceIds\USB\{hwid}`, with `hwid` being `VID_1D50&PID_6018&MI_04` for the
+//! the normal mode BMP device (meaning "USB VID 0x1d50, USB PID 0x6018, interface index 4"), and `VID_1D50&6017` for
+//! the DFU mode BMP device (meaning "VID 0x1d50, PID 0x6017, no interface"). That key gets a value of the same name as
+//! the INF file, so something like `oem10.inf`. Note that this works *even if the BMP has never been plugged in*, but
+//! will *not* show up in Device Manager until you *do* plug it in, even if you enable "Show hidden devices".
+//! We also use this registry key to detect if the driver has already been installed. In the future, we should probably
+//! add some command that attempts to repair a possibly broken driver installation by checking the INF file the Registry
+//! key refers to.
+//!
+//! [ensure_access] is the main driving function for this module. It checks the above registry key to determine if the
+//! drivers have already been installed, and orchestrates the installation itself. libwdi is where most of the magic
+//! happens though — it handles generating the INF file and calling the relevant Windows
+//! [SetupAPI](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/setupapi) functions to actually move
+//! the INF to the right directory and create the right Registry keys.
+
 use std::ffi::c_void;
 use std::ptr;
 use std::mem;
@@ -448,6 +472,8 @@ pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool)
     }
 
     // If we need to elevate, then we have to re-execute this process.
+
+    // FIXME: this elevated-execution code should be cleaned up.
 
     let mut args: Vec<OsString> = Vec::with_capacity(env::args_os().len() + 1);
     args.extend(env::args_os().map(|s| s.to_owned()));
