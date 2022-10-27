@@ -861,6 +861,143 @@ impl BmpMatcher
     {
         self.port.as_deref()
     }
+
+    /// Find all connected Black Magic Probe devices that match from the command-line criteria.
+    ///
+    /// This uses the `serial_number`, `index`, and `port` values from `matches`, treating any that
+    /// were not provided as always matching.
+    ///
+    /// This function returns all found devices and all errors that occurred during the search.
+    /// This is so errors are not hidden, but also do not prevent matching devices from being found.
+    /// However, if the length of the error `Vec` is not 0, you should consider the results
+    /// potentially incomplete.
+    ///
+    /// The `index` matcher *includes* devices that errored when attempting to match them.
+    pub fn find_matching_probes(&self) -> BmpMatchResults
+    {
+        let mut results = BmpMatchResults {
+            found: Vec::new(),
+            filtered_out: Vec::new(),
+            errors: Vec::new(),
+        };
+
+        let context = match rusb::Context::new() {
+            Ok(c) => c,
+            Err(e) => {
+                results.errors.push(e.into());
+                return results;
+            },
+        };
+
+        let devices = match context.devices() {
+            Ok(d) => d,
+            Err(e) => {
+                results.errors.push(e.into());
+                return results;
+            },
+        };
+
+        // Filter out devices that don't match the Black Magic Probe's vid/pid in the first place.
+        let devices = devices
+            .iter()
+            .filter(|dev| {
+                let desc = dev.device_descriptor()
+                    .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
+
+                let (vid, pid) = (desc.vendor_id(), desc.product_id());
+                BmpVidPid::mode_from_vid_pid(Vid(vid), Pid(pid)).is_some()
+            });
+
+        for (index, dev) in devices.enumerate() {
+
+            // Note: the control flow in this function is kind of weird, due to the lack of early returns
+            // (since we're returning all successes and errors).
+
+            // If we're trying to match against a serial number, we need to open the device.
+            let handle = if self.serial.is_some() {
+                match dev.open() {
+                    Ok(h) => Some(h),
+                    Err(e) => {
+                        results.errors.push(e.into());
+                        continue;
+                    },
+                }
+            } else {
+                None
+            };
+
+            // If we opened the device and now have that handle, try to get the device's first language, which we need
+            // to request the string descriptor that contains the serial number.
+            let lang = if let Some(handle) = handle.as_ref() {
+                match handle.read_languages(Duration::from_secs(2)) {
+                    Ok(mut l) => Some(l.remove(0)),
+                    Err(e) => {
+                        results.errors.push(e.into());
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
+
+            // And finally, if we have successfully read that language, read and match the serial number.
+            let serial_matches = if let Some(lang) = lang {
+                let handle = handle.unwrap();
+                let desc = dev.device_descriptor()
+                    .expect(libusb_cannot_fail!("libusb_get_device_descriptor"));
+                match handle.read_serial_number_string(lang, &desc, Duration::from_secs(2)) {
+                    Ok(s) => Some(s) == self.serial,
+                    Err(e) => {
+                        results.errors.push(e.into());
+                        continue;
+                    },
+                }
+            } else {
+                // If we can't get the serial number because of previous errors, treat as non-matching.
+                false
+            };
+
+            // Consider the index to match if it equals that of the device or if one was not specified at all.
+            let index_matches = self.index.map_or(true, |needle| needle == index);
+
+            // Consider the port to match if it equals that of the device or if one was not specified at all.
+            let port_matches = self.port.as_ref().map_or(true, |p| {
+                let port_chain = dev
+                    .port_numbers()
+                    // Unwrap should be safe as the only possible error from libusb_get_port_numbers()
+                    // is LIBUSB_ERROR_OVERFLOW, and only if the buffer given to it is too small,
+                    // but rusb g ives it a buffer big enough for the maximum hub chain allowed by the spec.
+                    .expect("Could not get port numbers! Hub depth > 7 shouldn't be possible!")
+                    .into_iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<String>>()
+                    .as_slice()
+                    .join(".");
+
+                let port_path = format!("{}-{}", dev.bus_number(), port_chain);
+
+                p == &port_path
+            });
+
+            // Finally, check the provided matchers.
+            if index_matches && port_matches && serial_matches {
+                match BmpDevice::from_usb_device(dev) {
+                    Ok(bmpdev) => results.found.push(bmpdev),
+                    Err(e) => {
+                        results.errors.push(e);
+                        continue;
+                    },
+                };
+            } else {
+                results.filtered_out.push(dev);
+            }
+        }
+
+
+        // Now, after all this, return all the devices we found, what devices were filtered out, and any errors that
+        // occured along the way.
+        results
+    }
 }
 
 
@@ -960,143 +1097,6 @@ impl BmpMatchResults
 }
 
 
-/// Find all connected Black Magic Probe devices that match from the command-line criteria.
-///
-/// This uses the `serial_number`, `index`, and `port` values from `matches`, treating any that
-/// were not provided as always matching.
-///
-/// This function returns all found devices and all errors that occurred during the search.
-/// This is so errors are not hidden, but also do not prevent matching devices from being found.
-/// However, if the length of the error `Vec` is not 0, you should consider the results
-/// potentially incomplete.
-///
-/// The `index` matcher *includes* devices that errored when attempting to match them.
-pub fn find_matching_probes(matcher: &BmpMatcher) -> BmpMatchResults
-{
-    let mut results = BmpMatchResults {
-        found: Vec::new(),
-        filtered_out: Vec::new(),
-        errors: Vec::new(),
-    };
-
-    let context = match rusb::Context::new() {
-        Ok(c) => c,
-        Err(e) => {
-            results.errors.push(e.into());
-            return results;
-        },
-    };
-
-    let devices = match context.devices() {
-        Ok(d) => d,
-        Err(e) => {
-            results.errors.push(e.into());
-            return results;
-        },
-    };
-
-    // Filter out devices that don't match the Black Magic Probe's vid/pid in the first place.
-    let devices = devices
-        .iter()
-        .filter(|dev| {
-            let desc = dev.device_descriptor()
-                .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
-
-            let (vid, pid) = (desc.vendor_id(), desc.product_id());
-            BmpVidPid::mode_from_vid_pid(Vid(vid), Pid(pid)).is_some()
-        });
-
-    for (index, dev) in devices.enumerate() {
-
-        // If we're trying to match against a serial number, try to open the device.
-        let handle = if matcher.serial.is_some() {
-            match dev.open() {
-                Ok(h) => Some(h),
-                Err(e) => {
-                    results.errors.push(e.into());
-                    continue;
-                },
-            }
-        } else {
-            None
-        };
-
-        // If we opened the device and now have that handle, try to get the device's first
-        // language.
-        let lang = if let Some(handle) = handle.as_ref() {
-            match handle.read_languages(Duration::from_secs(2)) {
-                Ok(mut l) => Some(l.remove(0)),
-                Err(e) => {
-                    results.errors.push(e.into());
-                    continue;
-                }
-            }
-        } else {
-            None
-        };
-
-        // And finally, if we have successfully read that language, read and match the serial
-        // number.
-        let serial_matches = if let Some(lang) = lang {
-            let handle = handle.unwrap();
-            let desc = dev.device_descriptor()
-                .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
-            match handle.read_serial_number_string(lang, &desc, Duration::from_secs(2)) {
-                Ok(s) => Some(s) == matcher.serial,
-                Err(e) => {
-                    results.errors.push(e.into());
-                    continue;
-                },
-            }
-        } else {
-            // If we don't have a serial number, treat it as matching.
-            true
-        };
-
-        // Consider the index to match if it equals that of the device or if one was not specified
-        // at all.
-        let index_matches = matcher.index.map_or(true, |needle| needle == index);
-
-        // Consider the port to match if it equals that of the device or if one was not specified
-        // at all.
-        let port_matches = matcher.port.as_ref().map_or(true, |p| {
-            let port_chain = dev
-                .port_numbers()
-                // Unwrap should be safe as the only possible error from libusb_get_port_numbers()
-                // is LIBUSB_ERROR_OVERFLOW, and only if the buffer given to it is too small, but
-                // rusb gives it a buffer big enough for the maximum hub chain allowed by the spec.
-                .expect("Could not get port numbers! Hub depth > 7 shouldn't be possible!")
-                .into_iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<String>>()
-                .as_slice()
-                .join(".");
-
-            let port_path = format!("{}-{}", dev.bus_number(), port_chain);
-
-            p == &port_path
-        });
-
-        // Finally, filter devices based on whether the provided criteria match.
-        if index_matches && port_matches && serial_matches {
-            match BmpDevice::from_usb_device(dev) {
-                Ok(bmpdev) => results.found.push(bmpdev),
-                Err(e) => {
-                    results.errors.push(e);
-                    continue;
-                },
-            };
-        } else {
-            results.filtered_out.push(dev);
-        }
-    }
-
-    // And finally, after all this, return all the devices we found, what devices were filtered
-    // out, and any errors that occurred along the way.
-    results
-}
-
-
 /// Waits for a Black Magic Probe to reboot, erroring after a timeout.
 ///
 /// This function takes a port string to attempt to keep track of a single physical device
@@ -1118,7 +1118,7 @@ pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> 
 
     let start = Instant::now();
 
-    let mut dev = find_matching_probes(&matcher).pop_single_silent();
+    let mut dev = matcher.find_matching_probes().pop_single_silent();
 
     while let Err(ErrorKind::DeviceNotFound) = dev.as_ref().map_err(|e| &e.kind) {
 
@@ -1139,9 +1139,9 @@ pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> 
 
         // If we've been trying for over half the full timeout, start logging warnings.
         if Instant::now().duration_since(start) > silence_timeout {
-            dev = find_matching_probes(&matcher).pop_single(operation);
+            dev = matcher.find_matching_probes().pop_single(operation);
         } else {
-            dev = find_matching_probes(&matcher).pop_single_silent();
+            dev = matcher.find_matching_probes().pop_single_silent();
         }
     }
 

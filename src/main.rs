@@ -20,7 +20,7 @@ mod bmp;
 mod elf;
 #[cfg(windows)]
 mod windows;
-use crate::bmp::{BmpDevice, BmpMatcher, FirmwareType, FirmwareFormat, find_matching_probes};
+use crate::bmp::{BmpDevice, BmpMatcher, FirmwareType, FirmwareFormat};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
 #[macro_export]
@@ -58,7 +58,7 @@ fn intel_hex_error() -> !
 fn detach_command(matches: &ArgMatches) -> Result<(), Error>
 {
     let matcher = BmpMatcher::from_clap_matches(matches);
-    let mut results = find_matching_probes(&matcher);
+    let mut results = matcher.find_matching_probes();
     let dev = results.pop_single("detach")?;
 
     use crate::usb::DfuOperatingMode::*;
@@ -151,7 +151,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
 
 
     let matcher = BmpMatcher::from_clap_matches(matches);
-    let mut results = find_matching_probes(&matcher);
+    let mut results = matcher.find_matching_probes();
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
     let mut dev: BmpDevice = results.pop_single("flash")?;
 
@@ -246,7 +246,7 @@ fn info_command(matches: &ArgMatches) -> Result<(), Error>
 {
     let matcher = BmpMatcher::from_clap_matches(matches);
 
-    let mut results = find_matching_probes(&matcher);
+    let mut results = matcher.find_matching_probes();
 
     let devices = results.pop_all()?;
 
