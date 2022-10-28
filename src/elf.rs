@@ -71,20 +71,26 @@ pub fn extract_binary(elf_data: &[u8]) -> Result<Vec<u8>, goblin::error::Error>
         .ok_or_else(|| GoblinError::Malformed(S!("ELF .text section not found")))?
         .get_data(elf_data)?;
 
+    // Allow .ARM.exidx to not exist.
     let arm_exidx = elf
         .get_section_by_name(".ARM.exidx")
-        .ok_or_else(|| GoblinError::Malformed(S!("ELF .ARM.exidx section not found")))?
-        .get_data(elf_data)?;
+        .map(|v| v.get_data(elf_data).ok())
+        .flatten();
+    let arm_exidx_len = arm_exidx.map(|sect| sect.len()).unwrap_or(0);
 
     let data = elf
         .get_section_by_name(".data")
         .ok_or_else(|| GoblinError::Malformed(S!("ELF .data section not found")))?
         .get_data(elf_data)?;
 
-    let mut extracted = Vec::with_capacity(text.len() + arm_exidx.len() + data.len());
+
+    let mut extracted = Vec::with_capacity(text.len() + arm_exidx_len + data.len());
 
     extracted.extend_from_slice(text);
-    extracted.extend_from_slice(arm_exidx);
+    if let Some(arm_exidx) = arm_exidx {
+        extracted.extend_from_slice(arm_exidx);
+    }
+
     extracted.extend_from_slice(data);
 
     Ok(extracted)
