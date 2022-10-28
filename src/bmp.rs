@@ -466,7 +466,8 @@ impl BmpDevice
         drop(self.device.take());
         drop(self.handle.take());
 
-        thread::sleep(Duration::from_millis(250));
+        // TODO: make this sleep() timeout configurable?
+        thread::sleep(Duration::from_millis(500));
 
         // Now try to find the device again on that same port.
         let dev = wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")?;
