@@ -1017,16 +1017,26 @@ impl BmpMatchResults
     pub(crate) fn pop_all(&mut self) -> Result<Vec<BmpDevice>, Error>
     {
         if self.found.is_empty() {
-            if !self.filtered_out.is_empty() {
-                let (suffix, verb) = if self.filtered_out.len() > 1 { ("s", "were") } else { ("", "was") };
+
+            // If there was only one, print that one for the user.
+            if self.filtered_out.len() == 1 {
+                if let Ok(bmpdev) = BmpDevice::from_usb_device(self.filtered_out.pop().unwrap()) {
+                    warn!(
+                        "Matching device not found, but and the following Black Magic Probe device was filtered out: {}",
+                        &bmpdev,
+                    );
+                } else {
+                    warn!("Matching device not found but 1 Black Magic Probe device was filtered out.");
+                }
+                warn!("Filter arguments (--serial, --index, --port) may be incorrect.");
+            } else if self.filtered_out.len() > 1 {
                 warn!(
-                    "Matching device not found and {} Black Magic Probe device{} {} filtered out.",
+                    "Matching devices not found but {} Black Magic Probe devices were filtered out.",
                     self.filtered_out.len(),
-                    suffix,
-                    verb,
                 );
                 warn!("Filter arguments (--serial, --index, --port) may be incorrect.");
             }
+
 
             if !self.errors.is_empty() {
                 warn!("Device not found and errors occurred when searching for devices.");
