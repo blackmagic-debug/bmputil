@@ -954,6 +954,9 @@ impl BmpMatcher
                         continue;
                     },
                 }
+            } else if self.serial.is_none() {
+                // If no serial number was specified, treat as matching.
+                true
             } else {
                 // If we can't get the serial number because of previous errors, treat as non-matching.
                 false
