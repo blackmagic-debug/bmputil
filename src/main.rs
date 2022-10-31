@@ -177,7 +177,8 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let enclosed = Rc::clone(&progress_bar);
 
     println!("Erasing flash...");
-    match dev.download(&*firmware_data, file_size, firmware_type, move |delta| {
+    match dev.download(&*firmware_data, file_size, firmware_type, move |flash_pos_delta| {
+        // Don't actually print flashing until the erasing has finished.
         if enclosed.position() == 0 {
             if firmware_type == FirmwareType::Application {
                 enclosed.println("Flashing...");
@@ -185,20 +186,25 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
                 enclosed.println("Flashing bootloader...");
             }
         }
-        enclosed.inc(delta as u64);
+        enclosed.inc(flash_pos_delta as u64);
     }) {
-        Ok(v) => Ok(v),
-        Err(e) => match e.kind {
-            ErrorKind::External(ErrorSource::DfuLibusb(dfu_libusb::Error::Io(source))) => {
-                Err(ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(Box::new(source)))
-            },
-            _ => {
+        Ok(()) => {
+            progress_bar.finish();
+            dbg!(progress_bar.position());
+            Ok(())
+        },
+        Err(e) => {
+            progress_bar.finish();
+            dbg!(progress_bar.position());
+            dbg!(progress_bar.position());
+            if progress_bar.position() == (file_size as u64) {
+                warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
+                Ok(())
+            } else {
                 Err(e)
-            },
+            }
         },
     }?;
-
-    progress_bar.finish();
 
     drop(dev); // Force libusb to free the device.
     thread::sleep(Duration::from_millis(250));
