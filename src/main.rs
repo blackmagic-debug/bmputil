@@ -193,13 +193,10 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     }) {
         Ok(()) => {
             progress_bar.finish();
-            dbg!(progress_bar.position());
             Ok(())
         },
         Err(e) => {
             progress_bar.finish();
-            dbg!(progress_bar.position());
-            dbg!(progress_bar.position());
             if progress_bar.position() == (file_size as u64) {
                 warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
                 Ok(())

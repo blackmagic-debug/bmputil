@@ -26,9 +26,13 @@ type UsbHandle = rusb::DeviceHandle<rusb::Context>;
 #[derive(Debug, PartialEq, Eq)]
 pub struct BmpDevice
 {
-    device: RefCell<Option<rusb::Device<rusb::Context>>>,
-    handle: RefCell<Option<rusb::DeviceHandle<rusb::Context>>>,
+    device: RefCell<Option<UsbDevice>>,
+    handle: RefCell<Option<UsbHandle>>,
+
+    /// The operating mode (application or DFU) the BMP is currently in.
     mode: DfuOperatingMode,
+
+    /// The platform this BMP is running on.
     platform: BmpPlatform,
 
     /// RefCell for interior-mutability-based caching.
@@ -384,7 +388,6 @@ impl BmpDevice
     /// calling this function, the this [`BmpDevice`] instance will not be in a correct state
     /// if the device successfully detached. Further requests will fail, and functions like
     /// `dfu_descriptors()` may return now-incorrect data.
-    ///
     pub unsafe fn request_detach(&mut self) -> Result<(), Error>
     {
         use DfuOperatingMode::*;
