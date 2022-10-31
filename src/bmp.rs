@@ -10,7 +10,8 @@ use std::array::TryFromSliceError;
 use clap::ArgMatches;
 use log::{trace, debug, info, warn, error};
 use rusb::{UsbContext, Direction, RequestType, Recipient};
-use dfu_libusb::DfuLibusb;
+use dfu_libusb::{DfuLibusb, Error as DfuLibusbError};
+use dfu_core::{State as DfuState, Error as DfuCoreError};
 
 use crate::{libusb_cannot_fail, S};
 use crate::error::{Error, ErrorKind, ErrorSource};
@@ -556,7 +557,7 @@ impl BmpDevice
                 }
             });
 
-        if let Err(ErrorKind::External(ErrorSource::DfuLibusb(dfu_libusb::Error::Dfu(dfu_core::Error::StateError(dfu_core::State::DfuError))))) = res.as_ref().map_err(|e| &e.kind) {
+        if let Err(ErrorKind::External(ErrorSource::DfuLibusb(DfuLibusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))))) = res.as_ref().map_err(|e| &e.kind) {
 
             warn!("Device reported an error when trying to flash; going to clear status and try one more time...");
 
@@ -808,7 +809,7 @@ impl BmpMatcher
         Default::default()
     }
 
-    pub(crate) fn from_clap_matches(matches: &ArgMatches) -> Self
+    pub(crate) fn from_cli_args(matches: &ArgMatches) -> Self
     {
         Self::new()
             .index(matches.value_of("index").map(|arg| usize::from_str(arg).unwrap()))

@@ -17,6 +17,7 @@ fn main()
         match version_meta() {
             Ok(version_meta) => {
                 if version_meta.channel == Channel::Nightly {
+                    // Tell Cargo to enable backtraces.
                     println!("cargo:rustc-cfg=feature=\"backtrace\"");
                 }
             },
