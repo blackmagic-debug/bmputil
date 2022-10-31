@@ -368,6 +368,12 @@ fn main()
             // TODO: add a way to uninstall drivers from bmputil as well.
             .subcommand(Command::new("install-drivers")
                 .about("Install USB drivers for BMP devices, and quit")
+                .arg(Arg::new("force")
+                    .long("--force")
+                    .required(false)
+                    .takes_value(false)
+                    .help("install the driver even if one is already installed")
+                )
             );
     }
 
@@ -387,12 +393,18 @@ fn main()
         // and exit.
         match subcommand {
             "debug" => match subcommand_matches.subcommand() {
-                Some(("install-drivers", _install_driver_matches)) => {
+                Some(("install-drivers", install_driver_matches)) => {
+
+                    let wdi_install_parent_pid: Option<u32> = matches
+                        .value_of("windows-wdi-install-mode")
+                        .map(|v| v.parse().unwrap());
+
+                    let force: bool = install_driver_matches.is_present("force");
+
                     windows::ensure_access(
-                        matches
-                            .value_of("windows-wdi-install-mode")
-                            .map(|v| v.parse().unwrap()),
-                        true,
+                        wdi_install_parent_pid,
+                        true, // explicitly_requested.
+                        force,
                     );
                     std::process::exit(0);
                 },
@@ -406,7 +418,8 @@ fn main()
             matches
                 .value_of("windows-wdi-install-mode")
                 .map(|v| v.parse().unwrap()),
-            false,
+            false, // explicitly_requested
+            false, // force
         );
     }
 

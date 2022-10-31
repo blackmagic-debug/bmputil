@@ -380,8 +380,10 @@ pub fn hwid_bound_to_driver(hardware_id: &str, enumerator: &str) -> IoResult<Vec
 
 
 /// This function ensures that all connected Black Magic Probe devices have the necessary drivers installed, via libwdi.
+/// If `explicitly_requested` is true, then this will print if there is nothing to do.
+/// If `force` is true, then this will install even if there is an existing driver.
 // FIXME: This should return a Result, and should probably return what devices had drivers
-pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool)
+pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool, force: bool)
 {
     // Check if the WinUSB driver has been installed for BMP devices yet.
 
@@ -389,44 +391,52 @@ pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool)
 
     let mut devices_needing_driver: Vec<wdi::DeviceInfo> = Vec::with_capacity(2);
 
-    match hwid_bound_to_driver("VID_1D50&PID_6018&MI_04", "USB") {
-        Ok(driver_names) if driver_names.len() == 0 => {
-            devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
-            info!("Scheduling WinUSB driver installation for app mode BMP device...");
+    if force {
+        info!("Force installing WinUSB driver for app mode and DFU mode BMP devices...");
+        devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
+        devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
+    } else {
+
+        match hwid_bound_to_driver("VID_1D50&PID_6018&MI_04", "USB") {
+            Ok(driver_names) if driver_names.len() == 0 => {
+                devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
+                info!("Scheduling WinUSB driver installation for app mode BMP device...");
+            }
+
+            // If an error occurred checking, then install the driver just in case.
+            Err(_e) => {
+                devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
+                info!("Scheduling WinUSB driver installation for app mode BMP device...");
+            }
+
+            Ok(driver_names) => {
+                trace!("App mode BMP bound to drivers: {:?}", driver_names);
+            },
         }
 
-        // If an error occurred checking, then install the driver just in case.
-        Err(_e) => {
-            devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
-            info!("Scheduling WinUSB driver installation for app mode BMP device...");
+        match hwid_bound_to_driver("VID_1D50&PID_6017", "USB") {
+            Ok(driver_names) if driver_names.len() == 0 => {
+                devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
+                info!("Scheduling WinUSB driver installation for DFU mode BMP device...");
+            }
+
+            // If an error occurred checking, then install the driver just in case.
+            Err(_e) => {
+                devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
+                info!("Scheduling WinUSB driver installation for DFU mode BMP device...");
+            }
+
+            Ok(driver_names) => {
+                trace!("DFU mode BMP bound to drivers: {:?}", driver_names);
+            },
         }
 
-        Ok(driver_names) => {
-            trace!("App mode BMP bound to drivers: {:?}", driver_names);
-        },
-    }
-
-    match hwid_bound_to_driver("VID_1D50&PID_6017", "USB") {
-        Ok(driver_names) if driver_names.len() == 0 => {
-            devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
-            info!("Scheduling WinUSB driver installation for DFU mode BMP device...");
-        }
-
-        // If an error occurred checking, then install the driver just in case.
-        Err(_e) => {
-            devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
-            info!("Scheduling WinUSB driver installation for DFU mode BMP device...");
-        }
-
-        Ok(driver_names) => {
-            trace!("DFU mode BMP bound to drivers: {:?}", driver_names);
-        },
     }
 
     // If both drivers are installed already, there's nothing to do.
     if devices_needing_driver.len() == 0 {
         if explicitly_requested {
-            println!("WinUSB drivers are already installed; nothing to do.");
+            println!("Drivers are already installed for BMP devices; nothing to do.");
         }
         return;
     }
