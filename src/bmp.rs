@@ -16,7 +16,7 @@ use dfu_core::{State as DfuState, Error as DfuCoreError};
 use crate::{libusb_cannot_fail, S};
 use crate::error::{Error, ErrorKind, ErrorSource};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
-use crate::usb::{Vid, Pid, DfuOperatingMode, DfuMatch};
+use crate::usb::{Vid, Pid, DfuOperatingMode};
 
 type UsbDevice = rusb::Device<rusb::Context>;
 type UsbHandle = rusb::DeviceHandle<rusb::Context>;
@@ -29,6 +29,7 @@ pub struct BmpDevice
     device: RefCell<Option<rusb::Device<rusb::Context>>>,
     handle: RefCell<Option<rusb::DeviceHandle<rusb::Context>>>,
     mode: DfuOperatingMode,
+    platform: BmpPlatform,
 
     /// RefCell for interior-mutability-based caching.
     serial: RefCell<Option<String>>,
@@ -39,61 +40,12 @@ pub struct BmpDevice
 
 impl BmpDevice
 {
-    pub const VID: Vid = BmpVidPid::VID;
-    pub const PID_RUNTIME: Pid = BmpVidPid::PID_RUNTIME;
-    pub const PID_DFU: Pid = BmpVidPid::PID_DFU;
-
-    /// Creates a [`BmpDevice`] struct from the first found connected Black Magic Probe.
-    ///
-    /// Mostly here for testing. You probably want [from_matching_probes].
-    #[allow(dead_code)]
-    pub fn first_found() -> Result<Self, Error>
-    {
-        let context = rusb::Context::new()?;
-        let devices = context
-            .devices()
-            .unwrap();
-        let mut devices = devices.iter();
-
-
-        // Alas, this is the probably best way until Iterator::try_find is stable.
-        // (https://github.com/rust-lang/rust/issues/63178).
-        let (device, vid, pid) = loop {
-            let dev = devices.next().ok_or_else(|| ErrorKind::DeviceNotFound.error())?;
-
-            let desc = dev.device_descriptor()
-                .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
-            let (vid, pid) = (desc.vendor_id(), desc.product_id());
-
-            if vid == Self::VID.0 {
-                match Pid(pid) {
-                    Self::PID_RUNTIME | Self::PID_DFU => break (dev, vid, pid),
-                    _ => continue,
-                };
-            }
-        };
-
-        // Unwrap fine as we've already established this vid pid pair is
-        // at least *some* kind of Black Magic Probe.
-        let mode = BmpVidPid::mode_from_vid_pid(Vid(vid), Pid(pid)).unwrap();
-
-        let handle = device.open()?;
-
-        Ok(Self {
-            device: RefCell::new(Some(device)),
-            mode,
-            handle: RefCell::new(Some(handle)),
-            serial: RefCell::new(None),
-            port: RefCell::new(None),
-        })
-    }
-
     pub fn from_usb_device(device: UsbDevice) -> Result<Self, Error>
     {
         let desc = device.device_descriptor()
             .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
         let (vid, pid) = (Vid(desc.vendor_id()), Pid(desc.product_id()));
-        let mode = BmpVidPid::mode_from_vid_pid(vid, pid).ok_or_else(|| {
+        let (platform, mode) = BmpPlatform::from_vid_pid(vid, pid).ok_or_else(|| {
             warn!("Device passed to BmpDevice::from_usb_device() does not seem to be a BMP device!");
             warn!("The logic for finding this device is probably incorrect!");
             ErrorKind::DeviceNotFound.error()
@@ -105,6 +57,7 @@ impl BmpDevice
         Ok(Self {
             device: RefCell::new(Some(device)),
             mode,
+            platform,
             handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
             port: RefCell::new(None),
@@ -152,6 +105,11 @@ impl BmpDevice
     pub fn operating_mode(&self) -> DfuOperatingMode
     {
         self.mode
+    }
+
+    pub fn platform(&self) -> BmpPlatform
+    {
+        self.platform
     }
 
     /// Returns a the serial number string for this device.
@@ -518,6 +476,11 @@ impl BmpDevice
                 .map_err(|e| e.with_ctx("detaching device for download"))?;
         }
 
+        let device_desc = self.device().device_descriptor()
+            .expect(libusb_cannot_fail!("libusb_get_device_descriptor"));
+        let (vid, pid) = (device_desc.vendor_id(), device_desc.product_id());
+        let load_address = self.platform.load_address(firmware_type);
+
         // HACK: You can't have multiple open handles to the same WinUSB device in the same process,
         // and DfuLibusb::open() opens a handle, so we have to drop ours.
         if cfg!(windows) {
@@ -528,18 +491,19 @@ impl BmpDevice
         }
 
 
+        // FIXME: change to DfuLibusb::from_usb_device() when https://github.com/dfu-rs/dfu-libusb/pull/9 is merged.
         let mut dfu_dev = DfuLibusb::open(
             self.device().context(),
-            Self::VID.0,
-            Self::PID_DFU.0,
+            vid,
+            pid,
             0,
             0,
         )?;
         dfu_dev
             .with_progress(progress)
-            .override_address(firmware_type.load_address());
+            .override_address(load_address);
 
-        debug!("Load address: 0x{:08x}", firmware_type.load_address());
+        debug!("Load address: 0x{:08x}", load_address);
 
         info!("Performing flash...");
 
@@ -697,14 +661,10 @@ pub enum FirmwareType
 
 impl FirmwareType
 {
-    // FIXME: Make these more configurable based on the device?
-    pub const BOOTLOADER_START:  u32 = 0x0800_0000;
-    pub const APPLICATION_START: u32 = 0x0800_2000;
-
     /// Detect the kind of firmware from the given binary by examining its reset vector address.
     ///
     /// This function panics if `firmware.len() < 8`.
-    pub fn detect_from_firmware(firmware: &[u8]) -> Result<Self, Error>
+    pub fn detect_from_firmware(platform: BmpPlatform, firmware: &[u8]) -> Result<Self, Error>
     {
         let buffer = &firmware[0..(4 * 2)];
 
@@ -722,19 +682,12 @@ impl FirmwareType
             ))).error());
         }
 
-        if reset_vector > Self::APPLICATION_START {
+        let app_start = platform.load_address(Self::Application);
+
+        if reset_vector > app_start {
             Ok(Self::Application)
         } else {
             Ok(Self::Bootloader)
-        }
-    }
-
-    /// Get the load address for firmware of this type.
-    pub fn load_address(&self) -> u32
-    {
-        match self {
-            Self::Bootloader => Self::BOOTLOADER_START,
-            Self::Application => Self::APPLICATION_START,
         }
     }
 }
@@ -907,7 +860,7 @@ impl BmpMatcher
                     .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
 
                 let (vid, pid) = (desc.vendor_id(), desc.product_id());
-                BmpVidPid::mode_from_vid_pid(Vid(vid), Pid(pid)).is_some()
+                BmpPlatform::from_vid_pid(Vid(vid), Pid(pid)).is_some()
             });
 
         for (index, dev) in devices.enumerate() {
@@ -1166,26 +1119,77 @@ pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> 
 }
 
 
-pub struct BmpVidPid;
-impl BmpVidPid
+/// Represents a hardware platform that Black Magic Probe can run on.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum BmpPlatform
 {
-    pub const VID: Vid = Vid(0x1d50);
-    pub const PID_RUNTIME: Pid = Pid(0x6018);
-    pub const PID_DFU: Pid = Pid(0x6017);
+    /// The official board sold by 1BitSquared.
+    Native,
+    // TODO: implement other platforms.
 }
-impl DfuMatch for BmpVidPid
+
+impl BmpPlatform
 {
-    fn mode_from_vid_pid(vid: Vid, pid: Pid) -> Option<DfuOperatingMode>
+    pub const NATIVE_RUNTIME_VID_PID: (Vid, Pid) = (Vid(0x1d50), Pid(0x6018));
+    pub const NATIVE_DFU_VID_PID:     (Vid, Pid) = (Vid(0x1d50), Pid(0x6017));
+
+    pub const fn from_vid_pid(vid: Vid, pid: Pid) -> Option<(Self, DfuOperatingMode)>
     {
-        match vid {
-            Self::VID => {
-                match pid {
-                    Self::PID_RUNTIME => Some(DfuOperatingMode::Runtime),
-                    Self::PID_DFU => Some(DfuOperatingMode::FirmwareUpgrade),
-                    _ => None,
-                }
-            },
+        use BmpPlatform::*;
+        use DfuOperatingMode::*;
+
+        match (vid, pid) {
+            Self::NATIVE_RUNTIME_VID_PID => Some((Native, Runtime)),
+            Self::NATIVE_DFU_VID_PID => Some((Native, FirmwareUpgrade)),
             _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub const fn runtime_ids(self) -> (Vid, Pid)
+    {
+        use BmpPlatform::*;
+
+        match self {
+            Native => Self::NATIVE_RUNTIME_VID_PID,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub const fn dfu_ids(self) -> (Vid, Pid)
+    {
+        use BmpPlatform::*;
+
+        match self {
+            Native => Self::NATIVE_DFU_VID_PID,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub const fn ids_for_mode(self, mode: DfuOperatingMode) -> (Vid, Pid)
+    {
+        use BmpPlatform::*;
+        use DfuOperatingMode::*;
+
+        match self {
+            Native => match mode {
+                Runtime => self.runtime_ids(),
+                FirmwareUpgrade => self.dfu_ids(),
+            },
+        }
+    }
+
+    /// Get the load address for firmware of `firm_type` on this platform.
+    pub const fn load_address(self, firm_type: FirmwareType) -> u32
+    {
+        use BmpPlatform::*;
+        use FirmwareType::*;
+
+        match self {
+            Native => match firm_type {
+                Bootloader => 0x0800_0000,
+                Application => 0x0800_2000,
+            },
         }
     }
 }

@@ -105,8 +105,19 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     };
 
 
-    // Detect what kind of firmware this is.
-    let firmware_type = FirmwareType::detect_from_firmware(&firmware_data)
+    // Try to find the Black Magic Probe device based on the filter arguments.
+    let matcher = BmpMatcher::from_cli_args(matches);
+    let mut results = matcher.find_matching_probes();
+    // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
+    let mut dev: BmpDevice = results.pop_single("flash")?;
+
+    // Grab the platform, which we need for firmware type detection, and the port, which we need
+    // to find the probe after rebooting.
+    let platform = dev.platform();
+    let port = dev.port();
+
+    // Detect what kind of firmware this is, using the platform to determine the link address.
+    let firmware_type = FirmwareType::detect_from_firmware(platform, &firmware_data)
         .map_err(|e| e.with_ctx("detecting firmware type"))?;
 
     debug!("Firmware file was detected as {}", firmware_type);
@@ -148,14 +159,6 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let file_size = firmware_data.len();
     let file_size = u32::try_from(file_size)
         .expect("firmware filesize exceeded 32 bits! Firmware binary must be invalid");
-
-
-    let matcher = BmpMatcher::from_cli_args(matches);
-    let mut results = matcher.find_matching_probes();
-    // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
-    let mut dev: BmpDevice = results.pop_single("flash")?;
-
-    let port = dev.port();
 
     // If we can't get the string descriptors, try to go ahead with flashing anyway.
     // It's unlikely that other control requests will succeed, but the OS might be messing with

@@ -84,12 +84,6 @@ pub enum DfuOperatingMode
     FirmwareUpgrade,
 }
 
-pub trait DfuMatch
-{
-    fn mode_from_vid_pid(vid: Vid, pid: Pid) -> Option<DfuOperatingMode>;
-}
-
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GenericDescriptorRef<'a>
 {
