@@ -14,7 +14,7 @@ use dfu_libusb::{DfuLibusb, Error as DfuLibusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
 use crate::{libusb_cannot_fail, S};
-use crate::error::{Error, ErrorKind, ErrorSource};
+use crate::error::{Error, ErrorKind, ErrorSource, ResErrorKind};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
 
@@ -524,7 +524,7 @@ impl BmpDevice
                 }
             });
 
-        if let Err(ErrorKind::External(ErrorSource::DfuLibusb(DfuLibusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))))) = res.as_ref().map_err(|e| &e.kind) {
+        if let Err(ErrorKind::External(ErrorSource::DfuLibusb(DfuLibusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))))) = res.err_kind() {
 
             warn!("Device reported an error when trying to flash; going to clear status and try one more time...");
 
@@ -1092,7 +1092,7 @@ pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> 
 
     let mut dev = matcher.find_matching_probes().pop_single_silent();
 
-    while let Err(ErrorKind::DeviceNotFound) = dev.as_ref().map_err(|e| &e.kind) {
+    while let Err(ErrorKind::DeviceNotFound) = dev.err_kind() {
 
         trace!("Waiting for probe reboot: {} ms", Instant::now().duration_since(start).as_millis());
 

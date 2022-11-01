@@ -19,7 +19,7 @@ type BoxedError = Box<dyn StdError + Send + Sync>;
 pub enum ErrorKind
 {
     /// Failed to read firmware file.
-    FirmwareFileIo(Option<String>),
+    FirmwareFileIo(/** filename **/ Option<String>),
 
     /// Specified firmware seems invalid.
     InvalidFirmware(/** why **/ Option<String>),
@@ -307,6 +307,24 @@ pub enum ErrorSource
 
     #[error(transparent)]
     Goblin(#[from] goblin::error::Error),
+}
+
+
+/// Extension trait to enable getting the error kind from a Result<T, Error> with one method.
+pub trait ResErrorKind<T>
+{
+    type Kind;
+    fn err_kind(&self) -> Result<&T, &Self::Kind>;
+}
+
+impl<T> ResErrorKind<T> for Result<T, Error>
+{
+    type Kind = ErrorKind;
+
+    fn err_kind(&self) -> Result<&T, &Self::Kind>
+    {
+        self.as_ref().map_err(|e| &e.kind)
+    }
 }
 
 
