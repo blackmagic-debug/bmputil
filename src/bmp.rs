@@ -708,6 +708,7 @@ impl Display for FirmwareType
     }
 }
 
+/// Defaults to [`FirmwareType::Application`].
 impl Default for FirmwareType
 {
     /// Defaults to [`FirmwareType::Application`].
@@ -1138,6 +1139,10 @@ impl BmpPlatform
 
     pub const fn from_vid_pid(vid: Vid, pid: Pid) -> Option<(Self, DfuOperatingMode)>
     {
+        // TODO: in the case that we need to do IO to figure out the platform, this function will need
+        // to be refactored to something like `from_usb_device(dev: &UsbDevice)`, and the other
+        // functions of this struct will probably need to become non-const, which is fine.
+
         use BmpPlatform::*;
         use DfuOperatingMode::*;
 
@@ -1194,5 +1199,15 @@ impl BmpPlatform
                 Application => 0x0800_2000,
             },
         }
+    }
+}
+
+/// Defaults to [`BmpPlatform::Native`].
+impl Default for BmpPlatform
+{
+    /// Defaults to [`BmpPlatform::Native`].
+    fn default() -> Self
+    {
+        BmpPlatform::Native
     }
 }
