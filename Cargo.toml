@@ -30,7 +30,7 @@ libc = "0.2.132"
 bstr = "1.0.1"
 
 [target.'cfg(windows)'.dependencies]
-wdi = { git = "https://github.com/Qyriad/wdi-rs" }
+wdi = { git = "https://github.com/blackmagic-debug/wdi-rs" }
 deelevate = "0.2.0"
 libc = "0.2.132"
 lazy_static = "1.4.0"
