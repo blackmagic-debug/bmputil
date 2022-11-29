@@ -479,26 +479,11 @@ impl BmpDevice
                 .map_err(|e| e.with_ctx("detaching device for download"))?;
         }
 
-        let device_desc = self.device().device_descriptor()
-            .expect(libusb_cannot_fail!("libusb_get_device_descriptor"));
-        let (vid, pid) = (device_desc.vendor_id(), device_desc.product_id());
         let load_address = self.platform.load_address(firmware_type);
 
-        // HACK: You can't have multiple open handles to the same WinUSB device in the same process,
-        // and DfuLibusb::open() opens a handle, so we have to drop ours.
-        if cfg!(windows) {
-            if let Some(handle) = self.handle.take() {
-                drop(handle);
-            }
-            thread::sleep(Duration::from_millis(250));
-        }
-
-
-        // FIXME: change to DfuLibusb::from_usb_device() when https://github.com/dfu-rs/dfu-libusb/pull/9 is merged.
-        let mut dfu_dev = DfuLibusb::open(
-            self.device().context(),
-            vid,
-            pid,
+        let mut dfu_dev = DfuLibusb::from_usb_device(
+            self.device().clone(),
+            self.handle.take().expect("Must have a valid device handle"),
             0,
             0,
         )?;
