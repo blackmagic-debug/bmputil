@@ -17,7 +17,7 @@ default = ["detect-backtrace", "vendored"]
 clap = { version = "3.0", default-features = false, features = ["std", "color"] }
 env_logger = "0.9"
 dfu-core = { version = "0.4.2", features = ["std"] }
-dfu-libusb = "0.3"
+dfu-libusb = "0.3.1"
 rusb = "0.9"
 log = "0.4"
 const_format = "0.2"
