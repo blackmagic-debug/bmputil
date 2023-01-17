@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2022-2023 1BitSquared <info@1bitsquared.com>
+// SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 //! This module handles Windows-specific code, mostly the installation of drivers for Black Magic Probe USB interfaces.
 //!
 //! "Installation" is a somewhat overloaded term, in Windows. Behind the scenes this module, using
