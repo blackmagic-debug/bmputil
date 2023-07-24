@@ -244,14 +244,10 @@ impl From<dfu_libusb::Error> for Error
         use ErrorKind::*;
         use dfu_libusb::Error as Source;
         match other {
-            dfu_libusb::Error::LibUsb(source) => {
+            Source::LibUsb(source) => {
                 External(ErrorSource::Libusb(source)).error_from(other)
             },
-            dfu_libusb::Error::MemoryLayout(source) => {
-                DeviceSeemsInvalid(String::from("DFU interface memory layout string"))
-                    .error_from(source)
-            },
-            dfu_libusb::Error::MissingLanguage => {
+            Source::MissingLanguage => {
                 DeviceSeemsInvalid(S!("no string descriptor languages"))
                     .error_from(other)
             },
@@ -259,16 +255,8 @@ impl From<dfu_libusb::Error> for Error
                 DeviceSeemsInvalid(S!("DFU interface (alt mode) not found"))
                     .error_from(other)
             },
-            Source::InvalidAddress => {
-                DeviceSeemsInvalid(S!("DFU interface memory layout string"))
-                    .error_from(other)
-            },
             Source::InvalidInterface => {
                 DeviceSeemsInvalid(S!("DFU interface not found"))
-                    .error_from(other)
-            },
-            Source::InvalidInterfaceString => {
-                DeviceSeemsInvalid(S!("DFU interface memory layout string"))
                     .error_from(other)
             },
             Source::FunctionalDescriptor(source) => {
