@@ -122,6 +122,9 @@ impl Display for ErrorKind
                     DfuLibusb(e) => {
                         write!(f, "unhandled dfu_libusb error: {}", e)?;
                     },
+                    DfuCore(e) => {
+                        write!(f, "unhandled dfu_core error: {}", e)?;
+                    },
                     Goblin(e) => {
                         write!(f, "unhandled ELF parsing error: {}", e)?;
                     },
@@ -271,6 +274,33 @@ impl From<dfu_libusb::Error> for Error
     }
 }
 
+impl From<dfu_core::Error> for Error
+{
+    fn from(other: dfu_core::Error) -> Self
+    {
+        use ErrorKind::*;
+        use dfu_core::Error as Source;
+        match other {
+            Source::MemoryLayout(source) => {
+                DeviceSeemsInvalid(String::from("DFU interface memory layout string"))
+                    .error_from(source)
+            },
+            Source::InvalidAddress => {
+                DeviceSeemsInvalid(S!("DFU interface memory layout string"))
+                    .error_from(other)
+            },
+            Source::InvalidInterfaceString => {
+                DeviceSeemsInvalid(S!("DFU interface memory layout string"))
+                    .error_from(other)
+            },
+            anything_else => {
+                External(ErrorSource::DfuCore(anything_else))
+                    .error()
+            },
+        }
+    }
+}
+
 impl From<goblin::error::Error> for Error
 {
     fn from(other: goblin::error::Error) -> Self
@@ -295,6 +325,9 @@ pub enum ErrorSource
 
     #[error(transparent)]
     DfuLibusb(#[from] dfu_libusb::Error),
+
+    #[error(transparent)]
+    DfuCore(#[from] dfu_core::Error),
 
     #[error(transparent)]
     Goblin(#[from] goblin::error::Error),
