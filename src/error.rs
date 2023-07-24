@@ -103,7 +103,7 @@ impl Display for ErrorKind
             DeviceSeemsInvalid(thing) => {
                 write!(
                     f,
-                    "Black Magic Probe device returned bad data ({}) during configuration.\
+                    "\nBlack Magic Probe device returned bad data ({}) during configuration.\n\
                     This generally shouldn't be possible. Maybe cable is bad, or OS is messing with things?",
                     thing,
                 )?;
