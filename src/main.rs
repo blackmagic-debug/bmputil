@@ -23,6 +23,7 @@ mod bmp;
 mod elf;
 #[cfg(windows)]
 mod windows;
+use crate::bmp::BmpPlatform;
 use crate::bmp::{BmpDevice, BmpMatcher, FirmwareType, FirmwareFormat};
 use crate::error::{Error, ErrorKind, ErrorSource};
 
@@ -182,7 +183,9 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let progress_bar = Rc::new(progress_bar);
     let enclosed = Rc::clone(&progress_bar);
 
-    println!("Erasing flash...");
+    if platform != BmpPlatform::DragonBoot {
+        println!("Erasing flash...");
+    }
     match dev.download(&*firmware_data, file_size, firmware_type, move |flash_pos_delta| {
         // Don't actually print flashing until the erasing has finished.
         if enclosed.position() == 0 {
