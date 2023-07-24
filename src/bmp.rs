@@ -11,6 +11,9 @@ use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
 
 use clap::ArgMatches;
+use dfu_core::DfuIo;
+use dfu_core::DfuProtocol;
+use dfu_core::sync::DfuSync;
 use log::{trace, debug, info, warn, error};
 use rusb::{UsbContext, Direction, RequestType, Recipient};
 use dfu_libusb::{DfuLibusb, Error as DfuLibusbError};
@@ -484,12 +487,22 @@ impl BmpDevice
 
         let load_address = self.platform.load_address(firmware_type);
 
-        let mut dfu_dev = DfuLibusb::from_usb_device(
+        let io = DfuLibusb::from_usb_device(
             self.device().clone(),
             self.handle.take().expect("Must have a valid device handle"),
             0,
             0,
-        )?;
+        )?.into_inner();
+
+        match io.protocol() {
+            DfuProtocol::Dfuse {
+                address: _,
+                memory_layout: _
+            } => println!("Erasing flash..."),
+            _ => {},
+        }
+
+        let mut dfu_dev = DfuSync::new(io);
         dfu_dev
             .with_progress(progress)
             .override_address(load_address);
