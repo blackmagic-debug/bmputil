@@ -219,22 +219,12 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
         })?;
 
 
-    let languages = dev
-        .handle()
-        .read_languages(Duration::from_secs(2))
-        .map_err(|e| {
-            error!("Error reading firmware version after flash! Invalid firmware?");
-            e
-        })?;
-
     let desc = dev.device().device_descriptor().unwrap();
 
     let product_string = dev
         .handle()
-        .read_product_string(
-            *languages.first().unwrap(),
-            &desc,
-            Duration::from_secs(2),
+        .read_product_string_ascii(
+            &desc
         )
         .map_err(|e| {
             error!("Error reading firmware version after flash! Invalid firmware?");
