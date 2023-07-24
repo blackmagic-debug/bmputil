@@ -495,7 +495,6 @@ impl BmpDevice
             .override_address(load_address);
 
         debug!("Load address: 0x{:08x}", load_address);
-
         info!("Performing flash...");
 
         let res = dfu_dev.download(firmware, length)
