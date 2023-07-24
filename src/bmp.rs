@@ -1111,19 +1111,24 @@ pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> 
 }
 
 
-/// Represents a hardware platform that Black Magic Probe can run on.
+/// Represents the firmware in use on a device that's supported.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum BmpPlatform
 {
-    /// The official board sold by 1BitSquared.
-    Native,
-    // TODO: implement other platforms.
+    /// Probes using the in-repo bootloader
+    BlackMagicDebug,
+    /// Probes using dragonBoot as an alternative bootloader
+    DragonBoot,
+    /// Probes using the STM32 built-in DFU bootloader
+    STM32DeviceDFU,
 }
 
 impl BmpPlatform
 {
-    pub const NATIVE_RUNTIME_VID_PID: (Vid, Pid) = (Vid(0x1d50), Pid(0x6018));
-    pub const NATIVE_DFU_VID_PID:     (Vid, Pid) = (Vid(0x1d50), Pid(0x6017));
+    pub const BMD_RUNTIME_VID_PID: (Vid, Pid) = (Vid(0x1d50), Pid(0x6018));
+    pub const BMD_DFU_VID_PID:     (Vid, Pid) = (Vid(0x1d50), Pid(0x6017));
+    pub const DRAGON_BOOT_VID_PID: (Vid, Pid) = (Vid(0x1209), Pid(0xbadb));
+    pub const STM32_DFU_VID_PID:   (Vid, Pid) = (Vid(0x0483), Pid(0xdf11));
 
     pub const fn from_vid_pid(vid: Vid, pid: Pid) -> Option<(Self, DfuOperatingMode)>
     {
@@ -1135,8 +1140,10 @@ impl BmpPlatform
         use DfuOperatingMode::*;
 
         match (vid, pid) {
-            Self::NATIVE_RUNTIME_VID_PID => Some((Native, Runtime)),
-            Self::NATIVE_DFU_VID_PID => Some((Native, FirmwareUpgrade)),
+            Self::BMD_RUNTIME_VID_PID => Some((BlackMagicDebug, Runtime)),
+            Self::BMD_DFU_VID_PID => Some((BlackMagicDebug, FirmwareUpgrade)),
+            Self::DRAGON_BOOT_VID_PID => Some((DragonBoot, FirmwareUpgrade)),
+            Self::STM32_DFU_VID_PID => Some((STM32DeviceDFU, FirmwareUpgrade)),
             _ => None,
         }
     }
@@ -1144,11 +1151,7 @@ impl BmpPlatform
     #[allow(dead_code)]
     pub const fn runtime_ids(self) -> (Vid, Pid)
     {
-        use BmpPlatform::*;
-
-        match self {
-            Native => Self::NATIVE_RUNTIME_VID_PID,
-        }
+        Self::BMD_RUNTIME_VID_PID
     }
 
     #[allow(dead_code)]
@@ -1157,21 +1160,20 @@ impl BmpPlatform
         use BmpPlatform::*;
 
         match self {
-            Native => Self::NATIVE_DFU_VID_PID,
+            BlackMagicDebug => Self::BMD_DFU_VID_PID,
+            DragonBoot => Self::DRAGON_BOOT_VID_PID,
+            STM32DeviceDFU => Self::STM32_DFU_VID_PID,
         }
     }
 
     #[allow(dead_code)]
     pub const fn ids_for_mode(self, mode: DfuOperatingMode) -> (Vid, Pid)
     {
-        use BmpPlatform::*;
         use DfuOperatingMode::*;
 
-        match self {
-            Native => match mode {
-                Runtime => self.runtime_ids(),
-                FirmwareUpgrade => self.dfu_ids(),
-            },
+        match mode {
+            Runtime => self.runtime_ids(),
+            FirmwareUpgrade => self.dfu_ids(),
         }
     }
 
@@ -1182,20 +1184,22 @@ impl BmpPlatform
         use FirmwareType::*;
 
         match self {
-            Native => match firm_type {
+            BlackMagicDebug => match firm_type {
                 Bootloader => 0x0800_0000,
                 Application => 0x0800_2000,
             },
+            DragonBoot => 0x0800_2000,
+            STM32DeviceDFU => 0x0800_0000,
         }
     }
 }
 
-/// Defaults to [`BmpPlatform::Native`].
+/// Defaults to [`BmpPlatform::BlackMagicDebug`].
 impl Default for BmpPlatform
 {
-    /// Defaults to [`BmpPlatform::Native`].
+    /// Defaults to [`BmpPlatform::BlackMagicDebug`].
     fn default() -> Self
     {
-        BmpPlatform::Native
+        BmpPlatform::BlackMagicDebug
     }
 }
