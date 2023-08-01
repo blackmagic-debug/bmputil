@@ -510,19 +510,26 @@ impl BmpDevice
         debug!("Load address: 0x{:08x}", load_address);
         info!("Performing flash...");
 
-        let res = dfu_dev.download(firmware, length)
-            .map_err(|source| {
-                match source {
-                    dfu_libusb::Error::LibUsb(rusb::Error::NoDevice) => {
-                        error!("Black Magic Probe device disconnected during the flash process!");
-                        warn!(
-                            "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
-                        );
-                        ErrorKind::DeviceDisconnectDuringOperation.error_from(source)
-                    }
-                    _ => source.into(),
+        let res = match dfu_dev.download(firmware, length) {
+            Ok(_) => if dfu_dev.will_detach() {
+               match dfu_dev.detach() {
+                    Err(source) => Err(ErrorKind::DeviceReboot.error_from(source)),
+                    _ => Ok(()),
                 }
-            });
+            } else {
+                Ok(())
+            },
+            Err(source) => Err(match source {
+                dfu_libusb::Error::LibUsb(rusb::Error::NoDevice) => {
+                    error!("Black Magic Probe device disconnected during the flash process!");
+                    warn!(
+                        "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
+                    );
+                    ErrorKind::DeviceDisconnectDuringOperation.error_from(source)
+                }
+                _ => source.into(),
+            })
+        };
 
         if let Err(ErrorKind::External(ErrorSource::DfuLibusb(DfuLibusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))))) = res.err_kind() {
 
