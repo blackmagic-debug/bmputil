@@ -13,9 +13,8 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use anstyle;
-use clap::ArgAction;
+use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description, crate_name};
 use clap::builder::styling::Styles;
-use clap::{Command, Arg, ArgMatches};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, warn, error};
@@ -293,7 +292,7 @@ fn main()
         .parse_default_env()
         .init();
 
-    let mut parser = Command::new("Black Magic Probe Firmware Manager");
+    let mut parser = Command::new(crate_name!());
     if cfg!(windows) {
         parser = parser
             .arg(Arg::new("windows-wdi-install-mode")
@@ -306,6 +305,8 @@ fn main()
             );
     }
     parser = parser
+        .about(crate_description!())
+        .version(crate_version!())
         .styles(style())
         .disable_colored_help(false)
         .arg_required_else_help(true)
