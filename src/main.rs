@@ -12,7 +12,9 @@ use std::io::Read;
 use std::str::FromStr;
 use std::time::Duration;
 
+use anstyle;
 use clap::ArgAction;
+use clap::builder::styling::Styles;
 use clap::{Command, Arg, ArgMatches};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -265,6 +267,25 @@ fn info_command(matches: &ArgMatches) -> Result<(), Error>
     Ok(())
 }
 
+/// Clap v3 style (approximate)
+/// See https://stackoverflow.com/a/75343828
+fn style() -> clap::builder::Styles {
+    Styles::styled()
+        .usage(
+            anstyle::Style::new()
+                .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Yellow)))
+                .bold(),
+        )
+        .header(
+            anstyle::Style::new()
+                .bold()
+                .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Yellow))),
+        )
+        .literal(
+            anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green))),
+        )
+}
+
 fn main()
 {
     env_logger::Builder::new()
@@ -285,6 +306,8 @@ fn main()
             );
     }
     parser = parser
+        .styles(style())
+        .disable_colored_help(false)
         .arg_required_else_help(true)
         .arg(Arg::new("serial_number")
             .short('s')
