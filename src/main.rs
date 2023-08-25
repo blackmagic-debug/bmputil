@@ -12,6 +12,7 @@ use std::io::Read;
 use std::str::FromStr;
 use std::time::Duration;
 
+use clap::ArgAction;
 use clap::{Command, Arg, ArgMatches};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -79,7 +80,7 @@ fn detach_command(matches: &ArgMatches) -> Result<(), Error>
 
 fn flash(matches: &ArgMatches) -> Result<(), Error>
 {
-    let filename = matches.value_of("firmware_binary")
+    let filename = matches.get_one::<String>("firmware_binary").map(|s| s.as_str())
         .expect("No firmware file was specified!"); // Should be impossible, thanks to clap.
     let firmware_file = std::fs::File::open(filename)
         .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))
@@ -126,8 +127,9 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     debug!("Firmware file was detected as {}", firmware_type);
 
     // But allow the user to override that type, if they *really* know what they are doing.
-    let firmware_type = if let Some(location) = matches.value_of("override-firmware-type") {
-        if let Some("really") = matches.value_of("allow-dangerous-options") {
+    let firmware_type = if let Some(location) = matches
+        .get_one::<String>("override-firmware-type").map(|s| s.as_str()) {
+        if let Some("really") = matches.get_one::<String>("allow-dangerous-options").map(|s| s.as_str()) {
             warn!("Overriding firmware-type detection and flashing to user-specified location ({}) instead!", location);
         } else {
             // We're ignoring errors for setting the color because the most important thing is
@@ -276,7 +278,7 @@ fn main()
             .arg(Arg::new("windows-wdi-install-mode")
                 .long("windows-wdi-install-mode")
                 .required(false)
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .global(true)
                 .hide(true)
                 .help("Internal argument used when re-executing this command to acquire admin for installing drivers")
@@ -289,31 +291,31 @@ fn main()
             .long("serial")
             .alias("serial-number")
             .required(false)
-            .takes_value(true)
+            .action(ArgAction::Set)
             .global(true)
             .help("Use the device with the given serial number")
         )
         .arg(Arg::new("index")
             .long("index")
             .required(false)
-            .takes_value(true)
+            .value_parser(usize::from_str)
+            .action(ArgAction::Set)
             .global(true)
-            .validator(|arg| usize::from_str(arg))
             .help("Use the nth found device (may be unstable!)")
         )
         .arg(Arg::new("port")
             .short('p')
             .long("port")
             .required(false)
-            .takes_value(true)
+            .action(ArgAction::Set)
             .global(true)
             .help("Use the device on the given USB port")
         )
         .arg(Arg::new("allow-dangerous-options")
             .long("allow-dangerous-options")
             .global(true)
-            .takes_value(true)
-            .possible_value("really")
+            .action(ArgAction::Set)
+            .value_parser(["really"])
             .hide(true)
             .help("Allow usage of advanced, dangerous options that can result in unbootable devices (use with heavy caution!)")
         )
@@ -325,22 +327,22 @@ fn main()
             .display_order(1)
             .about("Flash new firmware onto a Black Magic Probe device")
             .arg(Arg::new("firmware_binary")
-                .takes_value(true)
+                .action(ArgAction::Set)
                 .required(true)
             )
             .arg(Arg::new("override-firmware-type")
                 .long("override-firmware-type")
                 .required(false)
-                .takes_value(true)
-                .possible_values(&["bootloader", "application"])
+                .action(ArgAction::Set)
+                .value_parser(["bootloader", "application"])
                 .hide_short_help(true)
                 .help("flash the specified firmware space regardless of autodetected firmware type")
             )
             .arg(Arg::new("force-override-flash")
                 .long("force-override-flash")
                 .required(false)
-                .takes_value(true)
-                .possible_value("really")
+                .action(ArgAction::Set)
+                .value_parser(["really"])
                 .hide(true)
                 .help("forcibly override firmware-type autodetection and flash anyway (may result in an unbootable device!)")
             )
@@ -363,7 +365,7 @@ fn main()
                 .arg(Arg::new("force")
                     .long("--force")
                     .required(false)
-                    .takes_value(false)
+                    .action(ArgAction::Set)
                     .help("install the driver even if one is already installed")
                 )
             );
