@@ -5,7 +5,6 @@ use std::mem;
 use std::thread;
 use std::io::Read;
 use std::cell::{RefCell, Ref, RefMut};
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
@@ -772,9 +771,9 @@ impl BmpMatcher
     pub(crate) fn from_cli_args(matches: &ArgMatches) -> Self
     {
         Self::new()
-            .index(matches.value_of("index").map(|arg| usize::from_str(arg).unwrap()))
-            .serial(matches.value_of("serial_number"))
-            .port(matches.value_of("port"))
+            .index(matches.get_one::<usize>("index").map(|&value| value))
+            .serial(matches.get_one::<String>("serial_number").map(|s| s.as_str()))
+            .port(matches.get_one::<String>("port").map(|s| s.as_str()))
     }
 
     /// Set the index to match against.
