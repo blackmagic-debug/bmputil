@@ -1,5 +1,6 @@
 [package]
 name = "bmputil"
+description = "Black Magic Probe Firmware Manager"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,7 +16,7 @@ default = ["detect-backtrace", "vendored"]
 
 [dependencies]
 anstyle = "1.0.2"
-clap = { version = "4.0", default-features = false, features = ["std", "color", "help", "usage", "unicode", "wrap_help", "unstable-styles"] }
+clap = { version = "4.0", default-features = false, features = ["std", "color", "help", "usage", "unicode", "wrap_help", "unstable-styles", "cargo"] }
 env_logger = "0.10"
 dfu-core = { version = "0.6.0", features = ["std"] }
 dfu-libusb = "0.5.1"
