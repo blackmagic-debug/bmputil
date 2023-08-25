@@ -14,7 +14,7 @@ vendored = ["rusb/vendored"]
 default = ["detect-backtrace", "vendored"]
 
 [dependencies]
-clap = { version = "4.0", default-features = false, features = ["std", "color"] }
+clap = { version = "4.0", default-features = false, features = ["std", "color", "help", "usage"] }
 env_logger = "0.10"
 dfu-core = { version = "0.6.0", features = ["std"] }
 dfu-libusb = "0.5.1"
