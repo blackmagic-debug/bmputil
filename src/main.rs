@@ -389,14 +389,13 @@ fn main()
             "debug" => match subcommand_matches.subcommand() {
                 Some(("install-drivers", install_driver_matches)) => {
 
-                    let wdi_install_parent_pid: Option<u32> = matches
-                        .value_of("windows-wdi-install-mode")
-                        .map(|v| v.parse().unwrap());
+                    let wdi_install_parent_pid: Option<&u32> = matches
+                        .get_one::<u32>("windows-wdi-install-mode");
 
-                    let force: bool = install_driver_matches.is_present("force");
+                    let force: bool = install_driver_matches.contains_id("force");
 
                     windows::ensure_access(
-                        wdi_install_parent_pid,
+                        wdi_install_parent_pid.copied(),
                         true, // explicitly_requested.
                         force,
                     );
@@ -410,8 +409,8 @@ fn main()
         // Otherwise, potentially install drivers, but still do whatever else the user wanted.
         windows::ensure_access(
             matches
-                .value_of("windows-wdi-install-mode")
-                .map(|v| v.parse().unwrap()),
+                .get_one::<u32>("windows-wdi-install-mode")
+                .copied(),
             false, // explicitly_requested
             false, // force
         );
