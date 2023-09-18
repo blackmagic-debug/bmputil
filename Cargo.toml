@@ -2,6 +2,8 @@
 name = "bmputil"
 description = "Black Magic Probe Firmware Manager"
 version = "0.1.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/blackmagic-debug/bmputil"
 edition = "2021"
 
 [features]
