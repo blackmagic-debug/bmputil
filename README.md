@@ -8,31 +8,39 @@ This tool can currently be used to update the Black Magic Debug firmware on your
 
 ## Installation
 
+Binary releases for Linux, Mac (arm64/AArch64) and Windows (amr64/AArch64) are now available with every
+[release](https://github.com/blackmagic-debug/bmputil/releases). These should work out-of-the-box,
+and do not require manual installation of Windows Driver Kit 8.0 or Rust.
+
+Alternately, you can install directly from [crates.io](https://crates.io/crates/bmputil) with cargo.
+
 First install Rust on your computer. Follow the instructions on the [Rust Lang website](https://www.rust-lang.org/tools/install).
 
-Now you can build and install the tool from source.
+Then, install bmputil using `cargo install bmputil`
+
+bmputil on Windows will attempt to automatically setup driver installation on first run.
+This is extra experimental, and will require administrator access on the first run.
+
+## Building from source
+
+Alternatively, you can build and install the tool from source. This assumes that you have Rust (and
+git, etc) installed already.
 ```
 git clone https://github.com/blackmagic-debug/bmputil.git
 cd bmputil
 cargo install --path .
 ```
 
-If you are working on patches or contributions to the tool, you can obviously use `cargo build` and `cargo run [params]` as needed.
+If you are working on patches or contributions to the tool, you can obviously use `cargo build` and
+`cargo run [params]` as needed.
 
-**Note:** This tool is not yet listed on crates.io. So unfortunately you can't install it using cargo directly yet.
-**Note:** We don't currently have pre-built binaries/installers available. But they are planned.
+### Windows
 
-## Windows
-
-Installation is done with the above instructions, with one additional prerequisite. You will need to install the [Windows
-Driver Kit 8.0 redistributable components](https://go.microsoft.com/fwlink/p/?LinkID=253170) (link from
-[this](https://learn.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads) page). If you are cross
-compiling to Windows, you will need to set the `WDK_DIR` environment variable to the path of the extracted WDK
-redistributable components.
-
-bmputil on Windows will also attempt to automatically setup driver installation on first run. This is extra
-experimental, and will require administrator access on the first run.
-
+For building bmputil locally for a Windows platform (either on Windows or cross-compiling), you will
+need to install the [Windows Driver Kit 8.0 redistributable components](https://go.microsoft.com/fwlink/p/?LinkID=253170)
+(link from [this](https://learn.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads) page).
+If you are cross compiling to Windows, you will need to set the `WDK_DIR` environment variable to
+the path of the extracted WDK redistributable components.
 
 ## Features
 
