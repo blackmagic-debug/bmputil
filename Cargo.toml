@@ -17,21 +17,21 @@ vendored = ["rusb/vendored"]
 default = ["detect-backtrace", "vendored"]
 
 [dependencies]
-anstyle = "1.0.2"
+anstyle = "1.0"
 clap = { version = "4.0", default-features = false, features = ["std", "color", "help", "usage", "unicode", "wrap_help", "unstable-styles", "cargo"] }
-env_logger = "0.10"
-dfu-core = { version = "0.6.0", features = ["std"] }
-dfu-libusb = "0.5.1"
+env_logger = "0.11"
+dfu-core = { version = "0.7.0", features = ["std"] }
+dfu-libusb = "0.5.3"
 rusb = "0.9"
 log = "0.4"
 const_format = "0.2"
 anyhow = "1.0"
 thiserror = "1.0"
-indicatif = "0.17.5"
-termcolor = "1.2.0"
-goblin = { version = "0.8.0", default-features = false, features = ["std", "elf32", "elf64", "endian_fd"] }
-libc = "0.2.147"
-bstr = "1.6.0"
+indicatif = "0.17"
+termcolor = "1.4"
+goblin = { version = "0.9", default-features = false, features = ["std", "elf32", "elf64", "endian_fd"] }
+libc = "0.2"
+bstr = "1.10.0"
 
 [target.'cfg(windows)'.dependencies]
 wdi = "0.1.0"

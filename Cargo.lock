@@ -134,7 +134,7 @@ dependencies = [
  "deelevate",
  "dfu-core",
  "dfu-libusb",
- "env_logger",
+ "env_logger 0.11.6",
  "goblin",
  "indicatif",
  "lazy_static",
@@ -301,9 +301,9 @@ dependencies = [
 
 [[package]]
 name = "dfu-core"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c1336c04109285c67da20d2cbb60ad732719ef71739a6e03a42b0afcd460376"
+checksum = "c5867e35cc12d5e5c775f16e10e5cd135f96756cc07bb4a715fb863f25001bbf"
 dependencies = [
  "bytes",
  "displaydoc",
@@ -314,12 +314,11 @@ dependencies = [
 
 [[package]]
 name = "dfu-libusb"
-version = "0.5.1"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b8e26483f014ff30c13993e61f13c6abf1ba02d61cd8d856612373150239817"
+checksum = "4664041609496e84cca3a0fcd48a4586b7029d93dbb4b89191854de5d1d47043"
 dependencies = [
  "dfu-core",
- "libusb1-sys",
  "rusb",
  "thiserror",
 ]
@@ -386,6 +385,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 
 [[package]]
+name = "env_filter"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "186e05a59d4c50738528153b83b0b0194d3a29507dfec16eccd4b342903397d0"
+dependencies = [
+ "log",
+ "regex",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -396,6 +405,19 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.11.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcaee3d8e3cfc3fd92428d477bc97fc29ec8716d180c0d74c643bb26166660e0"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "env_filter",
+ "humantime",
+ "log",
 ]
 
 [[package]]
@@ -454,9 +476,9 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
 name = "goblin"
-version = "0.8.2"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b363a30c165f666402fe6a3024d3bec7ebc898f96a4a23bd1c99f8dbf3f4f47"
+checksum = "daa0a64d21a7eb230583b4c5f4e23b7e4e57974f96620f42a7e75e08ae66d745"
 dependencies = [
  "log",
  "plain",
@@ -588,7 +610,7 @@ dependencies = [
  "bindgen",
  "cc",
  "diffy",
- "env_logger",
+ "env_logger 0.10.2",
  "log",
  "winapi",
 ]
