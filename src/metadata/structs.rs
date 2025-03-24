@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use reqwest::Url;
 use serde::Deserialize;
+use serde::de::Visitor;
 
 use crate::error::{Error, ErrorKind};
 
@@ -21,7 +22,7 @@ pub struct Release
 	pub firmware: BTreeMap<Probes, Firmware>,
 }
 
-#[derive(PartialEq, PartialOrd, Eq, Ord, Deserialize)]
+#[derive(PartialEq, PartialOrd, Eq, Ord)]
 pub enum Probes
 {
 	_96bCarbon,
@@ -41,9 +42,12 @@ pub enum Probes
 	Swlink,
 }
 
+struct ProbeVisitor;
+
 #[derive(Deserialize)]
 pub struct Firmware
 {
+	#[serde(flatten)]
 	pub variants: BTreeMap<String, FirmwareDownload>
 }
 
@@ -81,5 +85,31 @@ impl FromStr for Probes
 			"swlink" => Ok(Probes::Swlink),
 			&_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None))
 		}
+	}
+}
+
+impl<'de> Deserialize<'de> for Probes
+{
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where D: serde::Deserializer<'de>
+	{
+		deserializer.deserialize_str(ProbeVisitor)
+	}
+}
+
+impl<'de> Visitor<'de> for ProbeVisitor
+{
+	type Value = Probes;
+
+	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result
+	{
+		formatter.write_str("a valid probe platform name")
+	}
+
+	fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+		where E: serde::de::Error,
+	{
+		Probes::from_str(value)
+			.map_err(|e| E::custom(e.to_string()))
 	}
 }
