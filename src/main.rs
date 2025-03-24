@@ -261,6 +261,17 @@ fn display_releases() -> Result<(), Error>
                 info!("    -> Variant will be downloaded from {}", download.uri);
             }
         }
+        if let Some(bmda) = release.bmda {
+            info!("-> Release contains BMDA for {} OSes", bmda.len());
+            for (os, bmda_arch) in bmda {
+                info!("  -> {} release is for {} architectures", os.to_string(), bmda_arch.binaries.len());
+                for (arch, binary) in bmda_arch.binaries {
+                    info!("    -> BMDA binary for {}", arch.to_string());
+                    info!("    -> Name of executable in archive: {}", binary.file_name.display());
+                    info!("    -> Archive will be downloaded from {}", binary.uri);
+                }
+            }
+        }
     }
     Ok(())
 }
