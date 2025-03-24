@@ -84,6 +84,25 @@ struct TargetOSVisitor;
 #[derive(Deserialize)]
 pub struct BMDAArch
 {
+	#[serde(flatten)]
+	pub binaries: BTreeMap<TargetArch, BMDABinary>
+}
+
+/// Enumeration of the CPU architectures that BMDA can be officially run on
+#[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
+pub enum TargetArch
+{
+	I386,
+	AMD64,
+	AArch32,
+	AArch64,
+}
+
+struct TargetArchVisitor;
+
+#[derive(Deserialize)]
+pub struct BMDABinary
+{
 }
 
 // Map from a string to a Probe value
@@ -220,6 +239,65 @@ impl<'de> Visitor<'de> for TargetOSVisitor
 		where E: serde::de::Error,
 	{
 		TargetOS::from_str(value)
+			.map_err(|e| E::custom(e.to_string()))
+	}
+}
+
+// Map from a string to a TargetOS value
+impl FromStr for TargetArch
+{
+	type Err = Error;
+
+	fn from_str(value: &str) -> Result<Self, Self::Err>
+	{
+		match value {
+			"i386" => Ok(TargetArch::I386),
+			"amd64" => Ok(TargetArch::AMD64),
+			"aarch32" => Ok(TargetArch::AArch32),
+			"aarch64" => Ok(TargetArch::AArch64),
+			&_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None))
+		}
+	}
+}
+
+// Map from a ToString value to a string
+impl ToString for TargetArch
+{
+	fn to_string(&self) -> String
+	{
+		match self {
+			TargetArch::I386 => "i386",
+			TargetArch::AMD64 => "amd64",
+			TargetArch::AArch32 => "aarch32",
+			TargetArch::AArch64 => "aarch64",
+		}.to_string()
+	}
+}
+
+// serde deserialisation for TargetArch (has to be custom to get the name mapping right)
+impl<'de> Deserialize<'de> for TargetArch
+{
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where D: serde::Deserializer<'de>
+	{
+		deserializer.deserialize_str(TargetArchVisitor)
+	}
+}
+
+// serde deserialisation helper for TargetArch to turn values into the right type
+impl<'de> Visitor<'de> for TargetArchVisitor
+{
+	type Value = TargetArch;
+
+	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result
+	{
+		formatter.write_str("a valid OS target name")
+	}
+
+	fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+		where E: serde::de::Error,
+	{
+		TargetArch::from_str(value)
 			.map_err(|e| E::custom(e.to_string()))
 	}
 }
