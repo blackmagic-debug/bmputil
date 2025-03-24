@@ -24,6 +24,7 @@ pub struct Release
 	pub bmda: Option<BTreeMap<TargetOS, BMDAArch>>,
 }
 
+/// Enumeration of the valid probe platforms
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
 pub enum Probe
 {
@@ -63,6 +64,7 @@ pub struct FirmwareDownload
 	pub uri: Url,
 }
 
+/// Enumeration of the OSes that BMDA can be officially run on
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
 pub enum TargetOS
 {
@@ -78,6 +80,7 @@ pub struct BMDAArch
 {
 }
 
+// Map from a string to a Probe value
 impl FromStr for Probe
 {
 	type Err = Error;
@@ -105,6 +108,7 @@ impl FromStr for Probe
 	}
 }
 
+// Map from a Probe value to a string
 impl ToString for Probe
 {
 	fn to_string(&self) -> String
@@ -129,6 +133,7 @@ impl ToString for Probe
 	}
 }
 
+// serde deserialisation for Probe (has to be custom to get the name mapping right)
 impl<'de> Deserialize<'de> for Probe
 {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -138,6 +143,7 @@ impl<'de> Deserialize<'de> for Probe
 	}
 }
 
+// serde deserialisation helper for Probe to turn values into the right type
 impl<'de> Visitor<'de> for ProbeVisitor
 {
 	type Value = Probe;
@@ -155,6 +161,7 @@ impl<'de> Visitor<'de> for ProbeVisitor
 	}
 }
 
+// Map from a string to a TargetOS value
 impl FromStr for TargetOS
 {
 	type Err = Error;
@@ -170,6 +177,7 @@ impl FromStr for TargetOS
 	}
 }
 
+// Map from a ToString value to a string
 impl ToString for TargetOS
 {
 	fn to_string(&self) -> String
@@ -182,6 +190,7 @@ impl ToString for TargetOS
 	}
 }
 
+// serde deserialisation for TargetOS (has to be custom to get the name mapping right)
 impl<'de> Deserialize<'de> for TargetOS
 {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -191,6 +200,7 @@ impl<'de> Deserialize<'de> for TargetOS
 	}
 }
 
+// serde deserialisation helper for TargetOS to turn values into the right type
 impl<'de> Visitor<'de> for TargetOSVisitor
 {
 	type Value = TargetOS;
