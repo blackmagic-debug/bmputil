@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 use std::str::FromStr;
 
 use reqwest::Url;
@@ -9,16 +9,16 @@ use crate::error::{Error, ErrorKind};
 #[derive(Deserialize)]
 pub struct Metadata
 {
-	version: usize,
-	releases: BTreeMap<String, Release>,
+	pub version: usize,
+	pub releases: BTreeMap<String, Release>,
 }
 
 #[derive(Deserialize)]
 pub struct Release
 {
 	#[serde(rename = "includesBMDA")]
-	includes_bmda: bool,
-	firmware: BTreeMap<Probes, Firmware>,
+	pub includes_bmda: bool,
+	pub firmware: BTreeMap<Probes, Firmware>,
 }
 
 #[derive(PartialEq, PartialOrd, Eq, Ord, Deserialize)]
@@ -44,17 +44,17 @@ pub enum Probes
 #[derive(Deserialize)]
 pub struct Firmware
 {
-	variants: BTreeMap<String, FirmwareDownload>
+	pub variants: BTreeMap<String, FirmwareDownload>
 }
 
 #[derive(Deserialize)]
 pub struct FirmwareDownload
 {
 	#[serde(rename = "friendlyName")]
-	friendly_name: String,
+	pub friendly_name: String,
 	#[serde(rename = "fileName")]
-	file_name: String,
-	uri: Url,
+	pub file_name: PathBuf,
+	pub uri: Url,
 }
 
 impl FromStr for Probes
