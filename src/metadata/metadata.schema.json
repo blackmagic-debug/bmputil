@@ -1,0 +1,163 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://github.com/blackmagic-debug/bmputil/src/metadata/metadata.schema.json",
+	"title": "Black Magic Debug releases index metadata",
+	"type": "object",
+	"properties":
+	{
+		"version":
+		{
+			"const": 1,
+			"desciption": "Version number the metadata file conforms to"
+		},
+		"releases":
+		{
+			"type": "object",
+			"desciption": "Available releases from the index",
+			"patternProperties":
+			{
+				"^v[0-9]+\\.[0-9]+\\.[0-9]+(-rc[0-9]+)?$":
+				{
+					"$ref": "#/$defs/release"
+				}
+			}
+		}
+	},
+	"required": ["version", "releases"],
+	"$defs": {
+		"release":
+		{
+			"type": "object",
+			"desciption": "The description of a specific release of Black Magic Debug",
+			"properties":
+			{
+				"includesBMDA":
+				{
+					"type": "boolean",
+					"desciption": "Whether the release includes BMDA binaries"
+				},
+				"firmware":
+				{
+					"type": "object",
+					"desciption": "Firmware by probe platform available in the release",
+					"propertyNames":
+					{
+						"enum":
+						[
+							"96b_carbon",
+							"blackpill-f401cc",
+							"blackpill-f401ce",
+							"blackpill-f411ce",
+							"bluepill",
+							"ctxlink",
+							"f072",
+							"f3",
+							"f4discovery",
+							"hydrabus",
+							"launchpad-icdi",
+							"native",
+							"stlink",
+							"stlinkv3",
+							"swlink"
+						]
+					},
+					"additionalProperties": {"$ref": "#/$defs/firmware"}
+				}
+			},
+			"required": ["includesBMDA", "firmware"],
+			"if": {"properties": {"includesBMDA": {"const": true}}},
+			"then":
+			{
+				"properties": {"bmda": {"$ref": "#/$defs/bmda"}},
+				"required": ["bmda"]
+			}
+		},
+		"firmware":
+		{
+			"type": "object",
+			"desciption": "Firmware available for a specific probe",
+			"patternProperties":
+			{
+				"^.+$":
+				{
+					"type": "object",
+					"desciption": "Description of a specific firmware download",
+					"properties":
+					{
+						"friendlyName":
+						{
+							"type": "string",
+							"desciption": "Name displayed in the interface for this firmware object"
+						},
+						"fileName":
+						{
+							"type": "string",
+							"desciption": "Local file name for the firmware to be written into",
+							"pattern": "^blackmagic-[a-z0-9_]+(-.+)?-v[0-9]+_[0-9]+_[0-9]+(-rc[0-9]+)?\\.(elf|bin)$"
+						},
+						"uri":
+						{
+							"type": "string",
+							"desciption": "Universal Resource Indicator for where to download this firmware object from",
+							"format": "uri"
+						}
+					},
+					"required": ["friendlyName", "fileName", "uri"]
+				}
+			}
+		},
+		"bmda":
+		{
+			"type": "object",
+			"desciption": "Available builds of BMDA by host platform",
+			"propertyNames":
+			{
+				"enum":
+				[
+					"linux",
+					"macos",
+					"windows"
+				]
+			},
+			"additionalProperties":
+			{
+				"desciption": "Operating system on which the BMDA builds can be run",
+				"$ref": "#/$defs/bmda-arch"
+			}
+		},
+		"bmda-arch":
+		{
+			"type": "object",
+			"propertyNames":
+			{
+				"enum":
+				[
+					"i386",
+					"amd64",
+					"aarch32",
+					"aarch64"
+				]
+			},
+			"additionalProperties":
+			{
+				"type": "object",
+				"desciption": "Description of a specific BMDA download",
+				"properties":
+				{
+					"fileName":
+					{
+						"type": "string",
+						"desciption": "Name of the file within the asset archive to unpack for execution as BMDA"
+					},
+					"uri":
+					{
+						"type": "string",
+						"desciption": "Universal Resource Indicator for where to download this BMDA archive from",
+						"format": "uri"
+					}
+				},
+				"required": ["fileName", "uri"]
+			}
+		}
+	}
+}
