@@ -101,8 +101,14 @@ pub enum TargetArch
 struct TargetArchVisitor;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BMDABinary
 {
+	/// Name of the file from in the linked archive which should be executed as BMDA
+	#[serde(rename = "fileName")]
+	pub file_name: PathBuf,
+	/// URI of where to go to pull the .zip archive of BMDA and its supporting files
+	pub uri: Url,
 }
 
 // Map from a string to a Probe value
