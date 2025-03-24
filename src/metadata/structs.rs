@@ -21,6 +21,7 @@ pub struct Release
 	#[serde(rename = "includesBMDA")]
 	pub includes_bmda: bool,
 	pub firmware: BTreeMap<Probe, Firmware>,
+	pub bmda: Option<BTreeMap<TargetOS, BMDAArch>>,
 }
 
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
@@ -60,6 +61,21 @@ pub struct FirmwareDownload
 	#[serde(rename = "fileName")]
 	pub file_name: PathBuf,
 	pub uri: Url,
+}
+
+#[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
+pub enum TargetOS
+{
+	Linux,
+	MacOS,
+	Windows,
+}
+
+struct TargetOSVisitor;
+
+#[derive(Deserialize)]
+pub struct BMDAArch
+{
 }
 
 impl FromStr for Probe
@@ -135,6 +151,59 @@ impl<'de> Visitor<'de> for ProbeVisitor
 		where E: serde::de::Error,
 	{
 		Probe::from_str(value)
+			.map_err(|e| E::custom(e.to_string()))
+	}
+}
+
+impl FromStr for TargetOS
+{
+	type Err = Error;
+
+	fn from_str(value: &str) -> Result<Self, Self::Err>
+	{
+		match value {
+			"linux" => Ok(TargetOS::Linux),
+			"macos" => Ok(TargetOS::MacOS),
+			"windows" => Ok(TargetOS::Windows),
+			&_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None))
+		}
+	}
+}
+
+impl ToString for TargetOS
+{
+	fn to_string(&self) -> String
+	{
+		match self {
+			TargetOS::Linux => "linux",
+			TargetOS::MacOS => "macos",
+			TargetOS::Windows => "windows",
+		}.to_string()
+	}
+}
+
+impl<'de> Deserialize<'de> for TargetOS
+{
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where D: serde::Deserializer<'de>
+	{
+		deserializer.deserialize_str(TargetOSVisitor)
+	}
+}
+
+impl<'de> Visitor<'de> for TargetOSVisitor
+{
+	type Value = TargetOS;
+
+	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result
+	{
+		formatter.write_str("a valid OS target name")
+	}
+
+	fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+		where E: serde::de::Error,
+	{
+		TargetOS::from_str(value)
 			.map_err(|e| E::custom(e.to_string()))
 	}
 }
