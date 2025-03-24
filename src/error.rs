@@ -235,6 +235,15 @@ impl StdError for Error
     }
 }
 
+impl From<std::io::Error> for Error
+{
+    fn from(other: std::io::Error) -> Self
+    {
+        use ErrorKind::*;
+        ReleaseMetadataInvalid.error_from(External(ErrorSource::StdIo(other)).error())
+    }
+}
+
 impl From<rusb::Error> for Error
 {
     fn from(other: rusb::Error) -> Self

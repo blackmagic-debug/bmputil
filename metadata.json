@@ -1,0 +1,77 @@
+{
+	"$schema": "src/metadata/metadata.schema.json",
+	"version": 1,
+	"releases": {
+		"v1.10.2": {
+			"includesBMDA": false,
+			"firmware": {
+				"native": {
+					"full": {
+						"friendlyName": "Black Magic Debug for BMP (full)",
+						"fileName": "blackmagic-native-v1_10_2.elf",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.2/blackmagic-native-v1_10_2.elf"
+					}
+				}
+			}
+		},
+		"v2.0.0-rc2": {
+			"includesBMDA": true,
+			"firmware": {
+				"native": {
+					"common": {
+						"friendlyName": "Black Magic Debug for BMP (common targets)",
+						"fileName": "blackmagic-native-common-v2_0_0-rc2.elf",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc2/blackmagic-native-v2_0_0-rc2.elf"
+					},
+					"uncommon": {
+						"friendlyName": "Black Magic Debug for BMP (uncommon targets)",
+						"fileName": "blackmagic-native-uncommon-v1_10_2.elf",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc2/blackmagic-native-uncommon-v2_0_0-rc2.elf"
+					},
+					"st-clones": {
+						"friendlyName": "Black Magic Debug for BMP (ST and ST-clones targets)",
+						"fileName": "blackmagic-native-v1_10_2.elf",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc2/blackmagic-native-st-clones-v2_0_0-rc2.elf"
+					},
+					"risc-v": {
+						"friendlyName": "Black Magic Debug for BMP (RISC-V targets)",
+						"fileName": "blackmagic-native-v1_10_2.elf",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc2/blackmagic-native-riscv-v2_0_0-rc2.elf"
+					}
+				}
+			},
+			"bmda":
+			{
+				"linux":
+				{
+					"amd64":
+					{
+						"fileName": "blackmagic-bmda",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc2/blackmagic-linux-v2_0_0-rc2.zip"
+					}
+				},
+				"macos":
+				{
+					"amd64":
+					{
+						"fileName": "blackmagic-bmda",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc2/blackmagic-macos-intel-v2_0_0-rc2.zip"
+					},
+					"aarch64":
+					{
+						"fileName": "blackmagic-bmda",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc2/blackmagic-macos-arm-v2_0_0-rc2.zip"
+					}
+				},
+				"windows":
+				{
+					"amd64":
+					{
+						"fileName": "blackmagic-bmda.exe",
+						"uri": "https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc2/blackmagic-windows-v2_0_0-rc2.zip"
+					}
+				}
+			}
+		}
+	}
+}
