@@ -25,6 +25,8 @@ mod bmp;
 mod elf;
 #[cfg(windows)]
 mod windows;
+mod metadata;
+
 use crate::bmp::{BmpDevice, BmpMatcher, FirmwareType, FirmwareFormat};
 use crate::error::{Error, ErrorKind, ErrorSource};
 

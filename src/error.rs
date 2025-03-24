@@ -46,6 +46,9 @@ pub enum ErrorKind
     /// messing with things, or the firmware on the device is corrupted.
     DeviceSeemsInvalid(/** invalid thing **/ String),
 
+    /// Black Magic Debug release metadata was invalid in some way
+    ReleaseMetadataInvalid,
+
     /// Unhandled external error.
     External(ErrorSource),
 }
@@ -110,6 +113,7 @@ impl Display for ErrorKind
             },
             InvalidFirmware(None) => write!(f, "specified firmware does not seem valid")?,
             InvalidFirmware(Some(why)) => write!(f, "specified firmware does not seem valid: {}", why)?,
+            ReleaseMetadataInvalid => write!(f, "Black Magic Debug release metadata was mallformed")?,
             External(source) => {
                 use ErrorSource::*;
                 match source {
