@@ -9,13 +9,18 @@ use serde::de::Visitor;
 use crate::error::{Error, ErrorKind};
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Metadata
 {
+	#[allow(dead_code)]
+	#[serde(rename = "$schema")]
+	schema: String,
 	pub version: usize,
 	pub releases: BTreeMap<String, Release>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Release
 {
 	#[serde(rename = "includesBMDA")]
@@ -55,6 +60,7 @@ pub struct Firmware
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FirmwareDownload
 {
 	#[serde(rename = "friendlyName")]
