@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, path::PathBuf};
 use std::str::FromStr;
+use std::string::ToString;
 
 use reqwest::Url;
 use serde::Deserialize;
@@ -22,7 +23,7 @@ pub struct Release
 	pub firmware: BTreeMap<Probes, Firmware>,
 }
 
-#[derive(PartialEq, PartialOrd, Eq, Ord)]
+#[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
 pub enum Probes
 {
 	_96bCarbon,
@@ -85,6 +86,30 @@ impl FromStr for Probes
 			"swlink" => Ok(Probes::Swlink),
 			&_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None))
 		}
+	}
+}
+
+impl ToString for Probes
+{
+	fn to_string(&self) -> String
+	{
+		match self {
+			Probes::_96bCarbon => "96b_carbon",
+			Probes::BlackpillF401CC => "blackpill-f401cc",
+			Probes::BlackpillF401CE => "blackpill-f401ce",
+			Probes::BlackpillF411CE => "blackpill-f411ce",
+			Probes::Bluepill => "bluepill",
+			Probes::CtxLink => "ctxlink",
+			Probes::F072 => "f072",
+			Probes::F3 => "f3",
+			Probes::F4Discovery => "f4discovery",
+			Probes::Hydrabus => "hydrabus",
+			Probes::LaunchpadICDI => "launchpad-icdi",
+			Probes::Native => "native",
+			Probes::Stlink => "stlink",
+			Probes::Stlinkv3 => "stlinkv3",
+			Probes::Swlink => "swlink",
+		}.to_string()
 	}
 }
 
