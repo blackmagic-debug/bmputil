@@ -20,11 +20,11 @@ pub struct Release
 {
 	#[serde(rename = "includesBMDA")]
 	pub includes_bmda: bool,
-	pub firmware: BTreeMap<Probes, Firmware>,
+	pub firmware: BTreeMap<Probe, Firmware>,
 }
 
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
-pub enum Probes
+pub enum Probe
 {
 	_96bCarbon,
 	BlackpillF401CC,
@@ -62,58 +62,58 @@ pub struct FirmwareDownload
 	pub uri: Url,
 }
 
-impl FromStr for Probes
+impl FromStr for Probe
 {
 	type Err = Error;
 
 	fn from_str(value: &str) -> Result<Self, Self::Err>
 	{
 		match value {
-			"96b_carbon" => Ok(Probes::_96bCarbon),
-			"blackpill-f401cc" => Ok(Probes::BlackpillF401CC),
-			"blackpill-f401ce" => Ok(Probes::BlackpillF401CE),
-			"blackpill-f411ce" => Ok(Probes::BlackpillF411CE),
-			"bluepill" => Ok(Probes::Bluepill),
-			"ctxlink" => Ok(Probes::CtxLink),
-			"f072" => Ok(Probes::F072),
-			"f3" => Ok(Probes::F3),
-			"f4discovery" => Ok(Probes::F4Discovery),
-			"hydrabus" => Ok(Probes::Hydrabus),
-			"launchpad-icdi" => Ok(Probes::LaunchpadICDI),
-			"native" => Ok(Probes::Native),
-			"stlink" => Ok(Probes::Stlink),
-			"stlinkv3" => Ok(Probes::Stlinkv3),
-			"swlink" => Ok(Probes::Swlink),
+			"96b_carbon" => Ok(Probe::_96bCarbon),
+			"blackpill-f401cc" => Ok(Probe::BlackpillF401CC),
+			"blackpill-f401ce" => Ok(Probe::BlackpillF401CE),
+			"blackpill-f411ce" => Ok(Probe::BlackpillF411CE),
+			"bluepill" => Ok(Probe::Bluepill),
+			"ctxlink" => Ok(Probe::CtxLink),
+			"f072" => Ok(Probe::F072),
+			"f3" => Ok(Probe::F3),
+			"f4discovery" => Ok(Probe::F4Discovery),
+			"hydrabus" => Ok(Probe::Hydrabus),
+			"launchpad-icdi" => Ok(Probe::LaunchpadICDI),
+			"native" => Ok(Probe::Native),
+			"stlink" => Ok(Probe::Stlink),
+			"stlinkv3" => Ok(Probe::Stlinkv3),
+			"swlink" => Ok(Probe::Swlink),
 			&_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None))
 		}
 	}
 }
 
-impl ToString for Probes
+impl ToString for Probe
 {
 	fn to_string(&self) -> String
 	{
 		match self {
-			Probes::_96bCarbon => "96b_carbon",
-			Probes::BlackpillF401CC => "blackpill-f401cc",
-			Probes::BlackpillF401CE => "blackpill-f401ce",
-			Probes::BlackpillF411CE => "blackpill-f411ce",
-			Probes::Bluepill => "bluepill",
-			Probes::CtxLink => "ctxlink",
-			Probes::F072 => "f072",
-			Probes::F3 => "f3",
-			Probes::F4Discovery => "f4discovery",
-			Probes::Hydrabus => "hydrabus",
-			Probes::LaunchpadICDI => "launchpad-icdi",
-			Probes::Native => "native",
-			Probes::Stlink => "stlink",
-			Probes::Stlinkv3 => "stlinkv3",
-			Probes::Swlink => "swlink",
+			Probe::_96bCarbon => "96b_carbon",
+			Probe::BlackpillF401CC => "blackpill-f401cc",
+			Probe::BlackpillF401CE => "blackpill-f401ce",
+			Probe::BlackpillF411CE => "blackpill-f411ce",
+			Probe::Bluepill => "bluepill",
+			Probe::CtxLink => "ctxlink",
+			Probe::F072 => "f072",
+			Probe::F3 => "f3",
+			Probe::F4Discovery => "f4discovery",
+			Probe::Hydrabus => "hydrabus",
+			Probe::LaunchpadICDI => "launchpad-icdi",
+			Probe::Native => "native",
+			Probe::Stlink => "stlink",
+			Probe::Stlinkv3 => "stlinkv3",
+			Probe::Swlink => "swlink",
 		}.to_string()
 	}
 }
 
-impl<'de> Deserialize<'de> for Probes
+impl<'de> Deserialize<'de> for Probe
 {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 		where D: serde::Deserializer<'de>
@@ -124,7 +124,7 @@ impl<'de> Deserialize<'de> for Probes
 
 impl<'de> Visitor<'de> for ProbeVisitor
 {
-	type Value = Probes;
+	type Value = Probe;
 
 	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result
 	{
@@ -134,7 +134,7 @@ impl<'de> Visitor<'de> for ProbeVisitor
 	fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
 		where E: serde::de::Error,
 	{
-		Probes::from_str(value)
+		Probe::from_str(value)
 			.map_err(|e| E::custom(e.to_string()))
 	}
 }
