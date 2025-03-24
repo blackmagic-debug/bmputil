@@ -17,7 +17,7 @@ use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description
 use clap::builder::styling::Styles;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, warn, error};
+use log::{debug, info, warn, error};
 
 mod usb;
 mod error;
@@ -29,6 +29,7 @@ mod metadata;
 
 use crate::bmp::{BmpDevice, BmpMatcher, FirmwareType, FirmwareFormat};
 use crate::error::{Error, ErrorKind, ErrorSource};
+use crate::metadata::download_metadata;
 
 #[macro_export]
 #[doc(hidden)]
@@ -245,6 +246,25 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     Ok(())
 }
 
+fn display_releases() -> Result<(), Error>
+{
+    let metadata = download_metadata()?;
+    for (version, release) in metadata.releases {
+        info!("Details of release {}:", version);
+        info!("-> Release includes BMDA builds? {}", release.includes_bmda);
+        info!("-> Release done for probes: {}", release.firmware.keys().map(|p| p.to_string()).collect::<Vec<_>>().join(", "));
+        for (probe, firmware) in release.firmware {
+            info!("-> probe {} has {} firmware variants", probe.to_string(), firmware.variants.len());
+            for (variant, download) in firmware.variants {
+                info!("  -> Firmware variant {}", variant);
+                info!("    -> {} will be downloaded as {}", download.friendly_name, download.file_name.display());
+                info!("    -> Variant will be downloaded from {}", download.uri);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn info_command(matches: &ArgMatches) -> Result<(), Error>
 {
     let matcher = BmpMatcher::from_cli_args(matches);
@@ -373,6 +393,10 @@ fn main()
                 .hide(true)
                 .help("forcibly override firmware-type autodetection and flash anyway (may result in an unbootable device!)")
             )
+        )
+        .subcommand(Command::new("releases")
+            .display_order(2)
+            .about("Display information about available downloadable firmware releases")
         );
 
     let mut debug_subcmd = Command::new("debug")
@@ -450,8 +474,7 @@ fn main()
             ("detach", detach_matches) => detach_command(detach_matches),
             other => unreachable!("Unhandled subcommand {:?}", other),
         },
-
-
+        "releases" => display_releases(),
         &_ => unimplemented!(),
     };
 
