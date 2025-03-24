@@ -208,9 +208,9 @@ impl ToString for TargetOS
 	fn to_string(&self) -> String
 	{
 		match self {
-			TargetOS::Linux => "linux",
-			TargetOS::MacOS => "macos",
-			TargetOS::Windows => "windows",
+			TargetOS::Linux => "Linux",
+			TargetOS::MacOS => "macOS",
+			TargetOS::Windows => "Windows",
 		}.to_string()
 	}
 }
@@ -267,9 +267,9 @@ impl ToString for TargetArch
 	{
 		match self {
 			TargetArch::I386 => "i386",
-			TargetArch::AMD64 => "amd64",
-			TargetArch::AArch32 => "aarch32",
-			TargetArch::AArch64 => "aarch64",
+			TargetArch::AMD64 => "AMD64",
+			TargetArch::AArch32 => "AArch32",
+			TargetArch::AArch64 => "AArch64",
 		}.to_string()
 	}
 }
