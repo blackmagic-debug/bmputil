@@ -161,6 +161,35 @@ impl BmpDevice
         Ok(Ref::map(self.serial.borrow(), |s| s.as_deref().unwrap()))
     }
 
+    /// Return the firmware identity of the device.
+    ///
+    /// This is characterised by the product string which defines
+    /// which kind of BMD-running thing we have and what version it runs
+    pub fn firmware_identity(&self) -> Result<String, Error>
+    {
+        let handle = self.handle();
+        let mut languages = handle
+            .read_languages(Duration::from_secs(2))
+            .map_err(|e| Error::from(e).with_ctx("reading supported string descriptor langauges"))?;
+
+        let first_lang = languages.pop()
+            .ok_or_else(|| ErrorKind::DeviceSeemsInvalid(S!("no supported string descriptor languages")).error())?;
+
+        let device_descriptor = &self
+            .device()
+            .device_descriptor()
+            .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
+
+        handle
+            .read_product_string(
+                first_lang,
+                device_descriptor,
+                Duration::from_secs(2),
+            )
+            .map_err(
+                |e| ErrorKind::DeviceSeemsInvalid(S!("no product string descriptor")).error_from(e)
+            )
+    }
 
     /// Returns a string that represents the full port of the device, in the format of
     /// `<bus>-<port>.<subport>.<subport...>`.
@@ -196,30 +225,10 @@ impl BmpDevice
     /// have not yet been retrieved previously (and thus not yet cached).
     pub fn display(&self) -> Result<String, Error>
     {
-        let handle = self.handle();
-        let mut languages = handle
-            .read_languages(Duration::from_secs(2))
-            .map_err(|e| Error::from(e).with_ctx("reading supported string descriptor langauges"))?;
-
-        let first_lang = languages.pop()
-            .ok_or_else(|| ErrorKind::DeviceSeemsInvalid(S!("no supported string descriptor languages")).error())?;
-
-        let dev_desc = &self
-            .device()
-            .device_descriptor()
-            .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
-
-        let product_string = handle
-            .read_product_string(
-                first_lang,
-                dev_desc,
-                Duration::from_secs(2),
-            )
-            .map_err(|e| ErrorKind::DeviceSeemsInvalid(S!("no product string descriptor")).error_from(e))?;
-
+        let identity = self.firmware_identity()?;
         let serial = self.serial_number()?;
 
-        Ok(format!("{}\n  Serial: {}\n  Port:  {}", product_string, serial, self.port()))
+        Ok(format!("{}\n  Serial: {}\n  Port:  {}", identity, serial, self.port()))
     }
 
     /// Find and return the DFU functional descriptor and its interface number for the connected Black Magic Probe device.
