@@ -24,11 +24,9 @@ struct ProbeIdentity
 pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
 {
     // Start by figuring out which probe to use for the operation
-    let probe = match select_probe(matches)?
-    {
+    let probe = match select_probe(matches)? {
         Some(probe) => probe,
-        None =>
-        {
+        None => {
             println!("Black Magic Debug probe selection cancelled, stopping operation");
             return Ok(());
         }
