@@ -41,7 +41,10 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
         Some(product) => product,
         None => return Err(ErrorKind::DeviceSeemsInvalid("invalid product string".into()).error()),
     };
-    println!("Found {} probe with version {:?}", product, identity.version);
+    // If we don't know what version of firmware is on the probe, presume it's v1.6 for now..
+    // We can't actually know which prior version to v1.6 it actually is but it's very old either way
+    let version = identity.version.unwrap_or_else(|| "v1.6".into());
+    println!("Found {} probe with version {}", product, version);
 
     Ok(())
 }
