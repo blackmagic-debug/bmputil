@@ -224,14 +224,8 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
             e
         })?;
 
-
-    let desc = dev.device().device_descriptor().unwrap();
-
     let product_string = dev
-        .handle()
-        .read_product_string_ascii(
-            &desc
-        )
+        .firmware_identity()
         .map_err(|e| {
             error!("Error reading firmware version after flash! Invalid firmware?");
             e
