@@ -13,7 +13,7 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
 {
     // Start by figuring out which probe to use for the operation
     let probe = select_probe(matches)?;
-    println!("Probe {} selected for firmware update", probe);
+    println!("Probe {} ({}) selected for firmware update", probe.firmware_identity()?, probe.serial_number()?);
 
     Ok(())
 }
@@ -32,10 +32,20 @@ fn select_probe(matches: &ArgMatches) -> Result<BmpDevice, Error>
         1 => Ok(devices.remove(0)),
         // Otherwise, we've got more than one, so ask the user to make a choice
         _ => {
+            // Map the device list to create selection items
+            let items: Vec<_> = devices
+                .iter()
+                .flat_map(
+                    |device| -> Result<String, Error> {
+                        Ok(format!("{} ({})", device.firmware_identity()?, device.serial_number()?))
+                    }
+                )
+                .collect();
+
             // Figure out which one the user wishes to use
             let selection = Select::new()
                 .with_prompt("Which probe would you like to change the firmware on?")
-                .items(devices.as_slice())
+                .items(items.as_slice())
                 .interact()?;
             // Extract and return that one
             Ok(devices.remove(selection))
