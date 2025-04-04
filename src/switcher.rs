@@ -3,6 +3,7 @@
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
 use clap::ArgMatches;
+use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 
 use crate::bmp::BmpDevice;
@@ -51,9 +52,10 @@ fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>, Error>
                 .collect();
 
             // Figure out which one the user wishes to use
-            let selection = Select::new()
+            let selection = Select::with_theme(&ColorfulTheme::default())
                 .with_prompt("Which probe would you like to change the firmware on?")
                 .items(items.as_slice())
+                .report(false)
                 .interact_opt()?;
             // Extract and return that one, if the user didn't cancel selection
             Ok(selection.map(|index| devices.remove(index)))
