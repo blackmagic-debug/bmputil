@@ -231,6 +231,8 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
             e
         })?;
 
+    // XXX: This does terrible things if the firmware is older than v1.7, or the operation failed
+    // and we're actually still in the bootloader and it's not the project bootloader.
     let version_string = product_string
         .chars()
         .skip("Black Magic Probe ".len())
