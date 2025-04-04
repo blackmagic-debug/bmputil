@@ -12,6 +12,8 @@ use crate::bmp::BmpMatcher;
 use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::metadata::download_metadata;
+use crate::metadata::structs::Firmware;
+use crate::metadata::structs::FirmwareDownload;
 use crate::metadata::structs::Probe;
 
 const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
@@ -71,7 +73,10 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
             return Ok(());
         }
     };
-    let release = releases[release];
+    let firmware = &releases[release].1.firmware[&variant];
+
+    // Now see which variant of the firmware the user wants to use
+    let firmware_variant = pick_firmware(firmware)?;
 
     Ok(())
 }
@@ -156,6 +161,48 @@ fn parse_firmware_identity(identity: &String) -> ProbeIdentity
     };
 
     ProbeIdentity { probe, version }
+}
+
+fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>, Error>
+{
+    match firmware.variants.len() {
+        // If there are now firmware variants for this release, that's an error
+        0 => Ok(None),
+        // If there is only one variant, then that's what the user gets.. display and return
+        1 => {
+            let (_, firmware) = firmware.variants.iter().nth(0).unwrap();
+            println!("Using firmware {}", firmware.friendly_name);
+            Ok(Some(firmware))
+        }
+        // Otherwise, if there's more than one we have to ask the user to make a choice
+        _ => {
+            // Map the variant list to create selection items
+            let items: Vec<_> = firmware.variants
+                .iter()
+                .map(|(_, variant)| variant.friendly_name.as_str())
+                .collect();
+
+            // Figure out which one the user wishes to use
+            let selection = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Which firmware variant would you like to run on your probe?")
+                .items(items.as_slice())
+                .report(false)
+                .interact_opt()?;
+            // Extract and return that one, if the user didn't cancel selection
+            Ok(
+                selection
+                    .map(|index| items[index])
+                    .and_then(
+                        |friendly_name| {
+                            firmware.variants
+                                .iter()
+                                .find(|(_, variant)| variant.friendly_name == friendly_name)
+                        }
+                    )
+                    .map(|(_, variant)| variant)
+            )
+        }
+    }
 }
 
 impl ProbeIdentity
