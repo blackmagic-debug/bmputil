@@ -12,13 +12,21 @@ use crate::error::Error;
 pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
 {
     // Start by figuring out which probe to use for the operation
-    let probe = select_probe(matches)?;
+    let probe = match select_probe(matches)?
+    {
+        Some(probe) => probe,
+        None =>
+        {
+            println!("Black Magic Debug probe selection cancelled, stopping operation");
+            return Ok(());
+        }
+    };
     println!("Probe {} ({}) selected for firmware update", probe.firmware_identity()?, probe.serial_number()?);
 
     Ok(())
 }
 
-fn select_probe(matches: &ArgMatches) -> Result<BmpDevice, Error>
+fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>, Error>
 {
     // Start by seeing if there are any probes, filtered by any match critera supplied
     let matcher = BmpMatcher::from_cli_args(matches);
@@ -29,7 +37,7 @@ fn select_probe(matches: &ArgMatches) -> Result<BmpDevice, Error>
     // Figure out what to do based on the numeber of matching probes
     match devices.len() {
         // If we have just one probe, return that and be done
-        1 => Ok(devices.remove(0)),
+        1 => Ok(Some(devices.remove(0))),
         // Otherwise, we've got more than one, so ask the user to make a choice
         _ => {
             // Map the device list to create selection items
@@ -46,9 +54,9 @@ fn select_probe(matches: &ArgMatches) -> Result<BmpDevice, Error>
             let selection = Select::new()
                 .with_prompt("Which probe would you like to change the firmware on?")
                 .items(items.as_slice())
-                .interact()?;
-            // Extract and return that one
-            Ok(devices.remove(selection))
+                .interact_opt()?;
+            // Extract and return that one, if the user didn't cancel selection
+            Ok(selection.map(|index| devices.remove(index)))
         },
     }
 }
