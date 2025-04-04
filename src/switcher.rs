@@ -5,10 +5,21 @@
 use clap::ArgMatches;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
+use log::error;
 
 use crate::bmp::BmpDevice;
 use crate::bmp::BmpMatcher;
 use crate::error::Error;
+use crate::error::ErrorKind;
+
+const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
+const BMP_PRODUCT_STRING_LENGTH: usize = BMP_PRODUCT_STRING.len();
+
+struct ProbeIdentity
+{
+    pub product: Option<String>,
+    pub version: Option<String>,
+}
 
 pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
 {
@@ -23,6 +34,14 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
         }
     };
     println!("Probe {} ({}) selected for firmware update", probe.firmware_identity()?, probe.serial_number()?);
+
+    // Now extract the probe's identification, and check it's valid
+    let identity = parse_firmware_identity(&probe.firmware_identity()?);
+    let product = match identity.product {
+        Some(product) => product,
+        None => return Err(ErrorKind::DeviceSeemsInvalid("invalid product string".into()).error()),
+    };
+    println!("Found {} probe with version {:?}", product, identity.version);
 
     Ok(())
 }
@@ -61,4 +80,50 @@ fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>, Error>
             Ok(selection.map(|index| devices.remove(index)))
         },
     }
+}
+
+fn parse_firmware_identity(identity: &String) -> ProbeIdentity
+{
+    let mut product = None;
+    let mut version = None;
+
+    // BMD product strings are in one ofthe following forms:
+    // Recent: Black Magic Probe v2.0.0-rc2
+    //       : Black Magic Probe (ST-Link v2) v1.10.0-1273-g2b1ce9aee
+    //    Old: Black Magic Probe
+    // From this we want to extract two main things: version (if available), and probe variety
+    // (probe variety meaning alternative platform kind if not a BMP itself)
+
+    // Let's start out easy - check to see if the string contains an opening paren (alternate platform)
+    let opening_paren = identity[BMP_PRODUCT_STRING_LENGTH..].find('(');
+    match opening_paren {
+        // If there isn't one, we're dealing with nominally a native probe
+        None => {
+            // Knowing this, let's see if there are enough characters for a version string, and if there are.. extract it
+            if identity.len() > BMP_PRODUCT_STRING_LENGTH {
+                let version_begin = unsafe { identity.rfind(' ').unwrap_unchecked() };
+                version = Some(identity[version_begin + 1..].to_string());
+            }
+            product = Some("native".into());
+        },
+        Some(opening_paren) => {
+            let closing_paren = identity[opening_paren..].find(')');
+            match closing_paren {
+                None => error!("Product description for device is invalid, found opening '(' but no closing ')'"),
+                Some(closing_paren) => {
+                    // If we did find the closing ')', then see if we've got a version string
+                    let version_begin = identity[closing_paren..].find(' ');
+                    // If we do, then extract whatever's left of the string as the version number
+                    if let Some(version_begin) = version_begin {
+                        version = Some(identity[version_begin..].to_string());
+                    }
+                    // Now we've dealth with the version information, grab everything inside the ()'s as the
+                    // product string for this probe (normalised to lower case)
+                    product = Some(identity[opening_paren + 1..closing_paren].to_lowercase());
+                }
+            }
+        },
+    };
+
+    ProbeIdentity { product, version }
 }
