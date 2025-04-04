@@ -17,7 +17,7 @@ const BMP_PRODUCT_STRING_LENGTH: usize = BMP_PRODUCT_STRING.len();
 
 struct ProbeIdentity
 {
-    pub product: Option<String>,
+    probe: Option<String>,
     pub version: Option<String>,
 }
 
@@ -35,14 +35,11 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
 
     // Now extract the probe's identification, and check it's valid
     let identity = parse_firmware_identity(&probe.firmware_identity()?);
-    let product = match identity.product {
-        Some(product) => product,
-        None => return Err(ErrorKind::DeviceSeemsInvalid("invalid product string".into()).error()),
-    };
+    let variant = identity.variant()?;
     // If we don't know what version of firmware is on the probe, presume it's v1.6 for now..
     // We can't actually know which prior version to v1.6 it actually is but it's very old either way
     let version = identity.version.unwrap_or_else(|| "v1.6".into());
-    println!("Found {} probe with version {}", product, version);
+    println!("Found {} probe with version {}", variant.to_string(), version);
 
     Ok(())
 }
@@ -85,7 +82,7 @@ fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>, Error>
 
 fn parse_firmware_identity(identity: &String) -> ProbeIdentity
 {
-    let mut product = None;
+    let mut probe = None;
     let mut version = None;
 
     // BMD product strings are in one ofthe following forms:
@@ -105,7 +102,7 @@ fn parse_firmware_identity(identity: &String) -> ProbeIdentity
                 let version_begin = unsafe { identity.rfind(' ').unwrap_unchecked() };
                 version = Some(identity[version_begin + 1..].to_string());
             }
-            product = Some("native".into());
+            probe = Some("native".into());
         },
         Some(opening_paren) => {
             let closing_paren = identity[opening_paren..].find(')');
@@ -120,11 +117,41 @@ fn parse_firmware_identity(identity: &String) -> ProbeIdentity
                     }
                     // Now we've dealth with the version information, grab everything inside the ()'s as the
                     // product string for this probe (normalised to lower case)
-                    product = Some(identity[opening_paren + 1..closing_paren].to_lowercase());
+                    probe = Some(identity[opening_paren + 1..closing_paren].to_lowercase());
                 }
             }
         },
     };
 
-    ProbeIdentity { product, version }
+    ProbeIdentity { probe, version }
+}
+
+impl ProbeIdentity
+{
+    fn variant(&self) -> Result<Probe, Error>
+    {
+        match &self.probe {
+            Some(product) => {
+                let probe = match product.as_str() {
+                    "96b carbon" => Probe::_96bCarbon,
+                    "blackpill-f401cc" => Probe::BlackpillF401CC,
+                    "blackpill-f401ce" => Probe::BlackpillF401CE,
+                    "blackpill-f411ce" => Probe::BlackpillF411CE,
+                    "ctxlink" => Probe::CtxLink,
+                    "f072-if" => Probe::F072,
+                    "f3-if" => Probe::F3,
+                    "f4discovery" => Probe::F4Discovery,
+                    "hydrabus" => Probe::HydraBus,
+                    "launchpad icdi" => Probe::LaunchpadICDI,
+                    "native" => Probe::Native,
+                    "st-link/v2" => Probe::Stlink,
+                    "st-link v3" => Probe::Stlinkv3,
+                    "swlink" => Probe::Swlink,
+                    _ => return Err(ErrorKind::DeviceSeemsInvalid("unknown product string encountered".into()).error()),
+                };
+                Ok(probe)
+            },
+            None => Err(ErrorKind::DeviceSeemsInvalid("invalid product string".into()).error()),
+        }
+    }
 }
