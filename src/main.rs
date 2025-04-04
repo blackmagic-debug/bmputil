@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-// SPDX-FileCopyrightText: 2022-2023 1BitSquared <info@1bitsquared.com>
+// SPDX-FileCopyrightText: 2022-2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
+// SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 #![cfg_attr(feature = "backtrace", feature(backtrace))]
 #[cfg(feature = "backtrace")]
 use std::backtrace::BacktraceStatus;
@@ -19,13 +20,14 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info, warn, error};
 
-mod usb;
-mod error;
 mod bmp;
+mod error;
 mod elf;
+mod metadata;
+mod switcher;
+mod usb;
 #[cfg(windows)]
 mod windows;
-mod metadata;
 
 use crate::bmp::{BmpDevice, BmpMatcher, FirmwareType, FirmwareFormat};
 use crate::error::{Error, ErrorKind, ErrorSource};
@@ -39,7 +41,6 @@ macro_rules! S
         String::from($expr)
     };
 }
-
 
 fn intel_hex_error() -> !
 {
@@ -406,8 +407,12 @@ fn main()
             )
         )
         .subcommand(Command::new("releases")
-            .display_order(2)
+            .display_order(3)
             .about("Display information about available downloadable firmware releases")
+        )
+        .subcommand(Command::new("switch")
+            .display_order(2)
+            .about("Switch the firmware being used on a given probe")
         );
 
     let mut debug_subcmd = Command::new("debug")
@@ -434,7 +439,6 @@ fn main()
     }
 
     parser = parser.subcommand(debug_subcmd);
-
 
     let matches = parser.get_matches();
 
@@ -486,6 +490,7 @@ fn main()
             other => unreachable!("Unhandled subcommand {:?}", other),
         },
         "releases" => display_releases(),
+        "switch" => switcher::switch_firmware(subcommand_matches),
         &_ => unimplemented!(),
     };
 
