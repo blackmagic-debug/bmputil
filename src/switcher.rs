@@ -11,6 +11,8 @@ use crate::bmp::BmpDevice;
 use crate::bmp::BmpMatcher;
 use crate::error::Error;
 use crate::error::ErrorKind;
+use crate::metadata::download_metadata;
+use crate::metadata::structs::Probe;
 
 const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
 const BMP_PRODUCT_STRING_LENGTH: usize = BMP_PRODUCT_STRING.len();
@@ -38,8 +40,38 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
     let variant = identity.variant()?;
     // If we don't know what version of firmware is on the probe, presume it's v1.6 for now..
     // We can't actually know which prior version to v1.6 it actually is but it's very old either way
-    let version = identity.version.unwrap_or_else(|| "v1.6".into());
-    println!("Found {} probe with version {}", variant.to_string(), version);
+    let firmware_version = identity.version.unwrap_or_else(|| "v1.6".into());
+
+    // Grab down the metadata index
+    let metadata = download_metadata()?;
+
+    // Filter out releases that don't support this probe, and filter out the one the probe is currently running
+    let releases: Vec<_> = metadata.releases
+        .iter()
+        .filter(
+            |(version, release)|
+                firmware_version != **version && release.firmware.contains_key(&variant)
+        )
+        .collect();
+
+    let mut items: Vec<_> = releases
+        .iter()
+        .map(|(version, _)| version)
+        .collect();
+    items.sort_by(|a, b| a.cmp(b).reverse());
+
+    // Ask the user to choose a release, sorting the releases newest-to-oldest
+    let release = match Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Which release would you like to run on your probe?")
+        .items(items.as_slice())
+        .interact_opt()? {
+        Some(release) => release,
+        None => {
+            println!("firmware release selection cancelled, stopping operation");
+            return Ok(());
+        }
+    };
+    let release = releases[release];
 
     Ok(())
 }
