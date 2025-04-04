@@ -51,14 +51,14 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
     let releases: Vec<_> = metadata.releases
         .iter()
         .filter(
-            |(version, release)|
-                firmware_version != **version && release.firmware.contains_key(&variant)
+            |&(version, release)|
+                firmware_version != *version && release.firmware.contains_key(&variant)
         )
         .collect();
 
     let mut items: Vec<_> = releases
         .iter()
-        .map(|(version, _)| version)
+        .map(|&(version, _)| version)
         .collect();
     items.sort_by(|a, b| a.cmp(b).reverse());
 
