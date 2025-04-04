@@ -73,7 +73,7 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
             return Ok(());
         }
     };
-    let firmware = &releases[release].1.firmware[&variant];
+    let firmware = &metadata.releases[items[release].as_str()].firmware[&variant];
 
     // Now see which variant of the firmware the user wants to use
     let firmware_variant = pick_firmware(firmware)?;
@@ -186,7 +186,6 @@ fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>, Error
             let selection = Select::with_theme(&ColorfulTheme::default())
                 .with_prompt("Which firmware variant would you like to run on your probe?")
                 .items(items.as_slice())
-                .report(false)
                 .interact_opt()?;
             // Extract and return that one, if the user didn't cancel selection
             Ok(
