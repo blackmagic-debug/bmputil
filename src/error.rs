@@ -135,6 +135,9 @@ impl Display for ErrorKind
                     SerdeJSON(e) => {
                         write!(f, "unhandled serde JSON parsing error: {}", e)?;
                     }
+                    Dialoguer(e) => {
+                        write!(f, "unhandled dialoguer error: {}", e)?;
+                    }
                 };
             },
         };
@@ -337,6 +340,15 @@ impl From<serde_json::Error> for Error
     }
 }
 
+impl From<dialoguer::Error> for Error
+{
+    fn from(other: dialoguer::Error) -> Self
+    {
+        use ErrorKind::*;
+
+        External(ErrorSource::Dialoguer(other)).error()
+    }
+}
 
 /// Sources of external error in this library.
 #[derive(Debug, Error)]
@@ -359,6 +371,9 @@ pub enum ErrorSource
 
     #[error(transparent)]
     SerdeJSON(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Dialoguer(#[from] dialoguer::Error),
 }
 
 
