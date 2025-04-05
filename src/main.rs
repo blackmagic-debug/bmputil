@@ -17,8 +17,9 @@ use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description
 use clap::builder::styling::Styles;
 use directories::ProjectDirs;
 use flasher::program_firmware;
+use flasher::Firmware;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
-use log::{debug, info, warn, error};
+use log::{info, error};
 
 mod bmp;
 mod error;
@@ -30,7 +31,7 @@ mod usb;
 #[cfg(windows)]
 mod windows;
 
-use crate::bmp::{BmpDevice, BmpMatcher, FirmwareType, FirmwareFormat};
+use crate::bmp::{BmpDevice, BmpMatcher, FirmwareFormat};
 use crate::error::{Error, ErrorKind, ErrorSource};
 use crate::metadata::download_metadata;
 
@@ -121,55 +122,10 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
     let mut dev: BmpDevice = results.pop_single("flash")?;
 
-    // Grab the platform, which we need for firmware type detection, and the port, which we need
-    // to find the probe after rebooting.
-    let platform = dev.platform();
+    // Grab the the port the probe can be found on, which we need to re-find the probe after rebooting.
     let port = dev.port();
 
-    // Detect what kind of firmware this is, using the platform to determine the link address.
-    let firmware_type = FirmwareType::detect_from_firmware(platform, &firmware_data)
-        .map_err(|e| e.with_ctx("detecting firmware type"))?;
-
-    debug!("Firmware file was detected as {}", firmware_type);
-
-    // But allow the user to override that type, if they *really* know what they are doing.
-    let firmware_type = if let Some(location) = matches
-        .get_one::<String>("override-firmware-type").map(|s| s.as_str()) {
-        if let Some("really") = matches.get_one::<String>("allow-dangerous-options").map(|s| s.as_str()) {
-            warn!("Overriding firmware-type detection and flashing to user-specified location ({}) instead!", location);
-        } else {
-            // We're ignoring errors for setting the color because the most important thing is
-            // getting the message itself out.
-            // If the messages themselves don't write, though, then we might as well just panic.
-            let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-            let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
-            write!(&mut stderr, "WARNING: ").expect("failed to write to stderr");
-            let _res = stderr.reset();
-            writeln!(
-                &mut stderr,
-                "--override-firmware-type is used to override the firmware type detection and flash \
-                a firmware binary to a location other than the one that it seems to be designed for.\n\
-                This is a potentially destructive operation and can result in an unbootable device! \
-                (can require a second, external JTAG debugger and manual wiring to fix!)\n\
-                \nDo not use this option unless you are a firmware developer and really know what you are doing!\n\
-                \nIf you are sure this is really what you want to do, run again with --allow-dangerous-options=really"
-            ).expect("failed to write to stderr");
-            std::process::exit(1);
-        };
-        if location == "bootloader" {
-            FirmwareType::Bootloader
-        } else if location == "application" {
-            FirmwareType::Application
-        } else {
-            unreachable!("Clap ensures invalid option cannot be passed to --override-firmware-type");
-        }
-    } else {
-        firmware_type
-    };
-
-    let file_size = firmware_data.len();
-    let file_size = u32::try_from(file_size)
-        .expect("firmware filesize exceeded 32 bits! Firmware binary must be invalid");
+    let firmware = Firmware::new(matches, &dev, firmware_data)?;
 
     // If we can't get the string descriptors, try to go ahead with flashing anyway.
     // It's unlikely that other control requests will succeed, but the OS might be messing with
@@ -179,7 +135,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
             error!("Failed to read string data from Black Magic Probe: {}\nTrying to continue anyway...", e);
         });
 
-    program_firmware(&mut dev, firmware_type, firmware_data, file_size)?;
+    program_firmware(&mut dev, &firmware)?;
 
     drop(dev); // Force libusb to free the device.
     thread::sleep(Duration::from_millis(250));
