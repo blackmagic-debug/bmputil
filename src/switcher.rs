@@ -168,11 +168,13 @@ fn pick_release<'a>(metadata: &'a Metadata, variant: &Probe, firmware_version: &
     Result<Option<&'a Firmware>, Error>
 {
     // Filter out releases that don't support this probe, and filter out the one the probe is currently running
+    // if there is only a single variant in the release (multi-variant releases still need to be shown)
     let releases: Vec<_> = metadata.releases
         .iter()
         .filter(
             |&(version, release)|
-                firmware_version != version && release.firmware.contains_key(&variant)
+                !(firmware_version == version && release.firmware[variant].variants.len() == 1) &&
+                release.firmware.contains_key(&variant)
         )
         .collect();
 
