@@ -14,6 +14,7 @@ use crate::error::ErrorKind;
 use crate::metadata::download_metadata;
 use crate::metadata::structs::Firmware;
 use crate::metadata::structs::FirmwareDownload;
+use crate::metadata::structs::Metadata;
 use crate::metadata::structs::Probe;
 
 const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
@@ -46,34 +47,13 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
 
     // Grab down the metadata index
     let metadata = download_metadata()?;
-
-    // Filter out releases that don't support this probe, and filter out the one the probe is currently running
-    let releases: Vec<_> = metadata.releases
-        .iter()
-        .filter(
-            |&(version, release)|
-                firmware_version != *version && release.firmware.contains_key(&variant)
-        )
-        .collect();
-
-    let mut items: Vec<_> = releases
-        .iter()
-        .map(|&(version, _)| version)
-        .collect();
-    items.sort_by(|a, b| a.cmp(b).reverse());
-
-    // Ask the user to choose a release, sorting the releases newest-to-oldest
-    let release = match Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Which release would you like to run on your probe?")
-        .items(items.as_slice())
-        .interact_opt()? {
-        Some(release) => release,
+    let firmware = match pick_release(&metadata, &variant, &firmware_version)? {
+        Some(firmware) => firmware,
         None => {
             println!("firmware release selection cancelled, stopping operation");
-            return Ok(());
+            return Ok(())
         }
     };
-    let firmware = &metadata.releases[items[release].as_str()].firmware[&variant];
 
     // Now see which variant of the firmware the user wants to use
     let firmware_variant = pick_firmware(firmware)?;
@@ -161,6 +141,35 @@ fn parse_firmware_identity(identity: &String) -> ProbeIdentity
     };
 
     ProbeIdentity { probe, version }
+}
+
+fn pick_release<'a>(metadata: &'a Metadata, variant: &Probe, firmware_version: &String) ->
+    Result<Option<&'a Firmware>, Error>
+{
+    // Filter out releases that don't support this probe, and filter out the one the probe is currently running
+    let releases: Vec<_> = metadata.releases
+        .iter()
+        .filter(
+            |&(version, release)|
+                firmware_version != version && release.firmware.contains_key(&variant)
+        )
+        .collect();
+
+    let mut items: Vec<_> = releases
+        .iter()
+        .map(|&(version, _)| version)
+        .collect();
+    items.sort_by(|a, b| a.cmp(b).reverse());
+
+    // Ask the user to choose a release, sorting the releases newest-to-oldest
+    let selection = match Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Which release would you like to run on your probe?")
+        .items(items.as_slice())
+        .interact_opt()? {
+        Some(release) => release,
+        None => return Ok(None),
+    };
+    Ok(Some(&metadata.releases[items[selection].as_str()].firmware[&variant]))
 }
 
 fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>, Error>
