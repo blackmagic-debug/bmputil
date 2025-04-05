@@ -16,9 +16,9 @@ use crate::error::Error;
 
 pub struct Firmware
 {
-    pub firmware_type: FirmwareType,
-    pub data: Vec<u8>,
-    pub length: u32,
+    firmware_type: FirmwareType,
+    data: Vec<u8>,
+    length: u32,
 }
 
 impl Firmware
@@ -85,49 +85,47 @@ impl Firmware
 
         Ok(firmware_type)
     }
-}
 
-pub fn program_firmware(
-    device: &mut BmpDevice, firmware: &Firmware
-) -> Result<(), Error>
-{
-    // We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
-    // so it must be moved into the closure. However, since we need to call .finish() here,
-    // it must be owned by both. Hence: Rc<T>.
-    // Default template: `{wide_bar} {pos}/{len}`.
-    let progress_bar = ProgressBar::new(firmware.length as u64)
-        .with_style(ProgressStyle::default_bar()
-            .template(" {percent:>3}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]").unwrap()
-        );
-    let progress_bar = Rc::new(progress_bar);
-    let enclosed = Rc::clone(&progress_bar);
-    // Extract the firmware type as a value so it can be captured and moved (copied) by the progress lambda
-    let firmware_type = firmware.firmware_type;
+    pub fn program_firmware(&self, device: &mut BmpDevice) -> Result<(), Error>
+    {
+        // We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
+        // so it must be moved into the closure. However, since we need to call .finish() here,
+        // it must be owned by both. Hence: Rc<T>.
+        // Default template: `{wide_bar} {pos}/{len}`.
+        let progress_bar = ProgressBar::new(self.length as u64)
+            .with_style(ProgressStyle::default_bar()
+                .template(" {percent:>3}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]").unwrap()
+            );
+        let progress_bar = Rc::new(progress_bar);
+        let enclosed = Rc::clone(&progress_bar);
+        // Extract the firmware type as a value so it can be captured and moved (copied) by the progress lambda
+        let firmware_type = self.firmware_type;
 
-    match device.download(&*firmware.data, firmware.length, firmware_type,
-        move |flash_pos_delta| {
-            // Don't actually print flashing until the erasing has finished.
-            if enclosed.position() == 0 {
-                if firmware_type == FirmwareType::Application {
-                    enclosed.println("Flashing...");
-                } else {
-                    enclosed.println("Flashing bootloader...");
+        match device.download(&*self.data, self.length, firmware_type,
+            move |flash_pos_delta| {
+                // Don't actually print flashing until the erasing has finished.
+                if enclosed.position() == 0 {
+                    if firmware_type == FirmwareType::Application {
+                        enclosed.println("Flashing...");
+                    } else {
+                        enclosed.println("Flashing bootloader...");
+                    }
                 }
-            }
-            enclosed.inc(flash_pos_delta as u64);
-    }) {
-        Ok(()) => {
-            progress_bar.finish();
-            Ok(())
-        },
-        Err(e) => {
-            progress_bar.finish();
-            if progress_bar.position() == (firmware.length as u64) {
-                warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
+                enclosed.inc(flash_pos_delta as u64);
+        }) {
+            Ok(()) => {
+                progress_bar.finish();
                 Ok(())
-            } else {
-                Err(e)
-            }
-        },
+            },
+            Err(e) => {
+                progress_bar.finish();
+                if progress_bar.position() == (self.length as u64) {
+                    warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            },
+        }
     }
 }

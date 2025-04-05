@@ -16,7 +16,6 @@ use anstyle;
 use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description, crate_name};
 use clap::builder::styling::Styles;
 use directories::ProjectDirs;
-use flasher::program_firmware;
 use flasher::Firmware;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use log::{info, error};
@@ -135,7 +134,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
             error!("Failed to read string data from Black Magic Probe: {}\nTrying to continue anyway...", e);
         });
 
-    program_firmware(&mut dev, &firmware)?;
+    firmware.program_firmware(&mut dev)?;
 
     drop(dev); // Force libusb to free the device.
     thread::sleep(Duration::from_millis(250));
