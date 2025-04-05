@@ -32,10 +32,10 @@ termcolor = "1.4"
 goblin = { version = "0.9", default-features = false, features = ["std", "elf32", "elf64", "endian_fd"] }
 libc = "0.2"
 bstr = "1.10.0"
-serde = { version = "1.0", features = ["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.12", features = ["rustls-tls", "blocking", "json"]}
-url = { version = "2.5.4", features = ["serde"]}
+reqwest = { version = "0.12", features = ["rustls-tls", "blocking", "json"] }
+url = { version = "2.5.4", features = ["serde"] }
 rc-zip-sync = "4.2.6"
 dialoguer = "0.11.0"
 directories = "6.0.0"
