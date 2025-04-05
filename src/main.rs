@@ -6,16 +6,12 @@
 #[cfg(feature = "backtrace")]
 use std::backtrace::BacktraceStatus;
 
-use std::thread;
-use std::io::Write;
 use std::str::FromStr;
-use std::time::Duration;
 
 use anstyle;
 use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description, crate_name};
 use clap::builder::styling::Styles;
 use directories::ProjectDirs;
-use flasher::Firmware;
 use log::{info, error};
 
 mod bmp;
@@ -64,35 +60,13 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     let file_name = matches.get_one::<String>("firmware_binary").map(|s| s.as_str())
         .expect("No firmware file was specified!"); // Should be impossible, thanks to clap.
 
-    let firmware_data = flasher::read_firmware(&file_name)?;
-
     // Try to find the Black Magic Probe device based on the filter arguments.
     let matcher = BmpMatcher::from_cli_args(matches);
     let mut results = matcher.find_matching_probes();
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
-    let mut dev: BmpDevice = results.pop_single("flash")?;
+    let dev: BmpDevice = results.pop_single("flash")?;
 
-    // Grab the the port the probe can be found on, which we need to re-find the probe after rebooting.
-    let port = dev.port();
-
-    let firmware = Firmware::new(matches, &dev, firmware_data)?;
-
-    // If we can't get the string descriptors, try to go ahead with flashing anyway.
-    // It's unlikely that other control requests will succeed, but the OS might be messing with
-    // the string descriptor stuff.
-    let _ = writeln!(std::io::stdout(), "Found: {}", dev)
-        .map_err(|e| {
-            error!("Failed to read string data from Black Magic Probe: {}\nTrying to continue anyway...", e);
-        });
-
-    firmware.program_firmware(&mut dev)?;
-
-    // Programming triggers a probe reboot, so after this we have to get libusb to
-    // drop the device, wait a little for the probe to go away and then wait on the probe to come back.
-    drop(dev);
-    thread::sleep(Duration::from_millis(250));
-
-    flasher::check_programming(port.as_str())
+    flasher::flash_probe(matches, dev, file_name)
 }
 
 fn display_releases() -> Result<(), Error>

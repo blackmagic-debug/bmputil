@@ -5,6 +5,7 @@
 
 use std::io::{Read, Write};
 use std::rc::Rc;
+use std::thread;
 use std::time::Duration;
 
 use clap::ArgMatches;
@@ -153,7 +154,7 @@ fn intel_hex_error() -> !
     std::process::exit(1);
 }
 
-pub fn read_firmware(file_name: &str) -> Result<Vec<u8>, Error>
+fn read_firmware(file_name: &str) -> Result<Vec<u8>, Error>
 {
     let firmware_file = std::fs::File::open(file_name)
         .map_err(|source| ErrorKind::FirmwareFileIo(Some(file_name.to_string())).error_from(source))
@@ -183,7 +184,7 @@ pub fn read_firmware(file_name: &str) -> Result<Vec<u8>, Error>
     Ok(firmware_data)
 }
 
-pub fn check_programming(port: &str) -> Result<(), Error>
+fn check_programming(port: &str) -> Result<(), Error>
 {
     let dev = bmp::wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")
         .map_err(|e| {
@@ -210,4 +211,31 @@ pub fn check_programming(port: &str) -> Result<(), Error>
     println!("Black Magic Probe successfully rebooted into firmware version {}", version_string);
 
     Ok(())
+}
+
+pub fn flash_probe(matches: &ArgMatches, mut device: BmpDevice, file_name: &str) -> Result<(), Error>
+{
+    let firmware_data = read_firmware(&file_name)?;
+
+    // Grab the the port the probe can be found on, which we need to re-find the probe after rebooting.
+    let port = device.port();
+
+    let firmware = Firmware::new(matches, &device, firmware_data)?;
+
+    // If we can't get the string descriptors, try to go ahead with flashing anyway.
+    // It's unlikely that other control requests will succeed, but the OS might be messing with
+    // the string descriptor stuff.
+    let _ = writeln!(std::io::stdout(), "Found: {}", device)
+        .map_err(|e| {
+            error!("Failed to read string data from Black Magic Probe: {}\nTrying to continue anyway...", e);
+        });
+
+    firmware.program_firmware(&mut device)?;
+
+    // Programming triggers a probe reboot, so after this we have to get libusb to
+    // drop the device, wait a little for the probe to go away and then wait on the probe to come back.
+    drop(device);
+    thread::sleep(Duration::from_millis(250));
+
+    check_programming(port.as_str())
 }
