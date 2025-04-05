@@ -7,7 +7,6 @@
 use std::backtrace::BacktraceStatus;
 
 use std::thread;
-use std::rc::Rc;
 use std::io::Write;
 use std::io::Read;
 use std::str::FromStr;
@@ -17,13 +16,14 @@ use anstyle;
 use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description, crate_name};
 use clap::builder::styling::Styles;
 use directories::ProjectDirs;
+use flasher::program_firmware;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
-use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info, warn, error};
 
 mod bmp;
 mod error;
 mod elf;
+mod flasher;
 mod metadata;
 mod switcher;
 mod usb;
@@ -179,42 +179,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
             error!("Failed to read string data from Black Magic Probe: {}\nTrying to continue anyway...", e);
         });
 
-    // We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
-    // so it must be moved into the closure. However, since we need to call .finish() here,
-    // it must be owned by both. Hence: Rc<T>.
-    // Default template: `{wide_bar} {pos}/{len}`.
-    let progress_bar = ProgressBar::new(file_size as u64)
-        .with_style(ProgressStyle::default_bar()
-            .template(" {percent:>3}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]").unwrap()
-        );
-    let progress_bar = Rc::new(progress_bar);
-    let enclosed = Rc::clone(&progress_bar);
-
-    match dev.download(&*firmware_data, file_size, firmware_type, move |flash_pos_delta| {
-        // Don't actually print flashing until the erasing has finished.
-        if enclosed.position() == 0 {
-            if firmware_type == FirmwareType::Application {
-                enclosed.println("Flashing...");
-            } else {
-                enclosed.println("Flashing bootloader...");
-            }
-        }
-        enclosed.inc(flash_pos_delta as u64);
-    }) {
-        Ok(()) => {
-            progress_bar.finish();
-            Ok(())
-        },
-        Err(e) => {
-            progress_bar.finish();
-            if progress_bar.position() == (file_size as u64) {
-                warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
-                Ok(())
-            } else {
-                Err(e)
-            }
-        },
-    }?;
+    program_firmware(&mut dev, firmware_type, firmware_data, file_size)?;
 
     drop(dev); // Force libusb to free the device.
     thread::sleep(Duration::from_millis(250));
