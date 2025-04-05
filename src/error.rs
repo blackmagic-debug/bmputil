@@ -138,6 +138,9 @@ impl Display for ErrorKind
                     Dialoguer(e) => {
                         write!(f, "unhandled dialoguer error: {}", e)?;
                     }
+                    Reqwest(e) => {
+                        write!(f, "unhandled reqwest error: {}", e)?;
+                    }
                 };
             },
         };
@@ -325,7 +328,6 @@ impl From<goblin::error::Error> for Error
     fn from(other: goblin::error::Error) -> Self
     {
         use ErrorKind::*;
-
         InvalidFirmware(None)
             .error_from(External(ErrorSource::Goblin(other)).error())
     }
@@ -345,8 +347,16 @@ impl From<dialoguer::Error> for Error
     fn from(other: dialoguer::Error) -> Self
     {
         use ErrorKind::*;
-
         External(ErrorSource::Dialoguer(other)).error()
+    }
+}
+
+impl From<reqwest::Error> for Error
+{
+    fn from(other: reqwest::Error) -> Self
+    {
+        use ErrorKind::*;
+        External(ErrorSource::Reqwest(other)).error()
     }
 }
 
@@ -374,8 +384,10 @@ pub enum ErrorSource
 
     #[error(transparent)]
     Dialoguer(#[from] dialoguer::Error),
-}
 
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+}
 
 /// Extension trait to enable getting the error kind from a Result<T, Error> with one method.
 pub trait ResErrorKind<T>
