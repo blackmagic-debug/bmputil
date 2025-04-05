@@ -8,7 +8,6 @@ use std::backtrace::BacktraceStatus;
 
 use std::thread;
 use std::io::Write;
-use std::io::Read;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -30,8 +29,8 @@ mod usb;
 #[cfg(windows)]
 mod windows;
 
-use crate::bmp::{BmpDevice, BmpMatcher, FirmwareFormat};
-use crate::error::{Error, ErrorKind, ErrorSource};
+use crate::bmp::{BmpDevice, BmpMatcher};
+use crate::error::{Error, ErrorSource};
 use crate::metadata::download_metadata;
 
 #[macro_export]
@@ -64,7 +63,6 @@ fn intel_hex_error() -> !
     std::process::exit(1);
 }
 
-
 fn detach_command(matches: &ArgMatches) -> Result<(), Error>
 {
     let matcher = BmpMatcher::from_cli_args(matches);
@@ -83,37 +81,12 @@ fn detach_command(matches: &ArgMatches) -> Result<(), Error>
     Ok(())
 }
 
-
 fn flash(matches: &ArgMatches) -> Result<(), Error>
 {
-    let filename = matches.get_one::<String>("firmware_binary").map(|s| s.as_str())
+    let file_name = matches.get_one::<String>("firmware_binary").map(|s| s.as_str())
         .expect("No firmware file was specified!"); // Should be impossible, thanks to clap.
-    let firmware_file = std::fs::File::open(filename)
-        .map_err(|source| ErrorKind::FirmwareFileIo(Some(filename.to_string())).error_from(source))
-        .map_err(|e| e.with_ctx("reading firmware file to flash"))?;
 
-    let mut firmware_file = std::io::BufReader::new(firmware_file);
-
-    let mut firmware_data = Vec::new();
-    firmware_file.read_to_end(&mut firmware_data).unwrap();
-
-    // FirmwareFormat::detect_from_firmware() needs at least 4 bytes, and
-    // FirmwareType::detect_from_firmware() needs at least 8 bytes,
-    // but also if we don't even have 8 bytes there's _no way_ this is valid firmware.
-    if firmware_data.len() < 8 {
-        return Err(
-            ErrorKind::InvalidFirmware(Some(S!("less than 8 bytes long"))).error()
-        );
-    }
-
-    // Extract the actual firmware data from the file, based on the format we're using.
-    let format = FirmwareFormat::detect_from_firmware(&firmware_data);
-    let firmware_data = match format {
-        FirmwareFormat::Binary => firmware_data,
-        FirmwareFormat::Elf => elf::extract_binary(&firmware_data)?,
-        FirmwareFormat::IntelHex => intel_hex_error(), // FIXME: implement this.
-    };
-
+    let firmware_data = flasher::read_firmware(&file_name)?;
 
     // Try to find the Black Magic Probe device based on the filter arguments.
     let matcher = BmpMatcher::from_cli_args(matches);

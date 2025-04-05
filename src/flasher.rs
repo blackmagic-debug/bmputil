@@ -3,7 +3,8 @@
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
-use std::io::Write;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::rc::Rc;
 
 use clap::ArgMatches;
@@ -11,8 +12,9 @@ use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, warn};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
-use crate::bmp::{BmpDevice, FirmwareType};
-use crate::error::Error;
+use crate::bmp::{BmpDevice, FirmwareFormat, FirmwareType};
+use crate::{elf, intel_hex_error};
+use crate::error::{Error, ErrorKind};
 
 pub struct Firmware
 {
@@ -128,4 +130,34 @@ impl Firmware
             },
         }
     }
+}
+
+pub fn read_firmware(file_name: &str) -> Result<Vec<u8>, Error>
+{
+    let firmware_file = std::fs::File::open(file_name)
+        .map_err(|source| ErrorKind::FirmwareFileIo(Some(file_name.to_string())).error_from(source))
+        .map_err(|e| e.with_ctx("reading firmware file to flash"))?;
+
+    let mut firmware_file = std::io::BufReader::new(firmware_file);
+
+    let mut firmware_data = Vec::new();
+    firmware_file.read_to_end(&mut firmware_data).unwrap();
+
+    // FirmwareFormat::detect_from_firmware() needs at least 4 bytes, and
+    // FirmwareType::detect_from_firmware() needs at least 8 bytes,
+    // but also if we don't even have 8 bytes there's _no way_ this is valid firmware.
+    if firmware_data.len() < 8 {
+        return Err(
+            ErrorKind::InvalidFirmware(Some("less than 8 bytes long".into())).error()
+        );
+    }
+
+    // Extract the actual firmware data from the file, based on the format we're using.
+    let firmware_data = match FirmwareFormat::detect_from_firmware(&firmware_data) {
+        FirmwareFormat::Binary => firmware_data,
+        FirmwareFormat::Elf => elf::extract_binary(&firmware_data)?,
+        FirmwareFormat::IntelHex => intel_hex_error(), // FIXME: implement this.
+    };
+
+    Ok(firmware_data)
 }
