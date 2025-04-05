@@ -5,13 +5,14 @@
 
 use std::io::{Read, Write};
 use std::rc::Rc;
+use std::time::Duration;
 
 use clap::ArgMatches;
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, warn};
+use log::{debug, error, warn};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
-use crate::bmp::{BmpDevice, FirmwareFormat, FirmwareType};
+use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
 use crate::elf;
 use crate::error::{Error, ErrorKind};
 
@@ -180,4 +181,33 @@ pub fn read_firmware(file_name: &str) -> Result<Vec<u8>, Error>
     };
 
     Ok(firmware_data)
+}
+
+pub fn check_programming(port: &str) -> Result<(), Error>
+{
+    let dev = bmp::wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")
+        .map_err(|e| {
+            error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
+            e
+        })?;
+
+    // Now the device has come back, we need to see if the firmware programming cycle succeeded.
+    // This starts by extracting the firmware identity string to check
+    let product_string = dev
+        .firmware_identity()
+        .map_err(|e| {
+            error!("Error reading firmware version after flash! Invalid firmware?");
+            e
+        })?;
+
+    // XXX: This does terrible things if the firmware is older than v1.7, or the operation failed
+    // and we're actually still in the bootloader and it's not the project bootloader.
+    let version_string = product_string
+        .chars()
+        .skip("Black Magic Probe ".len())
+        .collect::<String>();
+
+    println!("Black Magic Probe successfully rebooted into firmware version {}", version_string);
+
+    Ok(())
 }

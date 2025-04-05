@@ -87,32 +87,12 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
 
     firmware.program_firmware(&mut dev)?;
 
-    drop(dev); // Force libusb to free the device.
+    // Programming triggers a probe reboot, so after this we have to get libusb to
+    // drop the device, wait a little for the probe to go away and then wait on the probe to come back.
+    drop(dev);
     thread::sleep(Duration::from_millis(250));
 
-    let dev = bmp::wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")
-        .map_err(|e| {
-            error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
-            e
-        })?;
-
-    let product_string = dev
-        .firmware_identity()
-        .map_err(|e| {
-            error!("Error reading firmware version after flash! Invalid firmware?");
-            e
-        })?;
-
-    // XXX: This does terrible things if the firmware is older than v1.7, or the operation failed
-    // and we're actually still in the bootloader and it's not the project bootloader.
-    let version_string = product_string
-        .chars()
-        .skip("Black Magic Probe ".len())
-        .collect::<String>();
-
-    println!("Black Magic Probe successfully rebooted into firmware version {}", version_string);
-
-    Ok(())
+    flasher::check_programming(port.as_str())
 }
 
 fn display_releases() -> Result<(), Error>
