@@ -57,7 +57,13 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<(), 
     };
 
     // Now see which variant of the firmware the user wants to use
-    let firmware_variant = pick_firmware(firmware)?;
+    let firmware_variant = match pick_firmware(firmware)? {
+        Some(variant) => variant,
+        None => {
+            println!("firmware variant selection cancelled, stopping operation");
+            return Ok(())
+        }
+    };
 
     // Figure out where the firmware cache is
     let cache = paths.cache_dir();
