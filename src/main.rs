@@ -16,6 +16,7 @@ use std::time::Duration;
 use anstyle;
 use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description, crate_name};
 use clap::builder::styling::Styles;
+use directories::ProjectDirs;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info, warn, error};
@@ -478,6 +479,15 @@ fn main()
         );
     }
 
+    // Try to get the application paths available
+    let paths = match ProjectDirs::from("org", "black-magic", "bmputil") {
+        Some(paths) => paths,
+        None => {
+            error!("Failed to get program working paths");
+            std::process::exit(2);
+        }
+    };
+
     let res = match subcommand {
         "info" => info_command(subcommand_matches),
         "flash" => flash(subcommand_matches),
@@ -489,7 +499,6 @@ fn main()
         "switch" => switcher::switch_firmware(subcommand_matches),
         &_ => unimplemented!(),
     };
-
 
     // Unfortunately, we have to do the printing ourselves, as we need to print a note
     // in the event that backtraces are supported but not enabled.
