@@ -3,7 +3,7 @@
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 //! Module for error handling code.
 
-use std::fmt::{Display, Formatter};
+use std::{fmt::{Display, Formatter}, path::PathBuf};
 #[cfg(feature = "backtrace")]
 use std::backtrace::{Backtrace, BacktraceStatus};
 use std::error::Error as StdError;
@@ -22,7 +22,7 @@ type BoxedError = Box<dyn StdError + Send + Sync>;
 pub enum ErrorKind
 {
     /// Failed to read firmware file.
-    FirmwareFileIo(/** filename **/ Option<String>),
+    FirmwareFileIo(/** filename **/ Option<PathBuf>),
 
     /// Specified firmware seems invalid.
     InvalidFirmware(/** why **/ Option<String>),
@@ -98,7 +98,7 @@ impl Display for ErrorKind
         use ErrorKind::*;
         match self {
             FirmwareFileIo(None) => write!(f, "failed to read firmware file")?,
-            FirmwareFileIo(Some(filename)) => write!(f, "failed to read firmware file {}", filename)?,
+            FirmwareFileIo(Some(filename)) => write!(f, "failed to read firmware file {}", filename.to_string_lossy())?,
             TooManyDevices => write!(f, "current operation only supports one Black Magic Probe device but more than one device was found")?,
             DeviceNotFound => write!(f, "Black Magic Probe device not found (check connection?)")?,
             DeviceDisconnectDuringOperation => write!(f, "Black Magic Probe device found disconnected")?,

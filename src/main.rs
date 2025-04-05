@@ -66,7 +66,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
     let dev: BmpDevice = results.pop_single("flash")?;
 
-    flasher::flash_probe(matches, dev, file_name)
+    flasher::flash_probe(matches, dev, file_name.into())
 }
 
 fn display_releases() -> Result<(), Error>

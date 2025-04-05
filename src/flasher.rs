@@ -4,6 +4,7 @@
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
@@ -154,10 +155,10 @@ fn intel_hex_error() -> !
     std::process::exit(1);
 }
 
-fn read_firmware(file_name: &str) -> Result<Vec<u8>, Error>
+fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>, Error>
 {
-    let firmware_file = std::fs::File::open(file_name)
-        .map_err(|source| ErrorKind::FirmwareFileIo(Some(file_name.to_string())).error_from(source))
+    let firmware_file = std::fs::File::open(file_name.as_path())
+        .map_err(|source| ErrorKind::FirmwareFileIo(Some(file_name)).error_from(source))
         .map_err(|e| e.with_ctx("reading firmware file to flash"))?;
 
     let mut firmware_file = std::io::BufReader::new(firmware_file);
@@ -213,9 +214,9 @@ fn check_programming(port: &str) -> Result<(), Error>
     Ok(())
 }
 
-pub fn flash_probe(matches: &ArgMatches, mut device: BmpDevice, file_name: &str) -> Result<(), Error>
+pub fn flash_probe(matches: &ArgMatches, mut device: BmpDevice, file_name: PathBuf) -> Result<(), Error>
 {
-    let firmware_data = read_firmware(&file_name)?;
+    let firmware_data = read_firmware(file_name)?;
 
     // Grab the the port the probe can be found on, which we need to re-find the probe after rebooting.
     let port = device.port();
