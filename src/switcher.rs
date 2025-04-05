@@ -19,6 +19,7 @@ use crate::bmp::BmpDevice;
 use crate::bmp::BmpMatcher;
 use crate::error::Error;
 use crate::error::ErrorKind;
+use crate::flasher;
 use crate::metadata::download_metadata;
 use crate::metadata::structs::Firmware;
 use crate::metadata::structs::FirmwareDownload;
@@ -74,9 +75,11 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<(), 
 
     // Figure out where the firmware cache is
     let cache = paths.cache_dir();
+    // Download the firmware (or extract it from the cache)
     let elf_file = download_firmware(firmware_variant, cache)?;
 
-    Ok(())
+    // Having done all of that, finally try to Flash the new firmware on the probe
+    flasher::flash_probe(matches, probe, elf_file)
 }
 
 fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>, Error>
