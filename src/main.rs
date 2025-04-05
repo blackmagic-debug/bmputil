@@ -496,7 +496,7 @@ fn main()
             other => unreachable!("Unhandled subcommand {:?}", other),
         },
         "releases" => display_releases(),
-        "switch" => switcher::switch_firmware(subcommand_matches),
+        "switch" => switcher::switch_firmware(subcommand_matches, &paths),
         &_ => unimplemented!(),
     };
 

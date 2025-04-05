@@ -5,6 +5,7 @@
 use clap::ArgMatches;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
+use directories::ProjectDirs;
 use log::error;
 
 use crate::bmp::BmpDevice;
@@ -26,7 +27,7 @@ struct ProbeIdentity
     pub version: Option<String>,
 }
 
-pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
+pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<(), Error>
 {
     // Start by figuring out which probe to use for the operation
     let probe = match select_probe(matches)? {
@@ -57,6 +58,9 @@ pub fn switch_firmware(matches: &ArgMatches) -> Result<(), Error>
 
     // Now see which variant of the firmware the user wants to use
     let firmware_variant = pick_firmware(firmware)?;
+
+    // Figure out where the firmware cache is
+    let cache = paths.cache_dir();
 
     Ok(())
 }
