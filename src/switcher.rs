@@ -2,10 +2,17 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+use std::fs;
+use std::fs::File;
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+
 use clap::ArgMatches;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use directories::ProjectDirs;
+use indicatif::ProgressBar;
 use log::error;
 
 use crate::bmp::BmpDevice;
@@ -67,6 +74,7 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<(), 
 
     // Figure out where the firmware cache is
     let cache = paths.cache_dir();
+    let elf_file = download_firmware(firmware_variant, cache)?;
 
     Ok(())
 }
@@ -221,6 +229,44 @@ fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>, Error
             )
         }
     }
+}
+
+fn download_firmware(variant: &FirmwareDownload, cache_path: &Path) -> Result<PathBuf, Error>
+{
+    // Ensure the cache directory exists
+    fs::create_dir_all(cache_path)?;
+    // Extract the local name for the firmware file
+    let file_name = &variant.file_name;
+    // If the file exists in the cache already, then return that path
+    let cache_file_name = cache_path.join(file_name);
+    if cache_file_name.exists() {
+        return Ok(cache_file_name);
+    }
+
+    // Set up a progress ticker so the user knows something is happening
+    let progress = ProgressBar::new_spinner()
+        .with_message("Downloading requested firmware");
+    // Tick the spinner once every 100ms so we get a smooth showing of progress
+    progress.enable_steady_tick(Duration::from_millis(100));
+
+    // Otherwise, we don't yet have this firmware cached, so let's download it!
+    let client = reqwest::blocking::Client::new();
+    let mut response = client.get(variant.uri.clone())
+        // Use a 2 second timeout so we don't get stuck forever if the user is
+        // having connectivity problems - better to die early and have them retry
+        .timeout(Duration::from_secs(2))
+        .send()?
+        .error_for_status()?;
+
+    // Write the downloaded ELF out to its cache file
+    let mut cache_file = File::create(cache_file_name.as_path())?;
+    response.copy_to(&mut cache_file)?;
+
+    // Finish that progress spinner so the user sees the download finished
+    progress.finish();
+
+    // Return where that is for further use
+    Ok(cache_file_name)
 }
 
 impl ProbeIdentity
