@@ -38,6 +38,7 @@ reqwest = { version = "0.12", features = ["rustls-tls", "blocking", "json"]}
 url = { version = "2.5.4", features = ["serde"]}
 rc-zip-sync = "4.2.6"
 dialoguer = "0.11.0"
+directories = "6.0.0"
 
 [target.'cfg(windows)'.dependencies]
 wdi = "0.1.0"
