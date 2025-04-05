@@ -3,7 +3,6 @@
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
-use std::fs::File;
 use std::io::{Read, Write};
 use std::rc::Rc;
 
@@ -13,7 +12,7 @@ use log::{debug, warn};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::bmp::{BmpDevice, FirmwareFormat, FirmwareType};
-use crate::{elf, intel_hex_error};
+use crate::elf;
 use crate::error::{Error, ErrorKind};
 
 pub struct Firmware
@@ -130,6 +129,27 @@ impl Firmware
             },
         }
     }
+}
+
+fn intel_hex_error() -> !
+{
+    // We're ignoring errors for setting the color because the most important thing
+    // is getting the message itself out.
+    // If the messages themselves don't write, though, then we might as well just panic.
+    let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+    let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
+    write!(&mut stderr, "Error: ")
+        .expect("failed to write to stderr");
+    let _res = stderr.reset();
+    writeln!(
+        &mut stderr,
+        "The specified firmware file appears to be an Intel HEX file, but Intel HEX files are not \
+        currently supported. Please use a binary file (e.g. blackmagic.bin), \
+        or an ELF (e.g. blackmagic.elf) to flash.",
+    )
+    .expect("failed to write to stderr");
+
+    std::process::exit(1);
 }
 
 pub fn read_firmware(file_name: &str) -> Result<Vec<u8>, Error>

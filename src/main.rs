@@ -16,7 +16,6 @@ use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description
 use clap::builder::styling::Styles;
 use directories::ProjectDirs;
 use flasher::Firmware;
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use log::{info, error};
 
 mod bmp;
@@ -40,27 +39,6 @@ macro_rules! S
     ($expr:expr) => {
         String::from($expr)
     };
-}
-
-fn intel_hex_error() -> !
-{
-    // We're ignoring errors for setting the color because the most important thing
-    // is getting the message itself out.
-    // If the messages themselves don't write, though, then we might as well just panic.
-    let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-    let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
-    write!(&mut stderr, "Error: ")
-        .expect("failed to write to stderr");
-    let _res = stderr.reset();
-    writeln!(
-        &mut stderr,
-        "The specified firmware file appears to be an Intel HEX file, but Intel HEX files are not \
-        currently supported. Please use a binary file (e.g. blackmagic.bin), \
-        or an ELF (e.g. blackmagic.elf) to flash.",
-    )
-    .expect("failed to write to stderr");
-
-    std::process::exit(1);
 }
 
 fn detach_command(matches: &ArgMatches) -> Result<(), Error>
