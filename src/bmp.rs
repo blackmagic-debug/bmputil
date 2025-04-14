@@ -429,7 +429,7 @@ impl BmpDevice
         } else {
             // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
             // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
-            use crate::ErrorSource::Libusb;
+            use crate::error::ErrorSource::Libusb;
             let res = unsafe { self.request_detach() };
             if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
                 warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
@@ -466,7 +466,7 @@ impl BmpDevice
         } else {
             // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
             // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
-            use crate::ErrorSource::Libusb;
+            use crate::error::ErrorSource::Libusb;
             let res = unsafe { self.request_detach() };
             if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
                 warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
@@ -777,7 +777,7 @@ impl BmpMatcher
         Default::default()
     }
 
-    pub(crate) fn from_cli_args(matches: &ArgMatches) -> Self
+    pub fn from_cli_args(matches: &ArgMatches) -> Self
     {
         Self::new()
             .index(matches.get_one::<usize>("index").map(|&value| value))
@@ -985,7 +985,7 @@ pub struct BmpMatchResults
 impl BmpMatchResults
 {
     /// Pops all found devices, handling printing error and warning cases.
-    pub(crate) fn pop_all(&mut self) -> Result<Vec<BmpDevice>, Error>
+    pub fn pop_all(&mut self) -> Result<Vec<BmpDevice>, Error>
     {
         if self.found.is_empty() {
 
@@ -1026,7 +1026,7 @@ impl BmpMatchResults
     }
 
     /// Pops a single found device, handling printing error and warning cases.
-    pub(crate) fn pop_single(&mut self, operation: &str) -> Result<BmpDevice, Error>
+    pub fn pop_single(&mut self, operation: &str) -> Result<BmpDevice, Error>
     {
         if self.found.is_empty() {
             if !self.filtered_out.is_empty() {

@@ -14,28 +14,9 @@ use clap::builder::styling::Styles;
 use directories::ProjectDirs;
 use log::{info, error};
 
-mod bmp;
-mod error;
-mod elf;
-mod flasher;
-mod metadata;
-mod switcher;
-mod usb;
-#[cfg(windows)]
-mod windows;
-
-use crate::bmp::{BmpDevice, BmpMatcher};
-use crate::error::{Error, ErrorSource};
-use crate::metadata::download_metadata;
-
-#[macro_export]
-#[doc(hidden)]
-macro_rules! S
-{
-    ($expr:expr) => {
-        String::from($expr)
-    };
-}
+use bmputil::bmp::{BmpDevice, BmpMatcher};
+use bmputil::error::Error;
+use bmputil::metadata::download_metadata;
 
 fn detach_command(matches: &ArgMatches) -> Result<(), Error>
 {
@@ -43,7 +24,7 @@ fn detach_command(matches: &ArgMatches) -> Result<(), Error>
     let mut results = matcher.find_matching_probes();
     let dev = results.pop_single("detach")?;
 
-    use crate::usb::DfuOperatingMode::*;
+    use bmputil::usb::DfuOperatingMode::*;
     match dev.operating_mode() {
         Runtime => println!("Requesting device detach from runtime mode to DFU mode..."),
         FirmwareUpgrade => println!("Requesting device detach from DFU mode to runtime mode..."),
@@ -66,7 +47,7 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
     let dev: BmpDevice = results.pop_single("flash")?;
 
-    flasher::flash_probe(matches, dev, file_name.into())
+    bmputil::flasher::flash_probe(matches, dev, file_name.into())
 }
 
 fn display_releases(paths: &ProjectDirs) -> Result<(), Error>
@@ -341,7 +322,7 @@ fn main()
             other => unreachable!("Unhandled subcommand {:?}", other),
         },
         "releases" => display_releases(&paths),
-        "switch" => switcher::switch_firmware(subcommand_matches, &paths),
+        "switch" => bmputil::switcher::switch_firmware(subcommand_matches, &paths),
         &_ => unimplemented!(),
     };
 
