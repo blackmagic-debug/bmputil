@@ -4,8 +4,6 @@
 //! Module for error handling code.
 
 use std::{fmt::{Display, Formatter}, path::PathBuf};
-#[cfg(feature = "backtrace")]
-use std::backtrace::{Backtrace, BacktraceStatus};
 use std::error::Error as StdError;
 
 use thiserror::Error;
@@ -156,12 +154,6 @@ pub struct Error
     pub kind: ErrorKind,
     pub source: Option<BoxedError>,
 
-    /// Stores the backtrace for this error.
-    ///
-    /// Backtraces are apparently pretty large. This struct was 136 bytes without the box, which was annoying clippy.
-    #[cfg(feature = "backtrace")]
-    pub backtrace: Box<Backtrace>,
-
     /// A string for additional context about what was being attempted when this error occurred.
     ///
     /// Example: "reading current firmware version".
@@ -176,9 +168,7 @@ impl Error
         Self {
             kind,
             source,
-            context: None,
-            #[cfg(feature = "backtrace")]
-            backtrace: Box::new(Backtrace::capture()),
+            context: None
         }
     }
 
@@ -199,13 +189,6 @@ impl Error
         self.context = None;
         self
     }
-
-    #[cfg(feature = "backtrace")]
-    #[allow(dead_code)]
-    fn backtrace(&self) -> Option<&Backtrace>
-    {
-        Some(&self.backtrace)
-    }
 }
 
 impl Display for Error
@@ -216,13 +199,6 @@ impl Display for Error
             write!(f, "(while {}): {}", ctx, self.kind)?;
         } else {
             write!(f, "{}", self.kind)?;
-        }
-
-        #[cfg(feature = "backtrace")]
-        {
-            if self.backtrace.status() == BacktraceStatus::Captured {
-                write!(f, "\nBacktrace:\n{}", self.backtrace)?;
-            }
         }
 
         if let Some(source) = &self.source {
