@@ -21,10 +21,7 @@ use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::flasher;
 use crate::metadata::download_metadata;
-use crate::metadata::structs::Firmware;
-use crate::metadata::structs::FirmwareDownload;
-use crate::metadata::structs::Metadata;
-use crate::metadata::structs::Probe;
+use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata, Probe};
 
 const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
 const BMP_PRODUCT_STRING_LENGTH: usize = BMP_PRODUCT_STRING.len();
