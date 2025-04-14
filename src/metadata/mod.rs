@@ -61,8 +61,13 @@ fn hex_digit(value: u8) -> char
 	char::from(digit)
 }
 
-fn compute_etag(metadata_file_name: &Path) -> Result<String, Error>
+fn compute_etag(metadata_file_name: &Path) -> Result<Option<String>, Error>
 {
+	// Check if the metadata file is a thing to start with
+	if !metadata_file_name.exists() {
+		// If it does not exist, then there's no ETag - we need to download this fresh.
+		return Ok(None);
+	}
 	// Open the file to hash, and make a SHA256 hashing instance for it
 	let mut file = File::open(metadata_file_name)?;
 	let mut hasher = Sha256::default();
@@ -82,5 +87,5 @@ fn compute_etag(metadata_file_name: &Path) -> Result<String, Error>
 		result.push(hex_digit(byte & 0x0f));
 	}
 	result.push('"');
-	Ok(result)
+	Ok(Some(result))
 }
