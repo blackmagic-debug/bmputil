@@ -3,8 +3,11 @@ pub mod structs;
 use std::fs::File;
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
+use indicatif::ProgressBar;
 use log::info;
+use reqwest::StatusCode;
 use sha2::digest::DynDigest;
 use sha2::{Digest, Sha256};
 
@@ -13,11 +16,36 @@ use crate::metadata::structs::Metadata;
 
 pub fn download_metadata(cache: &Path) -> Result<Metadata, Error>
 {
+	// Compute the name of the metadata file in the cache and discover its ETag
 	let metadata_file_name = cache.join("metadata.json");
 	let etag = compute_etag(metadata_file_name.as_path())?;
 
-	let file = File::open("metadata.json")?;
-	// Try to deserialise some datadata
+    // Set up a progress ticker so the user knows something is happening
+    let progress = ProgressBar::new_spinner()
+        .with_message("Updating release metadata cache");
+    // Tick the spinner once every 100ms so we get a smooth showing of progress
+    progress.enable_steady_tick(Duration::from_millis(100));
+
+	// Put together a request to summon to get any updates needed to the metadata
+	let client = reqwest::blocking::Client::new();
+	let mut request = client.get("https://summon.black-magic.org/metadata.json")
+	// Use a 2 second timeout so we don't get stuck forever if the user is
+	// having connectivity problems - better to die early and have them retry
+		.timeout(Duration::from_secs(2));
+	if let Some(etag) = etag {
+		request = request.header("If-None-Match", etag);
+	}
+	let mut response = request.send()?;
+	// See if the response was good - if it was, put the result into the cache
+	if response.status() == StatusCode::OK {
+		let mut metadata_file = File::create(metadata_file_name.as_path())?;
+		response.copy_to(&mut metadata_file)?;
+	}
+	// Finish the progress spinner so the user sees the download finished
+    progress.finish();
+
+	// Now try to open the file and deserialise some metadata from it
+	let file = File::open(metadata_file_name)?;
 	let metadata: Metadata = serde_json::from_reader(file)?;
 
 	// Having done so, and assuming that didn't blow up, validate the metadata is of a suitable
