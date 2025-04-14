@@ -1,13 +1,14 @@
 pub mod structs;
 
 use std::fs::File;
+use std::path::Path;
 
 use log::info;
 
 use crate::error::{Error, ErrorKind};
 use crate::metadata::structs::Metadata;
 
-pub fn download_metadata() -> Result<Metadata, Error>
+pub fn download_metadata(cache: &Path) -> Result<Metadata, Error>
 {
 	let file = File::open("metadata.json")?;
 	// Try to deserialise some datadata

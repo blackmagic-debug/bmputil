@@ -69,9 +69,13 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     flasher::flash_probe(matches, dev, file_name.into())
 }
 
-fn display_releases() -> Result<(), Error>
+fn display_releases(paths: &ProjectDirs) -> Result<(), Error>
 {
-    let metadata = download_metadata()?;
+    // Figure out where the metadata cache is
+    let cache = paths.cache_dir();
+    // Acquire the metadata for display
+    let metadata = download_metadata(cache)?;
+    // Loop through all the entries and display them
     for (version, release) in metadata.releases {
         info!("Details of release {}:", version);
         info!("-> Release includes BMDA builds? {}", release.includes_bmda);
@@ -336,7 +340,7 @@ fn main()
             ("detach", detach_matches) => detach_command(detach_matches),
             other => unreachable!("Unhandled subcommand {:?}", other),
         },
-        "releases" => display_releases(),
+        "releases" => display_releases(&paths),
         "switch" => switcher::switch_firmware(subcommand_matches, &paths),
         &_ => unimplemented!(),
     };

@@ -51,8 +51,11 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<(), 
     // We can't actually know which prior version to v1.6 it actually is but it's very old either way
     let firmware_version = identity.version.unwrap_or_else(|| "v1.6".into());
 
+    // Figure out where the firmware and metadata cache is
+    let cache = paths.cache_dir();
+
     // Grab down the metadata index
-    let metadata = download_metadata()?;
+    let metadata = download_metadata(cache)?;
     let firmware = match pick_release(&metadata, &variant, &firmware_version)? {
         Some(firmware) => firmware,
         None => {
@@ -70,8 +73,6 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<(), 
         }
     };
 
-    // Figure out where the firmware cache is
-    let cache = paths.cache_dir();
     // Download the firmware (or extract it from the cache)
     let elf_file = download_firmware(firmware_variant, cache)?;
 
