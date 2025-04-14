@@ -40,6 +40,10 @@ pub fn download_metadata(cache: &Path) -> Result<Metadata, Error>
 	if response.status() == StatusCode::OK {
 		let mut metadata_file = File::create(metadata_file_name.as_path())?;
 		response.copy_to(&mut metadata_file)?;
+	// If the response was anything other than 200 or 304
+	} else if response.status() != StatusCode::NOT_MODIFIED {
+		progress.finish();
+		return Err(ErrorKind::ReleaseMetadataInvalid.error());
 	}
 	// Finish the progress spinner so the user sees the download finished
     progress.finish();
