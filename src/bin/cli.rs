@@ -2,9 +2,6 @@
 // SPDX-FileCopyrightText: 2022-2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
-#![cfg_attr(feature = "backtrace", feature(backtrace))]
-#[cfg(feature = "backtrace")]
-use std::backtrace::BacktraceStatus;
 
 use std::str::FromStr;
 
@@ -314,7 +311,7 @@ fn main()
         }
     };
 
-    let res = match subcommand {
+    match subcommand {
         "info" => info_command(subcommand_matches),
         "flash" => flash(subcommand_matches),
         "debug" => match subcommand_matches.subcommand().unwrap() {
@@ -324,23 +321,6 @@ fn main()
         "releases" => display_releases(&paths),
         "switch" => bmputil::switcher::switch_firmware(subcommand_matches, &paths),
         &_ => unimplemented!(),
-    };
+    }.unwrap();
 
-    // Unfortunately, we have to do the printing ourselves, as we need to print a note
-    // in the event that backtraces are supported but not enabled.
-    if let Err(e) = res {
-        println!("Error: {}", e);
-        #[cfg(feature = "backtrace")]
-        {
-            if e.backtrace.status() == BacktraceStatus::Disabled {
-                println!("note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace.");
-            }
-        }
-
-        if cfg!(not(feature = "backtrace")) {
-            println!("note: recompile with nightly toolchain and run with `RUST_BACKTRACE=1` environment variable to display a backtrace.");
-        }
-
-        std::process::exit(1);
-    }
 }

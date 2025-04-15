@@ -4,18 +4,13 @@ description = "Black Magic Probe Firmware Manager"
 version = "0.1.3"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/blackmagic-debug/bmputil"
-edition = "2021"
+edition = "2024"
 default-run = "cli"
 
 [features]
-# Enable backtraces for errors. Requires nightly toolchain.
-# Automatically enabled if detect-backtrace feature is enabled (default).
-backtrace = []
-# Autoamtically detect if backtrace feature should be enabled by detecting the channel we're being compiled on.
-detect-backtrace = []
 # Automatically build libusb and statically link it instead of using system libusb.
 vendored = ["rusb/vendored"]
-default = ["detect-backtrace", "vendored"]
+default = ["vendored"]
 
 [dependencies]
 anstyle = "1.0"
