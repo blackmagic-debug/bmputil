@@ -14,6 +14,8 @@ use log::{info, error};
 use bmputil::bmp::{BmpDevice, BmpMatcher};
 use bmputil::error::Error;
 use bmputil::metadata::download_metadata;
+#[cfg(windows)]
+use bmputil::windows;
 
 fn detach_command(matches: &ArgMatches) -> Result<(), Error>
 {

@@ -64,7 +64,7 @@ const STDOUT_FILENO: c_int = 1;
 const STDERR_FILENO: c_int = 2;
 
 
-extern "C"
+unsafe extern "C"
 {
     /// https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/open-osfhandle?view=msvc-170
     pub fn _open_osfhandle(osfhandle: intptr_t, flags: c_int) -> c_int;
