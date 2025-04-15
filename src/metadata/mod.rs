@@ -1,6 +1,6 @@
 pub mod structs;
 
-use std::fs::File;
+use std::fs::{create_dir_all, File};
 use std::io;
 use std::path::Path;
 use std::time::Duration;
@@ -38,6 +38,7 @@ pub fn download_metadata(cache: &Path) -> Result<Metadata, Error>
 	let mut response = request.send()?;
 	// See if the response was good - if it was, put the result into the cache
 	if response.status() == StatusCode::OK {
+		create_dir_all(cache)?;
 		let mut metadata_file = File::create(metadata_file_name.as_path())?;
 		response.copy_to(&mut metadata_file)?;
 	// If the response was anything other than 200 or 304
