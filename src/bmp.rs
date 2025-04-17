@@ -20,7 +20,6 @@ use nusb::descriptors::Descriptor;
 use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
-use crate::S;
 use crate::error::{Error, ErrorKind, ErrorSource, ResErrorKind};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
@@ -203,7 +202,7 @@ impl BmpDevice
                 Duration::from_secs(2),
             )
             .map_err(
-                |e| ErrorKind::DeviceSeemsInvalid(S!("no product string descriptor")).error_from(e)
+                |e| ErrorKind::DeviceSeemsInvalid("no product string descriptor".into()).error_from(e)
             )
     }
 
@@ -285,8 +284,7 @@ impl BmpDevice
 
         let dfu_func_desc = DfuFunctionalDescriptor::copy_from_bytes(dfu_func_desc_bytes)
             .map_err(|source| {
-                ErrorKind::DeviceSeemsInvalid(String::from("DFU functional descriptor"))
-                    .error_from(source)
+                ErrorKind::DeviceSeemsInvalid("DFU functional descriptor".into()).error_from(source)
             })?;
 
         Ok((dfu_interface_descriptor.interface_number(), dfu_func_desc))
@@ -575,7 +573,7 @@ impl Display for BmpDevice
                 // from the write!() call below, not internal errors.
                 // https://doc.rust-lang.org/stable/std/fmt/index.html#formatting-traits.
                 error!("Error formatting BlackMagicProbeDevice: {}", e);
-                S!("Unknown Black Magic Probe (error occurred fetching device details)")
+                "Unknown Black Magic Probe (error occurred fetching device details)".into()
             }
         };
 
@@ -655,7 +653,10 @@ impl FirmwareType
 
         let vector_table = Armv7mVectorTable::from_bytes(buffer);
         let reset_vector = vector_table.reset_vector()
-            .map_err(|e| ErrorKind::InvalidFirmware(Some(S!("vector table too short"))).error_from(e))?;
+            .map_err(
+                |e| ErrorKind::InvalidFirmware(Some("vector table too short".into()))
+                    .error_from(e)
+            )?;
 
         debug!("Detected reset vector in firmware file: 0x{:08x}", reset_vector);
 
