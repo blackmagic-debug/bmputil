@@ -240,6 +240,8 @@ pub struct PortId
     path: PathBuf,
     #[cfg(target_os = "windows")]
     port_number: u32,
+    #[cfg(target_os = "macos")]
+    location: u32,
 }
 
 impl PortId
@@ -252,6 +254,8 @@ impl PortId
             path: device.sysfs_path().to_path_buf(),
             #[cfg(target_os = "windows")]
             port_number: device.port_number(),
+            #[cfg(target_os = "macos")]
+            location: device.location_id(),
         }
     }
 }
@@ -270,6 +274,13 @@ impl PartialEq for PortId
     {
         return self.bus_number == other.bus_number &&
             self.port_number == other.port_number
+    }
+
+    #[cfg(target_os = "macos")]
+    fn eq(&self, other: &Self) -> bool
+    {
+        return self.bus_number == other.bus_number &&
+            self.location == other.location
     }
 }
 
@@ -294,5 +305,11 @@ impl Display for PortId
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
         write!(f, "{}-{}", self.bus_number, self.port_number)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}-{}", self.bus_number, self.location)
     }
 }
