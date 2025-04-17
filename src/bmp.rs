@@ -1,10 +1,11 @@
+use std::fmt::Debug;
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: 2022-2023 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 use std::mem;
 use std::thread;
 use std::io::Read;
-use std::cell::{RefCell, Ref, RefMut};
+use std::cell::{RefCell, Ref};
 use std::time::{Duration, Instant};
 use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
@@ -12,27 +13,29 @@ use std::array::TryFromSliceError;
 use clap::ArgMatches;
 use dfu_core::DfuIo;
 use dfu_core::DfuProtocol;
-use dfu_core::sync::DfuSync;
 use log::{trace, debug, info, warn, error};
-use rusb::{UsbContext, Direction, RequestType, Recipient};
-use dfu_libusb::{DfuLibusb, Error as DfuLibusbError};
+use nusb::{list_devices, Device, DeviceInfo, Interface};
+use nusb::transfer::{Control, ControlType, Recipient};
+use nusb::descriptors::Descriptor;
+use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
-use crate::{libusb_cannot_fail, S};
+use crate::S;
 use crate::error::{Error, ErrorKind, ErrorSource, ResErrorKind};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
 
-type UsbDevice = rusb::Device<rusb::Context>;
-type UsbHandle = rusb::DeviceHandle<rusb::Context>;
-
-
 /// Semantically represents a Black Magic Probe USB device.
-#[derive(Debug, PartialEq, Eq)]
 pub struct BmpDevice
 {
-    device: RefCell<Option<UsbDevice>>,
-    handle: RefCell<Option<UsbHandle>>,
+    device_info: Option<DeviceInfo>,
+    device: Option<Device>,
+
+    /// Device descriptor details - string descriptor numbers for various information
+    product_string_idx: u8,
+    serial_string_idx: u8,
+    language: u16,
+    interface: Option<Interface>,
 
     /// The operating mode (application or DFU) the BMP is currently in.
     mode: DfuOperatingMode,
@@ -49,66 +52,100 @@ pub struct BmpDevice
 
 impl BmpDevice
 {
-    pub fn from_usb_device(device: UsbDevice) -> Result<Self, Error>
+    pub fn from_usb_device(device_info: DeviceInfo) -> Result<Self, Error>
     {
-        let desc = device.device_descriptor()
-            .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
-        let (vid, pid) = (Vid(desc.vendor_id()), Pid(desc.product_id()));
+        // Extract the VID:PID for the device and make sure it's valid
+        let vid = Vid(device_info.vendor_id());
+        let pid = Pid(device_info.product_id());
         let (platform, mode) = BmpPlatform::from_vid_pid(vid, pid).ok_or_else(|| {
             warn!("Device passed to BmpDevice::from_usb_device() does not seem to be a BMP device!");
             warn!("The logic for finding this device is probably incorrect!");
             ErrorKind::DeviceNotFound.error()
         })?;
 
-        let handle = device.open()?;
+        // Try to open the device for use
+        let device = device_info.open()?;
 
+        // Extract the device descriptor and pull the string descriptor IDs for our use
+        let device_desc = device.get_descriptor(
+            1, // Device descriptor
+            0,
+            0,
+            Duration::from_secs(2)
+        )?;
+        let device_desc = match Descriptor::new(device_desc.as_slice()) {
+            None => return Err(
+                ErrorKind::DeviceSeemsInvalid("no usable device descriptor".into()).error()
+            ),
+            Some(descriptor) => descriptor,
+        };
+
+        // Now see what languages are supported
+        let mut languages =
+            device.get_string_descriptor_supported_languages(Duration::from_secs(2))?;
+
+        // Try to get the first one
+        let language = match languages.nth(0) {
+            Some(language) => language,
+            None => return Err(
+                ErrorKind::DeviceSeemsInvalid("no string descriptor languages".into()).error()
+            )
+        };
+
+        // Loop through the interfaces in this configuraiton and try to find the DFU interface
+        let interface = device.active_configuration()?
+            .interfaces()
+            // For each of the possible alt modes this interface has
+            .find(|interface|
+                interface.alt_settings()
+                    // See if the alt mode has a DFU interface defined
+                    .filter(|alt_mode|
+                        InterfaceClass(alt_mode.class()) == InterfaceClass::APPLICATION_SPECIFIC &&
+                        InterfaceSubClass(alt_mode.subclass()) == InterfaceSubClass::DFU
+                    )
+                    // If there were any identified, this is a DFU interface
+                    .count() > 0
+            )
+            // Take the remaining interface (if any) and turn it into an Interface
+            .map(|interface| device.claim_interface(interface.interface_number()))
+            .ok_or_else(|| ErrorKind::DeviceSeemsInvalid("could not find DFU interface".into()).error())??;
 
         Ok(Self {
-            device: RefCell::new(Some(device)),
+            device_info: Some(device_info),
+            device: Some(device),
+            product_string_idx: device_desc[15],
+            serial_string_idx: device_desc[16],
+            interface: Some(interface),
+            language,
             mode,
             platform,
-            handle: RefCell::new(Some(handle)),
             serial: RefCell::new(None),
             port: RefCell::new(None),
         })
     }
 
-    /// Get the [`rusb::Device<rusb::Context>`] associated with the connected Black Magic Probe.
-    #[allow(dead_code)]
-    pub fn device(&self) -> Ref<UsbDevice>
+    /// Get the [`nusb::DeviceInfo`] associated with the connected Black Magic Probe.
+    pub fn device_info(&self) -> &DeviceInfo
     {
-        let dev = self.device.borrow();
-        Ref::map(dev, |d| d.as_ref().expect("Unreachable: self.device is None"))
+        self.device_info.as_ref().expect("Unreachable: self.device_info is None")
     }
 
     /// Violate struct invariants if you want. I'm not the boss of you.
-    #[allow(dead_code)]
-    pub unsafe fn device_mut(&mut self) -> RefMut<UsbDevice>
+    pub unsafe fn device_info_mut(&mut self) -> &mut DeviceInfo
     {
-        let dev = self.device.borrow_mut();
-        RefMut::map(dev, |d| d.as_mut().expect("Unreachable: self.device is None"))
+        self.device_info.as_mut().expect("Unreachable: self.device_info is None")
     }
 
-    /// Get the [`rusb::DeviceHandle<rusb::Context>`] associated with the connected Black Magic Probe.
-    #[allow(dead_code)]
-    pub fn handle(&self) -> Ref<UsbHandle>
+    /// Get the [`nusb::Device`] associated with the connected Black Magic Probe.
+    pub fn device(&self) -> &Device
     {
-        let handle = self.handle.borrow();
-        Ref::map(handle, |h| h.as_ref().expect("Unreachable: self.handle is None"))
+        self.device.as_ref().expect("Unreachable: self.device is None")
     }
 
     /// Violate struct invariants if you want. I'm not the boss of you.
-    #[allow(dead_code)]
-    pub unsafe fn handle_mut(&mut self) -> RefMut<UsbHandle>
+    pub unsafe fn device_mut(&mut self) -> &mut Device
     {
-        let handle = self.handle.borrow_mut();
-        RefMut::map(handle, |h| h.as_mut().expect("Unreachable: self.handle is None"))
-    }
-
-    /// The safe but internal version of [handle_mut].
-    fn _handle_mut(&mut self) -> RefMut<UsbHandle>
-    {
-        unsafe { self.handle_mut() }
+        self.device.as_mut().expect("Unreachable: self.device is None")
     }
 
     pub fn operating_mode(&self) -> DfuOperatingMode
@@ -136,22 +173,13 @@ impl BmpDevice
         // self.serial as mutable later.
         drop(serial);
 
-        let languages = self.handle().read_languages(Duration::from_secs(2))?;
-        if languages.is_empty() {
-            return Err(
-                ErrorKind::DeviceSeemsInvalid(String::from("no string descriptor languages"))
-                    .error()
-            );
-        }
-
-        let language = languages.first().unwrap(); // Okay as we proved len > 0.
-
+        // Read out the serial string descriptor
         let serial = self
-            .handle()
-            .read_serial_number_string(
-                *language,
-                &self.device().device_descriptor().unwrap(),
-                Duration::from_secs(2),
+            .device()
+            .get_string_descriptor(
+                self.serial_string_idx,
+                self.language,
+                Duration::from_secs(2)
             )?;
 
         // Finally, now that we have the serial number, cache it...
@@ -167,23 +195,11 @@ impl BmpDevice
     /// which kind of BMD-running thing we have and what version it runs
     pub fn firmware_identity(&self) -> Result<String, Error>
     {
-        let handle = self.handle();
-        let mut languages = handle
-            .read_languages(Duration::from_secs(2))
-            .map_err(|e| Error::from(e).with_ctx("reading supported string descriptor langauges"))?;
-
-        let first_lang = languages.pop()
-            .ok_or_else(|| ErrorKind::DeviceSeemsInvalid(S!("no supported string descriptor languages")).error())?;
-
-        let device_descriptor = &self
+        self
             .device()
-            .device_descriptor()
-            .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
-
-        handle
-            .read_product_string(
-                first_lang,
-                device_descriptor,
+            .get_string_descriptor(
+                self.product_string_idx,
+                self.language,
                 Duration::from_secs(2),
             )
             .map_err(
@@ -201,16 +217,8 @@ impl BmpDevice
             return port.to_string();
         }
 
-        let bus = self.device().bus_number();
-        let path = self
-            .device()
-            .port_numbers()
-            .expect("unreachable: rusb always provides a properly sized array to libusb_get_port_numbers()")
-            .into_iter()
-            .map(|v| v.to_string())
-            .collect::<Vec<String>>()
-            .as_slice()
-            .join(".");
+        let bus = self.device_info().bus_number();
+        let path = self.device_info().device_address();
 
         let port = format!("{}-{}", bus, path);
         let ret = port.clone();
@@ -241,54 +249,30 @@ impl BmpDevice
     /// available from libusb's device structures.
     pub fn dfu_descriptors(&self) -> Result<(u8, DfuFunctionalDescriptor), Error>
     {
-        let configuration = match self.device().active_config_descriptor() {
-            Ok(d) => d,
-            Err(rusb::Error::NotFound) => {
-                // In the unlikely even that the OS reports the device as unconfigured
-                // (possibly because it was only just connected and is still enumerating?)
-                // try instead to simply get the first configuration, and hope that the
-                // device is configured by the time we try to send requests to it.
-                // I'm not actually sure this case is even possibly on any OS, but might
-                // as well check.
-
-                warn!("OS reports Black Magic Probe device is unconfigured!");
-                warn!("Attempting to continue anyway, in case the device is still in the process of enumerating.");
-
-                // USB configurations are 1-indexed, as 0 is considered
-                // to be "unconfigured".
-                match self.device().config_descriptor(1) {
-                    Ok(d) => d,
-                    Err(e) => {
-                        return Err(
-                            ErrorKind::DeviceSeemsInvalid(
-                                String::from("no configuration descriptor exists")
-                            ).error_from(e)
-                        );
-                    },
-                }
-            },
-            Err(e) => {
-                return Err(e.into());
-            },
-        };
-
-        let dfu_interface_descriptor = configuration
-            .interfaces()
-            .map(|interface| {
-                interface
-                .descriptors()
-                .next()
-                .unwrap() // Unwrap fine as we've already established that there is at least one interface.
-            })
-            .find(|desc| {
-                desc.class_code() == InterfaceClass::APPLICATION_SPECIFIC.0 &&
-                    desc.sub_class_code() == InterfaceSubClass::DFU.0
-
-            })
-            .ok_or_else(|| ErrorKind::DeviceSeemsInvalid(String::from("no DFU interfaces")).error())?;
+        // Loop through the interfaces in this configuraiton and try to find the DFU interface
+        let interface = self.device().active_configuration()?
+        .interfaces()
+        // For each of the possible alt modes this interface has
+        .find(|interface|
+            interface.alt_settings()
+                // See if the alt mode has a DFU interface defined
+                .filter(|alt_mode|
+                    InterfaceClass(alt_mode.class()) == InterfaceClass::APPLICATION_SPECIFIC &&
+                    InterfaceSubClass(alt_mode.subclass()) == InterfaceSubClass::DFU
+                )
+                // If there were any identified, this is a DFU interface
+                .count() > 0
+        )
+        .ok_or_else(|| ErrorKind::DeviceSeemsInvalid("could not find DFU interface".into()).error())?;
+        // Extract the first alt-mode for its extra descriptors
+        let dfu_interface_descriptor = interface
+            .alt_settings().nth(0)
+            .ok_or_else(|| ErrorKind::DeviceSeemsInvalid("no DFU interfaces".into()).error())?;
 
         // Get the data for all the "extra" descriptors that follow the interface descriptor.
-        let extra_descriptors: Vec<_> = GenericDescriptorRef::multiple_from_bytes(dfu_interface_descriptor.extra());
+        let extra_descriptors: Vec<_> = GenericDescriptorRef::multiple_from_bytes(
+            dfu_interface_descriptor.descriptors().as_bytes()
+        );
 
         // Iterate through all the "extra" descriptors to find the DFU functional descriptor.
         let dfu_func_desc_bytes: &[u8; DfuFunctionalDescriptor::LENGTH as usize] = extra_descriptors
@@ -313,37 +297,32 @@ impl BmpDevice
     {
         debug!("Attempting to leave DFU mode...");
         let (iface_number, _func_desc) = self.dfu_descriptors()?;
-        self._handle_mut().claim_interface(iface_number)?;
-
-        let request_type = rusb::request_type(
-            Direction::Out,
-            RequestType::Class,
-            Recipient::Interface,
-        );
 
         // Perform the zero-length DFU_DNLOAD request.
-        let _response = self.handle().write_control(
-            request_type, // bmRequestType
-            DfuRequest::Dnload as u8, // bRequest
-            0, // wValue
-            0, // wIndex
-            &[], // data
+        let request = Control {
+            control_type: ControlType::Class,
+            recipient: Recipient::Interface,
+            request: DfuRequest::Dnload as u8,
+            value: 0,
+            index: 0,
+        };
+        let _response = self.interface.as_ref().unwrap().control_out_blocking(
+            request,
+            &[],
             Duration::from_secs(2),
         )?;
 
         // Then perform a DFU_GETSTATUS request to complete the leave "request".
-        let request_type = rusb::request_type(
-            Direction::In,
-            RequestType::Class,
-            Recipient::Interface,
-        );
-
+        let request = Control {
+            control_type: ControlType::Class,
+            recipient: Recipient::Interface,
+            request: DfuRequest::GetStatus as u8,
+            value: 0,
+            index: iface_number as u16,
+        };
         let mut buf: [u8; 6] = [0; 6];
-        let status = self.handle().read_control(
-            request_type, // bmRequestType
-            DfuRequest::GetStatus as u8, // bRequest
-            0, // wValue
-            iface_number as u16, // wIndex
+        let status = self.interface.as_ref().unwrap().control_in_blocking(
+            request,
             &mut buf,
             Duration::from_secs(2),
         )?;
@@ -351,13 +330,7 @@ impl BmpDevice
         trace!("Device status after zero-length DNLOAD is 0x{:02x}", status);
         info!("DFU_GETSTATUS request completed. Device should now re-enumerate into runtime mode.");
 
-        match self._handle_mut().release_interface(iface_number) {
-            // Ignore if the device has already disconnected.
-            Err(rusb::Error::NoDevice) => Ok(()),
-            other => other,
-        }?;
-
-
+        self.interface = None;
         Ok(())
     }
 
@@ -365,34 +338,27 @@ impl BmpDevice
     fn enter_dfu_mode(&mut self) -> Result<(), Error>
     {
         let (iface_number, func_desc) = self.dfu_descriptors()?;
-        self._handle_mut().claim_interface(iface_number)?;
 
-        let request_type = rusb::request_type(
-            Direction::Out,
-            RequestType::Class,
-            Recipient::Interface,
-        );
         let timeout_ms = func_desc.wDetachTimeOut;
+        let request = Control {
+            control_type: ControlType::Class,
+            recipient: Recipient::Interface,
+            request: DfuRequest::Detach as u8,
+            value: timeout_ms,
+            index: iface_number as u16,
+        };
 
-        let _response = self.handle().write_control(
-            request_type, // bmpRequestType
-            DfuRequest::Detach as u8, // bRequest
-            timeout_ms, // wValue
-            iface_number as u16, // wIndex
+        let _response = self.interface.as_ref().unwrap().control_out_blocking(
+            request,
             &[], // buffer
-            Duration::from_secs(1), // timeout for libusb
+            Duration::from_secs(1), // timeout for the request
         )
         .map_err(Error::from)
         .map_err(|e| e.with_ctx("sending control request"))?;
 
         info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
-        match self._handle_mut().release_interface(iface_number) {
-            // Ignore if the device has already disconnected.
-            Err(rusb::Error::NoDevice) => Ok(()),
-            other => other,
-        }?;
-
+        self.interface = None;
         Ok(())
     }
 
@@ -405,16 +371,10 @@ impl BmpDevice
     pub unsafe fn request_detach(&mut self) -> Result<(), Error>
     {
         use DfuOperatingMode::*;
-        let res = match self.mode {
+        match self.mode {
             Runtime => self.enter_dfu_mode(),
             FirmwareUpgrade => self.leave_dfu_mode(),
-        };
-        match res {
-            Ok(()) => (),
-            Err(e) => return Err(e),
-        };
-
-        Ok(())
+        }
     }
 
     /// Requests the Black Magic Probe to detach, and re-initializes this struct with the new
@@ -429,9 +389,8 @@ impl BmpDevice
         } else {
             // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
             // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
-            use crate::error::ErrorSource::Libusb;
             let res = unsafe { self.request_detach() };
-            if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
+            if let Err(e @ Error { kind: ErrorKind::DeviceDisconnectDuringOperation, .. }) = res {
                 warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
             } else {
                 res?;
@@ -439,8 +398,8 @@ impl BmpDevice
         }
 
         // Now drop the device so libusb doesn't re-grab the same thing.
+        drop(self.device_info.take());
         drop(self.device.take());
-        drop(self.handle.take());
 
         // TODO: make this sleep() timeout configurable?
         thread::sleep(Duration::from_millis(500));
@@ -466,9 +425,8 @@ impl BmpDevice
         } else {
             // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
             // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
-            use crate::error::ErrorSource::Libusb;
             let res = unsafe { self.request_detach() };
-            if let Err(e @ Error { kind: ErrorKind::External(Libusb(rusb::Error::Pipe)), .. }) = res {
+            if let Err(e @ Error { kind: ErrorKind::DeviceDisconnectDuringOperation, .. }) = res {
                 warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
             } else {
                 res?;
@@ -478,16 +436,15 @@ impl BmpDevice
         Ok(())
     }
 
-    fn try_download<'r, R, C>(&mut self, firmware: &'r R, length: u32, dfu_dev: &mut dfu_libusb::Dfu<C>) ->
+    fn try_download<'r, R>(&mut self, firmware: &'r R, length: u32, dfu_iface: &mut dfu_nusb::DfuSync) ->
         Result<(), Error>
     where
         &'r R: Read,
         R: ?Sized,
-        C: UsbContext,
     {
-        match dfu_dev.download(firmware, length) {
-            Ok(_) => if dfu_dev.will_detach() {
-            match dfu_dev.detach() {
+        match dfu_iface.download(firmware, length) {
+            Ok(_) => if dfu_iface.will_detach() {
+            match dfu_iface.detach() {
                     Err(source) => Err(ErrorKind::DeviceReboot.error_from(source)),
                     _ => Ok(()),
                 }
@@ -495,7 +452,7 @@ impl BmpDevice
                 Ok(())
             },
             Err(source) => Err(match source {
-                dfu_libusb::Error::LibUsb(rusb::Error::NoDevice) => {
+                dfu_nusb::Error::Transfer(nusb::transfer::TransferError::Disconnected) => {
                     error!("Black Magic Probe device disconnected during the flash process!");
                     warn!(
                         "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
@@ -524,14 +481,13 @@ impl BmpDevice
 
         let load_address = self.platform.load_address(firmware_type);
 
-        let io = DfuLibusb::from_usb_device(
-            self.device().clone(),
-            self.handle.take().expect("Must have a valid device handle"),
+        let dfu_dev = DfuNusb::open(
+            self.device.take().expect("Must have a valid device handle"),
+            self.interface.as_ref().unwrap().clone(),
             0,
-            0,
-        )?.into_inner();
+        )?;
 
-        match io.protocol() {
+        match dfu_dev.protocol() {
             DfuProtocol::Dfuse {
                 address: _,
                 memory_layout: _
@@ -539,38 +495,38 @@ impl BmpDevice
             _ => {},
         }
 
-        let mut dfu_dev = DfuSync::new(io);
-        dfu_dev
+        let mut dfu_iface = dfu_dev.into_sync_dfu();
+
+        dfu_iface
             .with_progress(progress)
             .override_address(load_address);
 
         debug!("Load address: 0x{:08x}", load_address);
         info!("Performing flash...");
 
-        let res = self.try_download(firmware, length, &mut dfu_dev);
+        let res = self.try_download(firmware, length, &mut dfu_iface);
 
-        if let Err(ErrorKind::External(ErrorSource::DfuLibusb(DfuLibusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))))) = res.err_kind() {
+        if let Err(ErrorKind::External(ErrorSource::DfuNusb(DfuNusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))))) = res.err_kind() {
 
             warn!("Device reported an error when trying to flash; going to clear status and try one more time...");
 
             thread::sleep(Duration::from_millis(250));
 
-            let request_type = rusb::request_type(
-                Direction::Out,
-                RequestType::Class,
-                Recipient::Interface,
-            );
+            let request = Control {
+                control_type: ControlType::Class,
+                recipient: Recipient::Interface,
+                request: DfuRequest::ClrStatus as u8,
+                value: 0,
+                index: 0, // iface number
+            };
 
-            self.handle().write_control(
-                request_type,
-                DfuRequest::ClrStatus as u8,
-                0,
-                0, // iface number
+            self.interface.as_ref().unwrap().control_out_blocking(
+                request,
                 &[],
                 Duration::from_secs(2),
             )?;
 
-            self.try_download(firmware, length, &mut dfu_dev)?;
+            self.try_download(firmware, length, &mut dfu_iface)?;
         } else {
             res?;
         }
@@ -582,14 +538,29 @@ impl BmpDevice
 
 
     /// Consume the structure and retrieve its parts.
-    #[allow(dead_code)]
-    pub fn into_inner_parts(self) -> (UsbDevice, UsbHandle, DfuOperatingMode)
+    pub fn into_inner_parts(self) -> (DeviceInfo, Device, DfuOperatingMode)
     {
         (
-            self.device.into_inner().expect("Unreachable: self.device is None"),
-            self.handle.into_inner().expect("Unreachable: self.handle is None"),
+            self.device_info.expect("Unreachable: self.device_info is None"),
+            self.device.expect("Unreachable: self.device is None"),
             self.mode
         )
+    }
+}
+
+impl Debug for BmpDevice
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result
+    {
+        writeln!(f, "BmpDevice {{")?;
+        writeln!(f, "    {:?}", self.device_info)?;
+        writeln!(f, "    {:?}", self.mode)?;
+        writeln!(f, "    {:?}", self.platform)?;
+        writeln!(f, "    {:?}", self.serial)?;
+        writeln!(f, "    {:?}", self.port)?;
+        writeln!(f, "}}")?;
+
+        Ok(())
     }
 }
 
@@ -851,15 +822,7 @@ impl BmpMatcher
             errors: Vec::new(),
         };
 
-        let context = match rusb::Context::new() {
-            Ok(c) => c,
-            Err(e) => {
-                results.errors.push(e.into());
-                return results;
-            },
-        };
-
-        let devices = match context.devices() {
+        let devices = match list_devices() {
             Ok(d) => d,
             Err(e) => {
                 results.errors.push(e.into());
@@ -869,65 +832,29 @@ impl BmpMatcher
 
         // Filter out devices that don't match the Black Magic Probe's vid/pid in the first place.
         let devices = devices
-            .iter()
             .filter(|dev| {
-                let desc = dev.device_descriptor()
-                    .expect(libusb_cannot_fail!("libusb_get_device_descriptor()"));
-
-                let (vid, pid) = (desc.vendor_id(), desc.product_id());
+                let vid = dev.vendor_id();
+                let pid = dev.product_id();
                 BmpPlatform::from_vid_pid(Vid(vid), Pid(pid)).is_some()
             });
 
-        for (index, dev) in devices.enumerate() {
-
+        for (index, device_info) in devices.enumerate() {
             // Note: the control flow in this function is kind of weird, due to the lack of early returns
             // (since we're returning all successes and errors).
 
-            // If we're trying to match against a serial number, we need to open the device.
-            let handle = if self.serial.is_some() {
-                match dev.open() {
-                    Ok(h) => Some(h),
-                    Err(e) => {
-                        results.errors.push(e.into());
-                        continue;
-                    },
-                }
-            } else {
-                None
-            };
-
-            // If we opened the device and now have that handle, try to get the device's first language, which we need
-            // to request the string descriptor that contains the serial number.
-            let lang = if let Some(handle) = handle.as_ref() {
-                match handle.read_languages(Duration::from_secs(2)) {
-                    Ok(mut l) => Some(l.remove(0)),
-                    Err(e) => {
-                        results.errors.push(e.into());
-                        continue;
+            // If we're trying to match against a serial number
+            let serial_matches = match &self.serial {
+                Some(serial) => {
+                    // Try to extract the serial number for this device
+                    match device_info.serial_number() {
+                        // If they match, we're done here - happy days
+                        Some(s) => s == serial.as_str(),
+                        // Otherwise, mark teh result false
+                        None => false
                     }
                 }
-            } else {
-                None
-            };
-
-            // And finally, if we have successfully read that language, read and match the serial number.
-            let serial_matches = if let Some(lang) = lang {
-                let handle = handle.unwrap();
-                let desc = dev.device_descriptor()
-                    .expect(libusb_cannot_fail!("libusb_get_device_descriptor"));
-                match handle.read_serial_number_string(lang, &desc, Duration::from_secs(2)) {
-                    Ok(s) => Some(s) == self.serial,
-                    Err(e) => {
-                        results.errors.push(e.into());
-                        continue;
-                    },
-                }
-            } else if self.serial.is_none() {
                 // If no serial number was specified, treat as matching.
-                true
-            } else {
-                // If we can't get the serial number because of previous errors, treat as non-matching.
-                false
+                None => true
             };
 
             // Consider the index to match if it equals that of the device or if one was not specified at all.
@@ -935,26 +862,16 @@ impl BmpMatcher
 
             // Consider the port to match if it equals that of the device or if one was not specified at all.
             let port_matches = self.port.as_ref().map_or(true, |p| {
-                let port_chain = dev
-                    .port_numbers()
-                    // Unwrap should be safe as the only possible error from libusb_get_port_numbers()
-                    // is LIBUSB_ERROR_OVERFLOW, and only if the buffer given to it is too small,
-                    // but rusb g ives it a buffer big enough for the maximum hub chain allowed by the spec.
-                    .expect("Could not get port numbers! Hub depth > 7 shouldn't be possible!")
-                    .into_iter()
-                    .map(|p| p.to_string())
-                    .collect::<Vec<String>>()
-                    .as_slice()
-                    .join(".");
+                let port_chain = device_info.device_address();
 
-                let port_path = format!("{}-{}", dev.bus_number(), port_chain);
+                let port_path = format!("{}-{}", device_info.bus_number(), port_chain);
 
                 p == &port_path
             });
 
             // Finally, check the provided matchers.
             if index_matches && port_matches && serial_matches {
-                match BmpDevice::from_usb_device(dev) {
+                match BmpDevice::from_usb_device(device_info) {
                     Ok(bmpdev) => results.found.push(bmpdev),
                     Err(e) => {
                         results.errors.push(e);
@@ -962,7 +879,7 @@ impl BmpMatcher
                     },
                 };
             } else {
-                results.filtered_out.push(dev);
+                results.filtered_out.push(device_info);
             }
         }
 
@@ -978,7 +895,7 @@ impl BmpMatcher
 pub struct BmpMatchResults
 {
     pub found: Vec<BmpDevice>,
-    pub filtered_out: Vec<UsbDevice>,
+    pub filtered_out: Vec<DeviceInfo>,
     pub errors: Vec<Error>,
 }
 

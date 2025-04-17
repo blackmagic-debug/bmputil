@@ -14,6 +14,11 @@ use crate::S;
 /// which shows up in a few signatures and structs.
 type BoxedError = Box<dyn StdError + Send + Sync>;
 
+/// A unique type to hold Nusb error state
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct NusbError(#[from] nusb::Error);
+
 /// Kinds of errors for [Error]. Use [ErrorKind::error] and [ErrorKind::error_from] to generate the
 /// [Error] value for this ErrorKind.
 #[derive(Debug)]
@@ -118,11 +123,14 @@ impl Display for ErrorKind
                     StdIo(e) => {
                         write!(f, "unhandled std::io::Error: {}", e)?;
                     },
-                    Libusb(e) => {
-                        write!(f, "unhandled libusb error: {}", e)?;
+                    Nusb(e) => {
+                        write!(f, "unhandled nusb error: {}", e.0)?;
                     },
-                    DfuLibusb(e) => {
-                        write!(f, "unhandled dfu_libusb error: {}", e)?;
+                    NusbTransfer(e) => {
+                        write!(f, "unhandled nusb transfer error: {}", e)?;
+                    }
+                    DfuNusb(e) => {
+                        write!(f, "unhandled dfu_nusb error: {}", e)?;
                     },
                     DfuCore(e) => {
                         write!(f, "unhandled dfu_core error: {}", e)?;
@@ -226,38 +234,54 @@ impl From<std::io::Error> for Error
     }
 }
 
-impl From<rusb::Error> for Error
+impl From<NusbError> for Error
 {
-    fn from(other: rusb::Error) -> Self
+    fn from(other: NusbError) -> Self
     {
         use ErrorKind::*;
+        External(ErrorSource::Nusb(other)).error()
+    }
+}
+
+impl From<nusb::transfer::TransferError> for Error
+{
+    fn from(other: nusb::transfer::TransferError) -> Self
+    {
+        use ErrorKind::*;
+        use nusb::transfer::TransferError;
+
         match other {
-            rusb::Error::NoDevice => DeviceNotFound.error_from(other),
-            other => External(ErrorSource::Libusb(other)).error()
+            TransferError::Disconnected => DeviceDisconnectDuringOperation.error_from(other),
+            other => External(ErrorSource::NusbTransfer(other)).error(),
         }
     }
 }
 
-impl From<dfu_libusb::Error> for Error
+impl From<nusb::descriptors::ActiveConfigurationError> for Error
 {
-    fn from(other: dfu_libusb::Error) -> Self
+    fn from(other: nusb::descriptors::ActiveConfigurationError) -> Self
     {
         use ErrorKind::*;
-        use dfu_libusb::Error as Source;
+        DeviceSeemsInvalid("could not read active configuration for device".into()).error_from(other)
+    }
+}
+
+impl From<dfu_nusb::Error> for Error
+{
+    fn from(other: dfu_nusb::Error) -> Self
+    {
+        use ErrorKind::*;
+        use dfu_nusb::Error as Source;
         match other {
-            Source::LibUsb(source) => {
-                External(ErrorSource::Libusb(source)).error_from(other)
+            Source::Nusb(source) => {
+                External(ErrorSource::Nusb(NusbError(source))).error()
             },
-            Source::MissingLanguage => {
-                DeviceSeemsInvalid(S!("no string descriptor languages"))
-                    .error_from(other)
-            },
-            Source::InvalidAlt => {
+            Source::AltSettingNotFound => {
                 DeviceSeemsInvalid(S!("DFU interface (alt mode) not found"))
                     .error_from(other)
             },
-            Source::InvalidInterface => {
-                DeviceSeemsInvalid(S!("DFU interface not found"))
+            Source::FunctionalDescriptorNotFound => {
+                DeviceSeemsInvalid(S!("DFU functional descriptor not found"))
                     .error_from(other)
             },
             Source::FunctionalDescriptor(source) => {
@@ -265,7 +289,7 @@ impl From<dfu_libusb::Error> for Error
                     .error_from(source)
             },
             anything_else => {
-                External(ErrorSource::DfuLibusb(anything_else))
+                External(ErrorSource::DfuNusb(anything_else))
                     .error()
             },
         }
@@ -344,10 +368,13 @@ pub enum ErrorSource
     StdIo(#[from] std::io::Error),
 
     #[error(transparent)]
-    Libusb(#[from] rusb::Error),
+    Nusb(#[from] NusbError),
 
     #[error(transparent)]
-    DfuLibusb(#[from] dfu_libusb::Error),
+    NusbTransfer(#[from] nusb::transfer::TransferError),
+
+    #[error(transparent)]
+    DfuNusb(#[from] dfu_nusb::Error),
 
     #[error(transparent)]
     DfuCore(#[from] dfu_core::Error),

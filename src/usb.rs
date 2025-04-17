@@ -225,26 +225,3 @@ impl DfuFunctionalDescriptor
         })
     }
 }
-
-/// The libusb version against which error conditions have been checked from its source code.
-pub(crate) const CHECKED_LIBUSB_VERSION: &str = "1.0.26";
-
-/// libusb has an API function whose documentation state non-zero return codes indicate failure
-/// (and thus the [`rusb`](https://docs.rs/rusb) equivalents for them return `Result<T>`),
-/// but the source code has no possible logic paths for a return code of anything other than zero,
-/// and the documentation states that currently no error is ever returned.
-/// Thus, `.unwrap()` panicking should be unreachable. This macro serves both as in-code
-/// documentation of these cases (as `.unwrap()`s tend to look sus), and as a fallback in case
-/// libusb updates or there is some failure condition that was missed in reviewing libusb's
-/// source code.
-#[macro_export]
-macro_rules! libusb_cannot_fail
-{
-    ($funcname:literal) => {
-        const_format::formatcp!(
-            "As of libusb {}, {} cannot fail. This should be unreachable, unless libusb has updated.",
-            $crate::usb::CHECKED_LIBUSB_VERSION,
-            $funcname,
-        )
-    };
-}
