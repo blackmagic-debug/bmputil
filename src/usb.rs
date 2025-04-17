@@ -2,6 +2,10 @@
 // SPDX-FileCopyrightText: 2022-2023 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 
+use std::fmt::{self, Display};
+use std::path::PathBuf;
+
+use nusb::DeviceInfo;
 use thiserror::Error;
 
 /// Simple newtype struct for some clarity in function arguments and whatnot.
@@ -223,5 +227,54 @@ impl DfuFunctionalDescriptor
             wTransferSize: u16::from_le_bytes(bytes[5..=6].try_into().unwrap()),
             bcdDFUVersion: u16::from_le_bytes(bytes[7..=8].try_into().unwrap()),
         })
+    }
+}
+
+// Abstraction of an arbitrary nusb device's location on the host system
+#[derive(Debug, Eq, Clone)]
+pub struct PortId
+{
+    bus_number: u8,
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    path: PathBuf,
+}
+
+impl PortId
+{
+    pub fn new(device: &DeviceInfo) -> Self
+    {
+        Self {
+            bus_number: device.bus_number(),
+            #[cfg(any(target_os = "linux", target_os = "android"))]
+            path: device.sysfs_path().to_path_buf(),
+        }
+    }
+}
+
+impl PartialEq for PortId
+{
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn eq(&self, other: &Self) -> bool
+    {
+        return self.bus_number == other.bus_number &&
+            self.path == other.path
+    }
+}
+
+impl Display for PortId
+{
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let port = self.path.file_name()
+            .map_or_else(
+                || Ok("Invalid PortId (bad path)".into()),
+                |name| name.to_os_string().into_string()
+            );
+
+        match port {
+            Ok(port) => write!(f, "{}", port),
+            Err(_) => Err(fmt::Error)
+        }
     }
 }

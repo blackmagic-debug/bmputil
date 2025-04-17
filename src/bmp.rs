@@ -21,7 +21,7 @@ use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
 use crate::error::{Error, ErrorKind, ErrorSource, ResErrorKind};
-use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest};
+use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
 
 /// Semantically represents a Black Magic Probe USB device.
@@ -46,7 +46,7 @@ pub struct BmpDevice
     serial: RefCell<Option<String>>,
 
     /// RefCell for interior-mutability-based caching.
-    port: RefCell<Option<String>>,
+    port: PortId,
 }
 
 impl BmpDevice
@@ -109,6 +109,9 @@ impl BmpDevice
             .map(|interface| device.claim_interface(interface.interface_number()))
             .ok_or_else(|| ErrorKind::DeviceSeemsInvalid("could not find DFU interface".into()).error())??;
 
+        // Make the port identification struct before we move device_info
+        let port = PortId::new(&device_info);
+
         Ok(Self {
             device_info: Some(device_info),
             device: Some(device),
@@ -119,7 +122,7 @@ impl BmpDevice
             mode,
             platform,
             serial: RefCell::new(None),
-            port: RefCell::new(None),
+            port: port,
         })
     }
 
@@ -210,20 +213,9 @@ impl BmpDevice
     /// `<bus>-<port>.<subport>.<subport...>`.
     ///
     /// This is theoretically reliable, but is also OS-reported, so it doesn't *have* to be, alas.
-    pub fn port(&self) -> String
+    pub fn port(&self) -> PortId
     {
-        if let Some(port) = self.port.borrow().as_ref() {
-            return port.to_string();
-        }
-
-        let bus = self.device_info().bus_number();
-        let path = self.device_info().device_address();
-
-        let port = format!("{}-{}", bus, path);
-        let ret = port.clone();
-        self.port.replace(Some(port));
-
-        ret
+        self.port.clone()
     }
 
     /// Return a string suitable for display to the user.
@@ -403,7 +395,7 @@ impl BmpDevice
         thread::sleep(Duration::from_millis(500));
 
         // Now try to find the device again on that same port.
-        let dev = wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")?;
+        let dev = wait_for_probe_reboot(port, Duration::from_secs(5), "flash")?;
 
         // If we've made it here, then we have successfully re-found the device.
         // Re-initialize this structure from the new data.
@@ -740,8 +732,9 @@ pub struct BmpMatcher
 {
     index: Option<usize>,
     serial: Option<String>,
-    port: Option<String>,
+    port: Option<PortId>,
 }
+
 impl BmpMatcher
 {
     pub fn new() -> Self
@@ -754,7 +747,7 @@ impl BmpMatcher
         Self::new()
             .index(matches.get_one::<usize>("index").map(|&value| value))
             .serial(matches.get_one::<String>("serial_number").map(|s| s.as_str()))
-            .port(matches.get_one::<String>("port").map(|s| s.as_str()))
+            .port(None)
     }
 
     /// Set the index to match against.
@@ -776,32 +769,28 @@ impl BmpMatcher
 
     /// Set the port path to match against.
     #[must_use]
-    pub fn port<'s, IntoOptStrT>(mut self, port: IntoOptStrT) -> Self
-        where IntoOptStrT: Into<Option<&'s str>>
+    pub fn port(mut self, port: Option<PortId>) -> Self
     {
-        self.port = port.into().map(|s| s.to_string());
+        self.port = port;
         self
     }
 
     /// Get any index previously set with `.index()`.
-    #[allow(dead_code)]
     pub fn get_index(&self) -> Option<usize>
     {
         self.index
     }
 
     /// Get any serial number previously set with `.serial()`.
-    #[allow(dead_code)]
     pub fn get_serial(&self) -> Option<&str>
     {
         self.serial.as_deref()
     }
 
     /// Get any port path previously set with `.port()`.
-    #[allow(dead_code)]
-    pub fn get_port(&self) -> Option<&str>
+    pub fn get_port(&self) -> Option<PortId>
     {
-        self.port.as_deref()
+        self.port.clone()
     }
 
     /// Find all connected Black Magic Probe devices that match from the command-line criteria.
@@ -863,11 +852,9 @@ impl BmpMatcher
 
             // Consider the port to match if it equals that of the device or if one was not specified at all.
             let port_matches = self.port.as_ref().map_or(true, |p| {
-                let port_chain = device_info.device_address();
+                let port = PortId::new(&device_info);
 
-                let port_path = format!("{}-{}", device_info.bus_number(), port_chain);
-
-                p == &port_path
+                p == &port
             });
 
             // Finally, check the provided matchers.
@@ -1007,14 +994,14 @@ impl BmpMatchResults
 /// versions, and thus also between application and bootloader mode, so serial number is not a
 /// reliable way to keep track of a single device across USB resets.
 // TODO: test how reliable the port path is on multiple platforms.
-pub fn wait_for_probe_reboot(port: &str, timeout: Duration, operation: &str) -> Result<BmpDevice, Error>
+pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -> Result<BmpDevice, Error>
 {
     let silence_timeout = timeout / 2;
 
     let matcher = BmpMatcher {
         index: None,
         serial: None,
-        port: Some(port.to_string()),
+        port: Some(port),
     };
 
     let start = Instant::now();

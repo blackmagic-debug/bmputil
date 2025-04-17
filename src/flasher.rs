@@ -17,6 +17,7 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
 use crate::elf;
 use crate::error::{Error, ErrorKind};
+use crate::usb::PortId;
 
 pub struct Firmware
 {
@@ -185,9 +186,9 @@ fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>, Error>
     Ok(firmware_data)
 }
 
-fn check_programming(port: &str) -> Result<(), Error>
+fn check_programming(port: PortId) -> Result<(), Error>
 {
-    let dev = bmp::wait_for_probe_reboot(&port, Duration::from_secs(5), "flash")
+    let dev = bmp::wait_for_probe_reboot(port, Duration::from_secs(5), "flash")
         .map_err(|e| {
             error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
             e
@@ -238,5 +239,5 @@ pub fn flash_probe(matches: &ArgMatches, mut device: BmpDevice, file_name: PathB
     drop(device);
     thread::sleep(Duration::from_millis(250));
 
-    check_programming(port.as_str())
+    check_programming(port)
 }
