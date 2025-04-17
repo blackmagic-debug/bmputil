@@ -3,6 +3,7 @@
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 
 use std::fmt::{self, Display};
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use std::path::PathBuf;
 
 use nusb::DeviceInfo;
@@ -237,6 +238,8 @@ pub struct PortId
     bus_number: u8,
     #[cfg(any(target_os = "linux", target_os = "android"))]
     path: PathBuf,
+    #[cfg(target_os = "windows")]
+    port_number: u32,
 }
 
 impl PortId
@@ -247,6 +250,8 @@ impl PortId
             bus_number: device.bus_number(),
             #[cfg(any(target_os = "linux", target_os = "android"))]
             path: device.sysfs_path().to_path_buf(),
+            #[cfg(target_os = "windows")]
+            port_number: device.port_number(),
         }
     }
 }
@@ -258,6 +263,13 @@ impl PartialEq for PortId
     {
         return self.bus_number == other.bus_number &&
             self.path == other.path
+    }
+
+    #[cfg(target_os = "windows")]
+    fn eq(&self, other: &Self) -> bool
+    {
+        return self.bus_number == other.bus_number &&
+            self.port_number == other.port_number
     }
 }
 
@@ -276,5 +288,11 @@ impl Display for PortId
             Ok(port) => write!(f, "{}", port),
             Err(_) => Err(fmt::Error)
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}-{}", self.bus_number, self.port_number)
     }
 }
