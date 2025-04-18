@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-// SPDX-FileCopyrightText: 2022-2023 1BitSquared <info@1bitsquared.com>
+// SPDX-FileCopyrightText: 2022-2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
+// SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 //! This module handles Windows-specific code, mostly the installation of drivers for Black Magic Probe USB interfaces.
 //!
 //! "Installation" is a somewhat overloaded term, in Windows. Behind the scenes this module, using
@@ -33,10 +34,11 @@ use std::iter;
 use std::thread;
 use std::str::FromStr;
 use std::time::Duration;
-use std::io::{Error as IoError, Result as IoResult};
+use std::io::Error as IoError;
 use std::ffi::{OsStr, OsString, CString};
 use std::os::windows::ffi::OsStrExt;
 
+use color_eyre::eyre::Result;
 use libc::{intptr_t, c_int, c_uint, c_long, c_char, FILE};
 use log::{trace, debug, info, warn, error};
 use bstr::ByteSlice;
@@ -172,7 +174,7 @@ pub struct UcrtStdioStreamData
 /// C's printf() on the other hand goes through whatever file descriptor the `stdout` global is set to,
 /// and that is *not* updated when you call AttachConsole(). So, we need to resynchronize the
 /// Microsoft C Runtime's stdio global state with the Windows console subsystem state.
-pub fn restore_cstdio(parent_pid: u32) -> Result<(), IoError>
+pub fn restore_cstdio(parent_pid: u32) -> Result<()>
 {
 
     // First, free whatever console Windows gave us by default, and attach to the parent's console.
@@ -306,7 +308,7 @@ lazy_static! {
 ///
 /// [enumerator]: (https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw)
 /// [HardwareId]: (https://learn.microsoft.com/en-us/windows-hardware/drivers/install/hardware-ids)
-pub fn hwid_bound_to_driver(hardware_id: &str, enumerator: &str) -> IoResult<Vec<String>>
+pub fn hwid_bound_to_driver(hardware_id: &str, enumerator: &str) -> Result<Vec<String>>
 {
     debug!("Checking what drivers device {} under enumerator {} is bound to", hardware_id, enumerator);
 
