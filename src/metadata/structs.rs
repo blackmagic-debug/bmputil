@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
+// SPDX-FileContributor: Writen by Rachel Mant <git@dragonmux.network>
+
 use std::{collections::BTreeMap, path::PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
