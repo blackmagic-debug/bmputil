@@ -7,6 +7,7 @@ use std::fmt::{self, Display};
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use std::path::PathBuf;
 
+use color_eyre::eyre::Result;
 use nusb::DeviceInfo;
 use thiserror::Error;
 

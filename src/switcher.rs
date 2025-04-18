@@ -78,7 +78,7 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
     let elf_file = download_firmware(firmware_variant, cache)?;
 
     // Having done all of that, finally try to Flash the new firmware on the probe
-    Ok(flasher::flash_probe(matches, probe, elf_file)?)
+    flasher::flash_probe(matches, probe, elf_file)
 }
 
 fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>>

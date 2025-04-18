@@ -46,7 +46,7 @@ fn flash(matches: &ArgMatches) -> Result<()>
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
     let dev: BmpDevice = results.pop_single("flash")?;
 
-    Ok(bmputil::flasher::flash_probe(matches, dev, file_name.into())?)
+    bmputil::flasher::flash_probe(matches, dev, file_name.into())
 }
 
 fn display_releases(paths: &ProjectDirs) -> Result<()>

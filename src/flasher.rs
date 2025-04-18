@@ -10,13 +10,14 @@ use std::thread;
 use std::time::Duration;
 
 use clap::ArgMatches;
+use color_eyre::eyre::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, warn};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
 use crate::elf;
-use crate::error::{Error, ErrorKind};
+use crate::error::ErrorKind;
 use crate::usb::PortId;
 
 pub struct Firmware
@@ -28,7 +29,7 @@ pub struct Firmware
 
 impl Firmware
 {
-    pub fn new(matches: &ArgMatches, device: &BmpDevice, firmware_data: Vec<u8>) -> Result<Self, Error>
+    pub fn new(matches: &ArgMatches, device: &BmpDevice, firmware_data: Vec<u8>) -> Result<Self>
     {
         let firmware_length = firmware_data.len();
         let firmware_length = u32::try_from(firmware_length)
@@ -43,7 +44,7 @@ impl Firmware
 
     fn determine_firmware_type(
         matches: &ArgMatches, device: &BmpDevice, firmware_data: &Vec<u8>
-    ) -> Result<FirmwareType, Error>
+    ) -> Result<FirmwareType>
     {
         // Figure out what kind of firmware we're being asked to work with here
         // Using the platform to determine the link address.
@@ -91,7 +92,7 @@ impl Firmware
         Ok(firmware_type)
     }
 
-    pub fn program_firmware(&self, device: &mut BmpDevice) -> Result<(), Error>
+    pub fn program_firmware(&self, device: &mut BmpDevice) -> Result<()>
     {
         // We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
         // so it must be moved into the closure. However, since we need to call .finish() here,
@@ -128,7 +129,7 @@ impl Firmware
                     warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
                     Ok(())
                 } else {
-                    Err(e)
+                    Err(e.into())
                 }
             },
         }
@@ -156,7 +157,7 @@ fn intel_hex_error() -> !
     std::process::exit(1);
 }
 
-fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>, Error>
+fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>>
 {
     let firmware_file = std::fs::File::open(file_name.as_path())
         .map_err(|source| ErrorKind::FirmwareFileIo(Some(file_name)).error_from(source))
@@ -172,7 +173,7 @@ fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>, Error>
     // but also if we don't even have 8 bytes there's _no way_ this is valid firmware.
     if firmware_data.len() < 8 {
         return Err(
-            ErrorKind::InvalidFirmware(Some("less than 8 bytes long".into())).error()
+            ErrorKind::InvalidFirmware(Some("less than 8 bytes long".into())).error().into()
         );
     }
 
@@ -186,7 +187,7 @@ fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>, Error>
     Ok(firmware_data)
 }
 
-fn check_programming(port: PortId) -> Result<(), Error>
+fn check_programming(port: PortId) -> Result<()>
 {
     let dev = bmp::wait_for_probe_reboot(port, Duration::from_secs(5), "flash")
         .map_err(|e| {
@@ -215,7 +216,7 @@ fn check_programming(port: PortId) -> Result<(), Error>
     Ok(())
 }
 
-pub fn flash_probe(matches: &ArgMatches, mut device: BmpDevice, file_name: PathBuf) -> Result<(), Error>
+pub fn flash_probe(matches: &ArgMatches, mut device: BmpDevice, file_name: PathBuf) -> Result<()>
 {
     let firmware_data = read_firmware(file_name)?;
 
