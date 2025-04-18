@@ -8,16 +8,16 @@ use std::str::FromStr;
 use anstyle;
 use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description, crate_name};
 use clap::builder::styling::Styles;
+use color_eyre::eyre::Result;
 use directories::ProjectDirs;
 use log::{info, error};
 
 use bmputil::bmp::{BmpDevice, BmpMatcher};
-use bmputil::error::Error;
 use bmputil::metadata::download_metadata;
 #[cfg(windows)]
 use bmputil::windows;
 
-fn detach_command(matches: &ArgMatches) -> Result<(), Error>
+fn detach_command(matches: &ArgMatches) -> Result<()>
 {
     let matcher = BmpMatcher::from_cli_args(matches);
     let mut results = matcher.find_matching_probes();
@@ -35,7 +35,7 @@ fn detach_command(matches: &ArgMatches) -> Result<(), Error>
     Ok(())
 }
 
-fn flash(matches: &ArgMatches) -> Result<(), Error>
+fn flash(matches: &ArgMatches) -> Result<()>
 {
     let file_name = matches.get_one::<String>("firmware_binary").map(|s| s.as_str())
         .expect("No firmware file was specified!"); // Should be impossible, thanks to clap.
@@ -46,10 +46,10 @@ fn flash(matches: &ArgMatches) -> Result<(), Error>
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
     let dev: BmpDevice = results.pop_single("flash")?;
 
-    bmputil::flasher::flash_probe(matches, dev, file_name.into())
+    Ok(bmputil::flasher::flash_probe(matches, dev, file_name.into())?)
 }
 
-fn display_releases(paths: &ProjectDirs) -> Result<(), Error>
+fn display_releases(paths: &ProjectDirs) -> Result<()>
 {
     // Figure out where the metadata cache is
     let cache = paths.cache_dir();
@@ -83,7 +83,7 @@ fn display_releases(paths: &ProjectDirs) -> Result<(), Error>
     Ok(())
 }
 
-fn info_command(matches: &ArgMatches) -> Result<(), Error>
+fn info_command(matches: &ArgMatches) -> Result<()>
 {
     let matcher = BmpMatcher::from_cli_args(matches);
 
@@ -125,7 +125,7 @@ fn style() -> clap::builder::Styles {
         )
 }
 
-fn main()
+fn main() -> Result<()>
 {
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Warn)
@@ -321,8 +321,7 @@ fn main()
             other => unreachable!("Unhandled subcommand {:?}", other),
         },
         "releases" => display_releases(&paths),
-        "switch" => bmputil::switcher::switch_firmware(subcommand_matches, &paths),
+        "switch" => Ok(bmputil::switcher::switch_firmware(subcommand_matches, &paths)?),
         &_ => unimplemented!(),
-    }.unwrap();
-
+    }
 }
