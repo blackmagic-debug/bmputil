@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use clap::ArgMatches;
 use color_eyre::eyre::{Context, Result};
+use dfu_nusb::Error as DfuNusbError;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, warn};
 use nusb::transfer::TransferError;
@@ -124,9 +125,10 @@ impl Firmware
         progress_bar.finish();
 
         match result {
-            Err(e) => if progress_bar.position() == (self.length as u64) {
-                match e.downcast_ref::<TransferError>() {
-                    Some(error) => match error {
+            Err(err) => if progress_bar.position() == (self.length as u64) {
+                let err = err.downcast::<DfuNusbError>()?;
+                match err {
+                    DfuNusbError::Transfer(error) => match error {
                         // If the error reported on Linux was a disconnection, that was just the
                         // bootloader rebooting and we can safely ignore it
                         #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -136,17 +138,17 @@ impl Firmware
                         #[cfg(target_os = "windows")]
                         TransferError::Stall => Ok(()),
                         _ => {
-                            warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
-                            Err(e)
+                            warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
+                            Err(err.into())
                         }
                     },
-                    None => {
-                        warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
-                        Err(e)
+                    _ => {
+                        warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
+                        Err(err.into())
                     }
                 }
             } else {
-                Err(e.into())
+                Err(err)
             },
             result => result,
         }

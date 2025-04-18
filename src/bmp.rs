@@ -413,10 +413,7 @@ impl BmpDevice
     {
         match dfu_iface.download(firmware, length) {
             Ok(_) => if dfu_iface.will_detach() {
-            match dfu_iface.detach() {
-                    Err(source) => Err(ErrorKind::DeviceReboot.error_from(source).into()),
-                    _ => Ok(()),
-                }
+                Ok(dfu_iface.detach()?)
             } else {
                 Ok(())
             },
