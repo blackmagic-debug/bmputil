@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::ArgMatches;
+use color_eyre::eyre::Result;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use directories::ProjectDirs;
@@ -32,7 +33,7 @@ struct ProbeIdentity
     pub version: Option<String>,
 }
 
-pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<(), Error>
+pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
 {
     // Start by figuring out which probe to use for the operation
     let probe = match select_probe(matches)? {
@@ -77,10 +78,10 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<(), 
     let elf_file = download_firmware(firmware_variant, cache)?;
 
     // Having done all of that, finally try to Flash the new firmware on the probe
-    flasher::flash_probe(matches, probe, elf_file)
+    Ok(flasher::flash_probe(matches, probe, elf_file)?)
 }
 
-fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>, Error>
+fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>>
 {
     // Start by seeing if there are any probes, filtered by any match critera supplied
     let matcher = BmpMatcher::from_cli_args(matches);
@@ -98,7 +99,7 @@ fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>, Error>
             let items: Vec<_> = devices
                 .iter()
                 .flat_map(
-                    |device| -> Result<String, Error> {
+                    |device| -> Result<String> {
                         Ok(format!("{} ({})", device.firmware_identity()?, device.serial_number()?))
                     }
                 )
@@ -163,7 +164,7 @@ fn parse_firmware_identity(identity: &String) -> ProbeIdentity
 }
 
 fn pick_release<'a>(metadata: &'a Metadata, variant: &Probe, firmware_version: &String) ->
-    Result<Option<&'a Firmware>, Error>
+    Result<Option<&'a Firmware>>
 {
     // Filter out releases that don't support this probe, and filter out the one the probe is currently running
     // if there is only a single variant in the release (multi-variant releases still need to be shown)
@@ -193,7 +194,7 @@ fn pick_release<'a>(metadata: &'a Metadata, variant: &Probe, firmware_version: &
     Ok(Some(&metadata.releases[items[selection].as_str()].firmware[&variant]))
 }
 
-fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>, Error>
+fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>>
 {
     match firmware.variants.len() {
         // If there are now firmware variants for this release, that's an error
@@ -234,7 +235,7 @@ fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>, Error
     }
 }
 
-fn download_firmware(variant: &FirmwareDownload, cache_path: &Path) -> Result<PathBuf, Error>
+fn download_firmware(variant: &FirmwareDownload, cache_path: &Path) -> Result<PathBuf>
 {
     // Ensure the cache directory exists
     fs::create_dir_all(cache_path)?;

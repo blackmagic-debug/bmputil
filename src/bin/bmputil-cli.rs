@@ -321,7 +321,7 @@ fn main() -> Result<()>
             other => unreachable!("Unhandled subcommand {:?}", other),
         },
         "releases" => display_releases(&paths),
-        "switch" => Ok(bmputil::switcher::switch_firmware(subcommand_matches, &paths)?),
+        "switch" => bmputil::switcher::switch_firmware(subcommand_matches, &paths),
         &_ => unimplemented!(),
     }
 }
