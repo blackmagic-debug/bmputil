@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use clap::ArgMatches;
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{eyre, Context, Result};
 use dfu_nusb::Error as DfuNusbError;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, warn};
@@ -123,34 +123,37 @@ impl Firmware
             }
         );
         progress_bar.finish();
+        let dfu_iface = result?;
 
-        match result {
-            Err(err) => if progress_bar.position() == (self.length as u64) {
-                let err = err.downcast::<DfuNusbError>()?;
-                match err {
-                    DfuNusbError::Transfer(error) => match error {
-                        // If the error reported on Linux was a disconnection, that was just the
-                        // bootloader rebooting and we can safely ignore it
-                        #[cfg(any(target_os = "linux", target_os = "android"))]
-                        TransferError::Disconnected => Ok(()),
-                        // If the error reported on Windows was a STALL, that was just the
-                        // bootloader rebooting and we can safely ignore it
-                        #[cfg(target_os = "windows")]
-                        TransferError::Stall => Ok(()),
+        if progress_bar.position() == (self.length as u64) {
+            match device.reboot(dfu_iface) {
+                Err(err) => {
+                    let err = err.downcast::<DfuNusbError>()?;
+                    match err {
+                        DfuNusbError::Transfer(error) => match error {
+                            // If the error reported on Linux was a disconnection, that was just the
+                            // bootloader rebooting and we can safely ignore it
+                            #[cfg(any(target_os = "linux", target_os = "android"))]
+                            TransferError::Disconnected => Ok(()),
+                            // If the error reported on Windows was a STALL, that was just the
+                            // bootloader rebooting and we can safely ignore it
+                            #[cfg(target_os = "windows")]
+                            TransferError::Stall => Ok(()),
+                            _ => {
+                                warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
+                                Err(err.into())
+                            }
+                        },
                         _ => {
                             warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
                             Err(err.into())
                         }
-                    },
-                    _ => {
-                        warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
-                        Err(err.into())
                     }
-                }
-            } else {
-                Err(err)
-            },
-            result => result,
+                },
+                result => result,
+            }
+        } else {
+            Err(eyre!("Failed to flash device, download incomplete"))
         }
     }
 }

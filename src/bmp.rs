@@ -18,6 +18,7 @@ use color_eyre::eyre::Report;
 use color_eyre::eyre::Result;
 use dfu_core::DfuIo;
 use dfu_core::DfuProtocol;
+use dfu_nusb::DfuSync;
 use log::{trace, debug, info, warn, error};
 use nusb::{list_devices, Device, DeviceInfo, Interface};
 use nusb::transfer::{Control, ControlType, Recipient};
@@ -406,35 +407,43 @@ impl BmpDevice
         self.request_detach()
     }
 
+    pub fn reboot(&self, dfu_iface: DfuSync) -> Result<()>
+    {
+        if dfu_iface.will_detach() {
+            Ok(dfu_iface.detach()?)
+        } else {
+            Ok(())
+        }
+    }
+
     fn try_download<'r, R>(&mut self, firmware: &'r R, length: u32, dfu_iface: &mut dfu_nusb::DfuSync) -> Result<()>
     where
         &'r R: Read,
         R: ?Sized,
     {
-        match dfu_iface.download(firmware, length) {
-            Ok(_) => if dfu_iface.will_detach() {
-                Ok(dfu_iface.detach()?)
-            } else {
-                Ok(())
-            },
-            Err(source) => Err(match source {
-                dfu_nusb::Error::Transfer(nusb::transfer::TransferError::Disconnected) => {
-                    error!("Black Magic Probe device disconnected during the flash process!");
-                    warn!(
-                        "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
-                    );
-                    ErrorKind::DeviceDisconnectDuringOperation.error_from(source).into()
+        dfu_iface
+            .download(firmware, length)
+            .map_err(|source|
+                match source {
+                    dfu_nusb::Error::Transfer(nusb::transfer::TransferError::Disconnected) => {
+                        error!("Black Magic Probe device disconnected during the flash process!");
+                        warn!(
+                            "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
+                        );
+                        ErrorKind::DeviceDisconnectDuringOperation.error_from(source).into()
+                    }
+                    _ => source.into(),
                 }
-                _ => source.into(),
-            })
-        }
+            )
     }
 
     /// Downloads firmware onto the device, switching into DFU mode automatically if necessary.
     ///
     /// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
     /// the flashing process.
-    pub fn download<'r, R, P>(&mut self, firmware: &'r R, length: u32, firmware_type: FirmwareType, progress: P) -> Result<()>
+    pub fn download<'r, R, P>(
+        &mut self, firmware: &'r R, length: u32, firmware_type: FirmwareType, progress: P
+    ) -> Result<DfuSync>
     where
         &'r R: Read,
         R: ?Sized,
@@ -500,7 +509,7 @@ impl BmpDevice
 
         info!("Flash complete!");
 
-        Ok(())
+        Ok(dfu_iface)
     }
 
 
