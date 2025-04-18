@@ -139,6 +139,8 @@ impl Firmware
                             // bootloader rebooting and we can safely ignore it
                             #[cfg(target_os = "windows")]
                             TransferError::Stall => Ok(()),
+                            #[cfg(target_os = "macos")]
+                            TransferError::Unknown => Ok(()),
                             _ => {
                                 warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
                                 Err(err.into())
