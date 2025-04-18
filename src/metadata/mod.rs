@@ -5,16 +5,17 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
+use color_eyre::eyre::Result;
 use indicatif::ProgressBar;
 use log::info;
 use reqwest::StatusCode;
 use sha2::digest::DynDigest;
 use sha2::{Digest, Sha256};
 
-use crate::error::{Error, ErrorKind};
+use crate::error::ErrorKind;
 use crate::metadata::structs::Metadata;
 
-pub fn download_metadata(cache: &Path) -> Result<Metadata, Error>
+pub fn download_metadata(cache: &Path) -> Result<Metadata>
 {
 	// Compute the name of the metadata file in the cache and discover its ETag
 	let metadata_file_name = cache.join("metadata.json");
@@ -44,7 +45,7 @@ pub fn download_metadata(cache: &Path) -> Result<Metadata, Error>
 	// If the response was anything other than 200 or 304
 	} else if response.status() != StatusCode::NOT_MODIFIED {
 		progress.finish();
-		return Err(ErrorKind::ReleaseMetadataInvalid.error());
+		return Err(ErrorKind::ReleaseMetadataInvalid.error().into());
 	}
 	// Finish the progress spinner so the user sees the download finished
     progress.finish();
@@ -57,23 +58,23 @@ pub fn download_metadata(cache: &Path) -> Result<Metadata, Error>
 	// version number, and if it is, dispatch to the appropriate handler for the metadata
 	match metadata.version {
 		1 => handle_v1_metadata(metadata),
-		_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None)),
+		_ => Err(ErrorKind::ReleaseMetadataInvalid.error().into()),
 	}
 }
 
 // Handle validation of v1 metadata, prior to letting it return from the download function
-fn handle_v1_metadata(metadata: Metadata) -> Result<Metadata, Error>
+fn handle_v1_metadata(metadata: Metadata) -> Result<Metadata>
 {
 	info!("Validating v1 metadata with {} releases present", metadata.releases.len());
 	// Run through the releases in this metadata index
 	for (_, release) in &metadata.releases {
 		// If they say they include BMDA but they don't, error
 		if release.includes_bmda && release.bmda.is_none() {
-			return Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None));
+			return Err(ErrorKind::ReleaseMetadataInvalid.error().into());
 		}
 		// If they say they do not include BMDA but they do, error
 		if !release.includes_bmda && release.bmda.is_some() {
-			return Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None));
+			return Err(ErrorKind::ReleaseMetadataInvalid.error().into());
 		}
 	}
 	Ok(metadata)
@@ -94,7 +95,7 @@ fn hex_digit(value: u8) -> char
 	char::from(digit)
 }
 
-fn compute_etag(metadata_file_name: &Path) -> Result<Option<String>, Error>
+fn compute_etag(metadata_file_name: &Path) -> Result<Option<String>>
 {
 	// Check if the metadata file is a thing to start with
 	if !metadata_file_name.exists() {
