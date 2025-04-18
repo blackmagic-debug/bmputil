@@ -2,11 +2,10 @@ use std::{collections::BTreeMap, path::PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
 
+use color_eyre::eyre::{eyre, Error, Result};
 use reqwest::Url;
 use serde::Deserialize;
 use serde::de::Visitor;
-
-use crate::error::{Error, ErrorKind};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,7 +133,7 @@ impl FromStr for Probe
 			"stlink" => Ok(Probe::Stlink),
 			"stlinkv3" => Ok(Probe::Stlinkv3),
 			"swlink" => Ok(Probe::Swlink),
-			&_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None))
+			&_ => Err(eyre!("Failed to translate invalid probe name {value} to Probe enum"))
 		}
 	}
 }
@@ -203,7 +202,7 @@ impl FromStr for TargetOS
 			"linux" => Ok(TargetOS::Linux),
 			"macos" => Ok(TargetOS::MacOS),
 			"windows" => Ok(TargetOS::Windows),
-			&_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None))
+			&_ => Err(eyre!("Failed to translate invalid operating system name {value} to TargetOS enum"))
 		}
 	}
 }
@@ -261,7 +260,7 @@ impl FromStr for TargetArch
 			"amd64" => Ok(TargetArch::AMD64),
 			"aarch32" => Ok(TargetArch::AArch32),
 			"aarch64" => Ok(TargetArch::AArch64),
-			&_ => Err(Error::new(ErrorKind::ReleaseMetadataInvalid, None))
+			&_ => Err(eyre!("Failed to translate invalid architecture name {value} to TargetArch enum"))
 		}
 	}
 }
