@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-// SPDX-FileCopyrightText: 2022-2023 1BitSquared <info@1bitsquared.com>
+// SPDX-FileCopyrightText: 2022-2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
+// SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
+
+use color_eyre::eyre::Result;
 use goblin::elf::{Elf, SectionHeader};
 use goblin::error::Error as GoblinError;
-
-use crate::S;
 
 /// Convenience extensions to [Elf].
 trait ElfExt
@@ -34,12 +35,12 @@ impl<'a> ElfExt for Elf<'a>
 trait SectionHeaderExt
 {
     /// Get the raw data of this section, given the full ELF data.
-    fn get_data<'s>(&'s self, parent_data: &'s [u8]) -> Result<&'s [u8], GoblinError>;
+    fn get_data<'s>(&'s self, parent_data: &'s [u8]) -> Result<&'s [u8]>;
 }
 
 impl SectionHeaderExt for SectionHeader
 {
-    fn get_data<'s>(&'s self, parent_data: &'s [u8]) -> Result<&'s [u8], GoblinError>
+    fn get_data<'s>(&'s self, parent_data: &'s [u8]) -> Result<&'s [u8]>
     {
         let start_idx = self.sh_offset as usize;
         let size = self.sh_size;
@@ -61,7 +62,7 @@ impl SectionHeaderExt for SectionHeader
 /// This should be equivalent to `$ arm-none-eabi-objcopy -Obinary`, but is not yet robust
 /// enough to automatically detect what sections should be copied.
 /// Currently, `.text`, `.ARM.exidx`, and `.data` are copied.
-pub fn extract_binary(elf_data: &[u8]) -> Result<Vec<u8>, goblin::error::Error>
+pub fn extract_binary(elf_data: &[u8]) -> Result<Vec<u8>>
 {
     let elf = Elf::parse(elf_data)?;
 
@@ -71,7 +72,7 @@ pub fn extract_binary(elf_data: &[u8]) -> Result<Vec<u8>, goblin::error::Error>
 
     let text = elf
         .get_section_by_name(".text")
-        .ok_or_else(|| GoblinError::Malformed(S!("ELF .text section not found")))?
+        .ok_or_else(|| GoblinError::Malformed("ELF .text section not found".into()))?
         .get_data(elf_data)?;
 
     // Allow .ARM.exidx to not exist.
@@ -83,7 +84,7 @@ pub fn extract_binary(elf_data: &[u8]) -> Result<Vec<u8>, goblin::error::Error>
 
     let data = elf
         .get_section_by_name(".data")
-        .ok_or_else(|| GoblinError::Malformed(S!("ELF .data section not found")))?
+        .ok_or_else(|| GoblinError::Malformed("ELF .data section not found".into()))?
         .get_data(elf_data)?;
 
 
