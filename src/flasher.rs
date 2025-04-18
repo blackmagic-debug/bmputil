@@ -10,9 +10,10 @@ use std::thread;
 use std::time::Duration;
 
 use clap::ArgMatches;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, warn};
+use nusb::transfer::TransferError;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
@@ -50,7 +51,7 @@ impl Firmware
         // Using the platform to determine the link address.
         let platform = device.platform();
         let firmware_type = FirmwareType::detect_from_firmware(platform, &firmware_data)
-            .map_err(|e| e.with_ctx("detecting firmware type"))?;
+            .wrap_err("detecting firmware type")?;
 
         debug!("Firmware file was detected as {}", firmware_type);
 
@@ -107,7 +108,7 @@ impl Firmware
         // Extract the firmware type as a value so it can be captured and moved (copied) by the progress lambda
         let firmware_type = self.firmware_type;
 
-        match device.download(&*self.data, self.length, firmware_type,
+        let result = device.download(&*self.data, self.length, firmware_type,
             move |flash_pos_delta| {
                 // Don't actually print flashing until the erasing has finished.
                 if enclosed.position() == 0 {
@@ -118,20 +119,36 @@ impl Firmware
                     }
                 }
                 enclosed.inc(flash_pos_delta as u64);
-        }) {
-            Ok(()) => {
-                progress_bar.finish();
-                Ok(())
-            },
-            Err(e) => {
-                progress_bar.finish();
-                if progress_bar.position() == (self.length as u64) {
-                    warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
-                    Ok(())
-                } else {
-                    Err(e.into())
+            }
+        );
+        progress_bar.finish();
+
+        match result {
+            Err(e) => if progress_bar.position() == (self.length as u64) {
+                match e.downcast_ref::<TransferError>() {
+                    Some(error) => match error {
+                        // If the error reported on Linux was a disconnection, that was just the
+                        // bootloader rebooting and we can safely ignore it
+                        #[cfg(any(target_os = "linux", target_os = "android"))]
+                        TransferError::Disconnected => Ok(()),
+                        // If the error reported on Windows was a STALL, that was just the
+                        // bootloader rebooting and we can safely ignore it
+                        #[cfg(target_os = "windows")]
+                        TransferError::Stall => Ok(()),
+                        _ => {
+                            warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
+                            Err(e)
+                        }
+                    },
+                    None => {
+                        warn!("Possibly spurious error from OS at the very end of flashing: {}", e);
+                        Err(e)
+                    }
                 }
+            } else {
+                Err(e.into())
             },
+            result => result,
         }
     }
 }

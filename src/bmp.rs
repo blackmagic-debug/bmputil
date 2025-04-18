@@ -13,6 +13,9 @@ use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
 
 use clap::ArgMatches;
+use color_eyre::eyre::Context;
+use color_eyre::eyre::Report;
+use color_eyre::eyre::Result;
 use dfu_core::DfuIo;
 use dfu_core::DfuProtocol;
 use log::{trace, debug, info, warn, error};
@@ -22,7 +25,7 @@ use nusb::descriptors::Descriptor;
 use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
-use crate::error::{Error, ErrorKind, ErrorSource, ResErrorKind};
+use crate::error::{Error, ErrorKind, ResErrorKind};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
 
@@ -53,7 +56,7 @@ pub struct BmpDevice
 
 impl BmpDevice
 {
-    pub fn from_usb_device(device_info: DeviceInfo) -> Result<Self, Error>
+    pub fn from_usb_device(device_info: DeviceInfo) -> Result<Self>
     {
         // Extract the VID:PID for the device and make sure it's valid
         let vid = Vid(device_info.vendor_id());
@@ -76,7 +79,7 @@ impl BmpDevice
         )?;
         let device_desc = match Descriptor::new(device_desc.as_slice()) {
             None => return Err(
-                ErrorKind::DeviceSeemsInvalid("no usable device descriptor".into()).error()
+                ErrorKind::DeviceSeemsInvalid("no usable device descriptor".into()).error().into()
             ),
             Some(descriptor) => descriptor,
         };
@@ -89,7 +92,7 @@ impl BmpDevice
         let language = match languages.nth(0) {
             Some(language) => language,
             None => return Err(
-                ErrorKind::DeviceSeemsInvalid("no string descriptor languages".into()).error()
+                ErrorKind::DeviceSeemsInvalid("no string descriptor languages".into()).error().into()
             )
         };
 
@@ -167,7 +170,7 @@ impl BmpDevice
     /// This struct caches the serial number in an [`std::cell::RefCell`],
     /// and thus returns a `Ref<str>` rather than the `&str` directly.
     /// Feel free to clone the result if you want a directly referenceable value.
-    pub fn serial_number(&self) -> Result<Ref<str>, Error>
+    pub fn serial_number(&self) -> Result<Ref<str>>
     {
         let serial = self.serial.borrow();
         if serial.is_some() {
@@ -197,7 +200,7 @@ impl BmpDevice
     ///
     /// This is characterised by the product string which defines
     /// which kind of BMD-running thing we have and what version it runs
-    pub fn firmware_identity(&self) -> Result<String, Error>
+    pub fn firmware_identity(&self) -> Result<String>
     {
         self
             .device()
@@ -207,7 +210,8 @@ impl BmpDevice
                 Duration::from_secs(2),
             )
             .map_err(
-                |e| ErrorKind::DeviceSeemsInvalid("no product string descriptor".into()).error_from(e)
+                |e| ErrorKind::DeviceSeemsInvalid("no product string descriptor".into())
+                    .error_from(e).into()
             )
     }
 
@@ -224,7 +228,7 @@ impl BmpDevice
     ///
     /// Note: this performs USB IO to retrieve the necessary string descriptors, if those strings
     /// have not yet been retrieved previously (and thus not yet cached).
-    pub fn display(&self) -> Result<String, Error>
+    pub fn display(&self) -> Result<String>
     {
         let identity = self.firmware_identity()?;
         let serial = self.serial_number()?;
@@ -240,7 +244,7 @@ impl BmpDevice
     ///
     /// This does not execute any requests to the device, and only uses information already
     /// available from libusb's device structures.
-    pub fn dfu_descriptors(&self) -> Result<(u8, DfuFunctionalDescriptor), Error>
+    pub fn dfu_descriptors(&self) -> Result<(u8, DfuFunctionalDescriptor)>
     {
         // Loop through the interfaces in this configuraiton and try to find the DFU interface
         let interface = self.device().active_configuration()?
@@ -285,7 +289,7 @@ impl BmpDevice
     }
 
     /// Requests the device to leave DFU mode, using the DefuSe extensions.
-    fn leave_dfu_mode(&mut self) -> Result<(), Error>
+    fn leave_dfu_mode(&mut self) -> Result<()>
     {
         debug!("Attempting to leave DFU mode...");
         let (iface_number, _func_desc) = self.dfu_descriptors()?;
@@ -327,7 +331,7 @@ impl BmpDevice
     }
 
     /// Performs a DFU_DETACH request to enter DFU mode.
-    fn enter_dfu_mode(&mut self) -> Result<(), Error>
+    fn enter_dfu_mode(&mut self) -> Result<()>
     {
         let (iface_number, func_desc) = self.dfu_descriptors()?;
 
@@ -345,8 +349,7 @@ impl BmpDevice
             &[], // buffer
             Duration::from_secs(1), // timeout for the request
         )
-        .map_err(Error::from)
-        .map_err(|e| e.with_ctx("sending control request"))?;
+        .wrap_err("sending control request")?;
 
         info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
@@ -360,7 +363,7 @@ impl BmpDevice
     /// calling this function, the this [`BmpDevice`] instance will not be in a correct state
     /// if the device successfully detached. Further requests will fail, and functions like
     /// `dfu_descriptors()` may return now-incorrect data.
-    pub unsafe fn request_detach(&mut self) -> Result<(), Error>
+    pub fn request_detach(&mut self) -> Result<()>
     {
         use DfuOperatingMode::*;
         match self.mode {
@@ -369,27 +372,15 @@ impl BmpDevice
         }
     }
 
-    /// Requests the Black Magic Probe to detach, and re-initializes this struct with the new
-    /// device.
-    pub fn detach_and_enumerate(&mut self) -> Result<(), Error>
+    /// Requests the Black Magic Probe to detach, and re-initializes this struct with the new device.
+    pub fn detach_and_enumerate(&mut self) -> Result<()>
     {
         // Save the port for finding the device again after.
         let port = self.port();
 
-        if cfg!(not(windows)) {
-            unsafe { self.request_detach()? };
-        } else {
-            // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
-            // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
-            let res = unsafe { self.request_detach() };
-            if let Err(e @ Error { kind: ErrorKind::DeviceDisconnectDuringOperation, .. }) = res {
-                warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
-            } else {
-                res?;
-            }
-        }
+        self.request_detach()?;
 
-        // Now drop the device so libusb doesn't re-grab the same thing.
+        // Now drop the device so to clean up now it doesn't exist
         drop(self.device_info.take());
         drop(self.device.take());
 
@@ -410,26 +401,12 @@ impl BmpDevice
     ///
     /// Currently there is not a way to recover this instance if this function errors.
     /// You'll just have to create another one.
-    pub fn detach_and_destroy(mut self) -> Result<(), Error>
+    pub fn detach_and_destroy(mut self) -> Result<()>
     {
-        if cfg!(not(windows)) {
-            unsafe { self.request_detach()? };
-        } else {
-            // HACK: WinUSB seems to have a race condition where it can spuriously give ERROR_GEN_FAILURE
-            // (which becomes LIBUSB_ERROR_PIPE) when a control request results in a device disconnect.
-            let res = unsafe { self.request_detach() };
-            if let Err(e @ Error { kind: ErrorKind::DeviceDisconnectDuringOperation, .. }) = res {
-                warn!("Possibly spurious error from Windows when attempting to detach: {}", e);
-            } else {
-                res?;
-            }
-        }
-
-        Ok(())
+        self.request_detach()
     }
 
-    fn try_download<'r, R>(&mut self, firmware: &'r R, length: u32, dfu_iface: &mut dfu_nusb::DfuSync) ->
-        Result<(), Error>
+    fn try_download<'r, R>(&mut self, firmware: &'r R, length: u32, dfu_iface: &mut dfu_nusb::DfuSync) -> Result<()>
     where
         &'r R: Read,
         R: ?Sized,
@@ -437,7 +414,7 @@ impl BmpDevice
         match dfu_iface.download(firmware, length) {
             Ok(_) => if dfu_iface.will_detach() {
             match dfu_iface.detach() {
-                    Err(source) => Err(ErrorKind::DeviceReboot.error_from(source)),
+                    Err(source) => Err(ErrorKind::DeviceReboot.error_from(source).into()),
                     _ => Ok(()),
                 }
             } else {
@@ -449,7 +426,7 @@ impl BmpDevice
                     warn!(
                         "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
                     );
-                    ErrorKind::DeviceDisconnectDuringOperation.error_from(source)
+                    ErrorKind::DeviceDisconnectDuringOperation.error_from(source).into()
                 }
                 _ => source.into(),
             })
@@ -460,7 +437,7 @@ impl BmpDevice
     ///
     /// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
     /// the flashing process.
-    pub fn download<'r, R, P>(&mut self, firmware: &'r R, length: u32, firmware_type: FirmwareType, progress: P) -> Result<(), Error>
+    pub fn download<'r, R, P>(&mut self, firmware: &'r R, length: u32, firmware_type: FirmwareType, progress: P) -> Result<()>
     where
         &'r R: Read,
         R: ?Sized,
@@ -468,7 +445,7 @@ impl BmpDevice
     {
         if self.mode == DfuOperatingMode::Runtime {
             self.detach_and_enumerate()
-                .map_err(|e| e.with_ctx("detaching device for download"))?;
+                .wrap_err("detaching device for download")?;
         }
 
         let load_address = self.platform.load_address(firmware_type);
@@ -496,32 +473,33 @@ impl BmpDevice
         debug!("Load address: 0x{:08x}", load_address);
         info!("Performing flash...");
 
-        let res = self.try_download(firmware, length, &mut dfu_iface);
+        match self.try_download(firmware, length, &mut dfu_iface) {
+            Err(error) => if let Some(DfuNusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))) =
+                error.downcast_ref::<DfuNusbError>() {
+                warn!("Device reported an error when trying to flash; going to clear status and try one more time...");
 
-        if let Err(ErrorKind::External(ErrorSource::DfuNusb(DfuNusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))))) = res.err_kind() {
+                thread::sleep(Duration::from_millis(250));
 
-            warn!("Device reported an error when trying to flash; going to clear status and try one more time...");
+                let request = Control {
+                    control_type: ControlType::Class,
+                    recipient: Recipient::Interface,
+                    request: DfuRequest::ClrStatus as u8,
+                    value: 0,
+                    index: 0, // iface number
+                };
 
-            thread::sleep(Duration::from_millis(250));
+                self.interface.as_ref().unwrap().control_out_blocking(
+                    request,
+                    &[],
+                    Duration::from_secs(2),
+                )?;
 
-            let request = Control {
-                control_type: ControlType::Class,
-                recipient: Recipient::Interface,
-                request: DfuRequest::ClrStatus as u8,
-                value: 0,
-                index: 0, // iface number
-            };
-
-            self.interface.as_ref().unwrap().control_out_blocking(
-                request,
-                &[],
-                Duration::from_secs(2),
-            )?;
-
-            self.try_download(firmware, length, &mut dfu_iface)?;
-        } else {
-            res?;
-        }
+                self.try_download(firmware, length, &mut dfu_iface)
+            } else {
+                Err(error)
+            },
+            result => result,
+        }?;
 
         info!("Flash complete!");
 
@@ -607,7 +585,6 @@ impl<'b> Armv7mVectorTable<'b>
         }
     }
 
-    #[allow(dead_code)]
     pub fn stack_pointer(&self) -> Result<u32, TryFromSliceError>
     {
         self.word(0)
@@ -618,7 +595,6 @@ impl<'b> Armv7mVectorTable<'b>
         self.word(1)
     }
 
-    #[allow(dead_code)]
     pub fn exception(&self, exception_number: u32) -> Result<u32, TryFromSliceError>
     {
         self.word((exception_number + 1) as usize)
@@ -641,7 +617,7 @@ impl FirmwareType
     /// Detect the kind of firmware from the given binary by examining its reset vector address.
     ///
     /// This function panics if `firmware.len() < 8`.
-    pub fn detect_from_firmware(platform: BmpPlatform, firmware: &[u8]) -> Result<Self, Error>
+    pub fn detect_from_firmware(platform: BmpPlatform, firmware: &[u8]) -> Result<Self>
     {
         let buffer = &firmware[0..(4 * 2)];
 
@@ -659,7 +635,7 @@ impl FirmwareType
             return Err(ErrorKind::InvalidFirmware(Some(format!(
                 "firmware reset vector seems to be outside of reasonable bounds: 0x{:08x}",
                 reset_vector,
-            ))).error());
+            ))).error().into());
         }
 
         let app_start = platform.load_address(Self::Application);
@@ -880,13 +856,12 @@ impl BmpMatcher
     }
 }
 
-
 #[derive(Debug, Default)]
 pub struct BmpMatchResults
 {
     pub found: Vec<BmpDevice>,
     pub filtered_out: Vec<DeviceInfo>,
-    pub errors: Vec<Error>,
+    pub errors: Vec<Report>,
 }
 
 impl BmpMatchResults

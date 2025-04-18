@@ -8,7 +8,7 @@ use std::str::FromStr;
 use anstyle;
 use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description, crate_name};
 use clap::builder::styling::Styles;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Context, Result};
 use directories::ProjectDirs;
 use log::{info, error};
 
@@ -29,10 +29,7 @@ fn detach_command(matches: &ArgMatches) -> Result<()>
         FirmwareUpgrade => println!("Requesting device detach from DFU mode to runtime mode..."),
     };
 
-    dev.detach_and_destroy()
-        .map_err(|e| e.with_ctx("detaching device"))?;
-
-    Ok(())
+    dev.detach_and_destroy().wrap_err("detaching device")
 }
 
 fn flash(matches: &ArgMatches) -> Result<()>
