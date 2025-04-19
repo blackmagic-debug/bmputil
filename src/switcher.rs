@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::ArgMatches;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{eyre, Result};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use directories::ProjectDirs;
@@ -18,8 +18,6 @@ use log::error;
 
 use crate::bmp::BmpDevice;
 use crate::bmp::BmpMatcher;
-use crate::error::Error;
-use crate::error::ErrorKind;
 use crate::flasher;
 use crate::metadata::download_metadata;
 use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata, Probe};
@@ -275,7 +273,7 @@ fn download_firmware(variant: &FirmwareDownload, cache_path: &Path) -> Result<Pa
 
 impl ProbeIdentity
 {
-    fn variant(&self) -> Result<Probe, Error>
+    fn variant(&self) -> Result<Probe>
     {
         match &self.probe {
             Some(product) => {
@@ -294,11 +292,11 @@ impl ProbeIdentity
                     "st-link/v2" => Probe::Stlink,
                     "st-link v3" => Probe::Stlinkv3,
                     "swlink" => Probe::Swlink,
-                    _ => return Err(ErrorKind::DeviceSeemsInvalid("unknown product string encountered".into()).error()),
+                    _ => return Err(eyre!("Probe with unknown product string encountered")),
                 };
                 Ok(probe)
             },
-            None => Err(ErrorKind::DeviceSeemsInvalid("invalid product string".into()).error()),
+            None => Err(eyre!("Probe has invalid product string")),
         }
     }
 }
