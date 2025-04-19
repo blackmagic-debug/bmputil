@@ -15,11 +15,6 @@ use crate::S;
 /// which shows up in a few signatures and structs.
 type BoxedError = Box<dyn StdError + Send + Sync>;
 
-/// A unique type to hold Nusb error state
-#[derive(Debug, Error)]
-#[error(transparent)]
-pub struct NusbError(#[from] nusb::Error);
-
 /// Kinds of errors for [Error]. Use [ErrorKind::error] and [ErrorKind::error_from] to generate the
 /// [Error] value for this ErrorKind.
 #[derive(Debug)]
@@ -122,7 +117,7 @@ impl Display for ErrorKind
                 use ErrorSource::*;
                 match source {
                     Nusb(e) => {
-                        write!(f, "unhandled nusb error: {}", e.0)?;
+                        write!(f, "unhandled nusb error: {}", e)?;
                     },
                     DfuNusb(e) => {
                         write!(f, "unhandled dfu_nusb error: {}", e)?;
@@ -216,7 +211,7 @@ impl From<dfu_nusb::Error> for Error
         use dfu_nusb::Error as Source;
         match other {
             Source::Nusb(source) => {
-                External(ErrorSource::Nusb(NusbError(source))).error()
+                External(ErrorSource::Nusb(source)).error()
             },
             Source::AltSettingNotFound => {
                 DeviceSeemsInvalid(S!("DFU interface (alt mode) not found"))
@@ -270,7 +265,7 @@ impl From<dfu_core::Error> for Error
 pub enum ErrorSource
 {
     #[error(transparent)]
-    Nusb(#[from] NusbError),
+    Nusb(#[from] nusb::Error),
 
     #[error(transparent)]
     DfuNusb(#[from] dfu_nusb::Error),
