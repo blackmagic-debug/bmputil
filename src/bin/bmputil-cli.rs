@@ -128,6 +128,7 @@ fn style() -> clap::builder::Styles {
 
 fn main() -> Result<()>
 {
+    color_eyre::install()?;
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Warn)
         .parse_default_env()
