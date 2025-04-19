@@ -217,15 +217,6 @@ impl From<NusbError> for Error
     }
 }
 
-impl From<nusb::descriptors::ActiveConfigurationError> for Error
-{
-    fn from(other: nusb::descriptors::ActiveConfigurationError) -> Self
-    {
-        use ErrorKind::*;
-        DeviceSeemsInvalid("could not read active configuration for device".into()).error_from(other)
-    }
-}
-
 impl From<dfu_nusb::Error> for Error
 {
     fn from(other: dfu_nusb::Error) -> Self
