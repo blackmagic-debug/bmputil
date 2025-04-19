@@ -136,9 +136,6 @@ impl Display for ErrorKind
                     DfuCore(e) => {
                         write!(f, "unhandled dfu_core error: {}", e)?;
                     },
-                    Goblin(e) => {
-                        write!(f, "unhandled ELF parsing error: {}", e)?;
-                    },
                 };
             },
         };
@@ -315,16 +312,6 @@ impl From<dfu_core::Error> for Error
     }
 }
 
-impl From<goblin::error::Error> for Error
-{
-    fn from(other: goblin::error::Error) -> Self
-    {
-        use ErrorKind::*;
-        InvalidFirmware(None)
-            .error_from(External(ErrorSource::Goblin(other)).error())
-    }
-}
-
 /// Sources of external error in this library.
 #[derive(Debug, Error)]
 pub enum ErrorSource
@@ -343,9 +330,6 @@ pub enum ErrorSource
 
     #[error(transparent)]
     DfuCore(#[from] dfu_core::Error),
-
-    #[error(transparent)]
-    Goblin(#[from] goblin::error::Error),
 }
 
 /// Extension trait to enable getting the error kind from a Result<T, Error> with one method.
