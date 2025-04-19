@@ -124,9 +124,6 @@ impl Display for ErrorKind
                     Nusb(e) => {
                         write!(f, "unhandled nusb error: {}", e.0)?;
                     },
-                    NusbTransfer(e) => {
-                        write!(f, "unhandled nusb transfer error: {}", e)?;
-                    }
                     DfuNusb(e) => {
                         write!(f, "unhandled dfu_nusb error: {}", e)?;
                     },
@@ -220,20 +217,6 @@ impl From<NusbError> for Error
     }
 }
 
-impl From<nusb::transfer::TransferError> for Error
-{
-    fn from(other: nusb::transfer::TransferError) -> Self
-    {
-        use ErrorKind::*;
-        use nusb::transfer::TransferError;
-
-        match other {
-            TransferError::Disconnected => DeviceDisconnectDuringOperation.error_from(other),
-            other => External(ErrorSource::NusbTransfer(other)).error(),
-        }
-    }
-}
-
 impl From<nusb::descriptors::ActiveConfigurationError> for Error
 {
     fn from(other: nusb::descriptors::ActiveConfigurationError) -> Self
@@ -306,9 +289,6 @@ pub enum ErrorSource
 {
     #[error(transparent)]
     Nusb(#[from] NusbError),
-
-    #[error(transparent)]
-    NusbTransfer(#[from] nusb::transfer::TransferError),
 
     #[error(transparent)]
     DfuNusb(#[from] dfu_nusb::Error),
