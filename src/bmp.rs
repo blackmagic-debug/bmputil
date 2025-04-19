@@ -13,10 +13,7 @@ use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
 
 use clap::ArgMatches;
-use color_eyre::eyre::eyre;
-use color_eyre::eyre::Context;
-use color_eyre::eyre::Report;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{eyre, Context, Error, Report, Result};
 use dfu_core::DfuIo;
 use dfu_core::DfuProtocol;
 use dfu_nusb::DfuSync;
@@ -1000,7 +997,12 @@ pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -
             error!(
                 "Timed-out waiting for Black Magic Probe to re-enumerate!"
             );
-            return Err(ErrorKind::DeviceReboot.error_from(dev.unwrap_err().error()).into());
+            return dev
+                .map_err(
+                    |kind|
+                    Error::from(kind.error())
+                        .wrap_err("Black Magic Probe device did not come back online (invalid firmware?)")
+                )
         }
 
         // Wait 200 milliseconds between checks. Hardware is a bottleneck and we

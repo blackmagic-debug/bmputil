@@ -27,10 +27,6 @@ pub enum ErrorKind
     /// Black Magic Probe found disconnected during an ongoing operation.
     DeviceDisconnectDuringOperation,
 
-    /// Black Magic Probe device did not come back online (e.g. after switching to DFU mode
-    /// or flashing firmware).
-    DeviceReboot,
-
     /// Black Magic Probe device returned bad data during configuration.
     ///
     /// This generally shouldn't be possible, but could happen if the cable is bad, the OS is
@@ -91,7 +87,6 @@ impl Display for ErrorKind
             TooManyDevices => write!(f, "current operation only supports one Black Magic Probe device but more than one device was found")?,
             DeviceNotFound => write!(f, "Black Magic Probe device not found (check connection?)")?,
             DeviceDisconnectDuringOperation => write!(f, "Black Magic Probe device found disconnected")?,
-            DeviceReboot => write!(f, "Black Magic Probe device did not come back online (invalid firmware?)")?,
             DeviceSeemsInvalid(thing) => {
                 write!(
                     f,
