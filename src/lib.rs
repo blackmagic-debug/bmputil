@@ -13,12 +13,3 @@ pub mod switcher;
 pub mod usb;
 #[cfg(windows)]
 pub mod windows;
-
-#[macro_export]
-#[doc(hidden)]
-macro_rules! S
-{
-    ($expr:expr) => {
-        String::from($expr)
-    };
-}
