@@ -19,7 +19,6 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
 use crate::elf;
-use crate::error::ErrorKind;
 use crate::usb::PortId;
 
 pub struct Firmware
@@ -184,8 +183,7 @@ fn intel_hex_error() -> !
 fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>>
 {
     let firmware_file = std::fs::File::open(file_name.as_path())
-        .map_err(|source| ErrorKind::FirmwareFileIo(Some(file_name)).error_from(source))
-        .map_err(|e| e.with_ctx("reading firmware file to flash"))?;
+        .wrap_err_with(|| eyre!("Failed to read firmware file {} to Flash", file_name.display()))?;
 
     let mut firmware_file = std::io::BufReader::new(firmware_file);
 
@@ -196,9 +194,7 @@ fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>>
     // FirmwareType::detect_from_firmware() needs at least 8 bytes,
     // but also if we don't even have 8 bytes there's _no way_ this is valid firmware.
     if firmware_data.len() < 8 {
-        return Err(
-            ErrorKind::InvalidFirmware(Some("less than 8 bytes long".into())).error().into()
-        );
+        return Err(eyre!("Firmware file appears invalid: less than 8 bytes long"));
     }
 
     // Extract the actual firmware data from the file, based on the format we're using.
