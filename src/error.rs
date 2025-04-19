@@ -290,14 +290,3 @@ impl<T> ResErrorKind<T> for Result<T, Error>
         self.as_ref().map_err(|e| &e.kind)
     }
 }
-
-
-#[macro_export]
-macro_rules! log_and_return
-{
-    ($err:expr) => {
-        let err = $err;
-        log::error!("{}", err);
-        return Err(err);
-    }
-}
