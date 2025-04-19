@@ -26,7 +26,7 @@ use nusb::descriptors::Descriptor;
 use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
-use crate::error::{Error, ErrorKind};
+use crate::error::ErrorKind;
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
 
@@ -425,7 +425,7 @@ impl BmpDevice
             .download(firmware, length)
             .map_err(|source|
                 match source {
-                    dfu_nusb::Error::Transfer(nusb::transfer::TransferError::Disconnected) => {
+                    DfuNusbError::Transfer(nusb::transfer::TransferError::Disconnected) => {
                         error!("Black Magic Probe device disconnected during the flash process!");
                         warn!(
                             "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
@@ -873,7 +873,7 @@ pub struct BmpMatchResults
 impl BmpMatchResults
 {
     /// Pops all found devices, handling printing error and warning cases.
-    pub fn pop_all(&mut self) -> Result<Vec<BmpDevice>, Error>
+    pub fn pop_all(&mut self) -> Result<Vec<BmpDevice>>
     {
         if self.found.is_empty() {
 
@@ -901,7 +901,7 @@ impl BmpMatchResults
                 warn!("Device not found and errors occurred when searching for devices.");
                 warn!("One of these may be why the Black Magic Probe device was not found: {:?}", self.errors.as_slice());
             }
-            return Err(ErrorKind::DeviceNotFound.error());
+            return Err(ErrorKind::DeviceNotFound.error().into());
         }
 
         if !self.errors.is_empty() {
