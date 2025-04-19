@@ -137,7 +137,7 @@ impl Firmware
                             TransferError::Disconnected => Ok(()),
                             // If the error reported on Windows was a STALL, that was just the
                             // bootloader rebooting and we can safely ignore it
-                            #[cfg(target_os = "windows")]
+                            #[cfg(any(target_os = "windows", target_os = "macos"))]
                             TransferError::Stall => Ok(()),
                             #[cfg(target_os = "macos")]
                             TransferError::Unknown => Ok(()),
