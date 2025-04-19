@@ -13,6 +13,7 @@ use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
 
 use clap::ArgMatches;
+use color_eyre::eyre::eyre;
 use color_eyre::eyre::Context;
 use color_eyre::eyre::Report;
 use color_eyre::eyre::Result;
@@ -629,19 +630,19 @@ impl FirmwareType
 
         let vector_table = Armv7mVectorTable::from_bytes(buffer);
         let reset_vector = vector_table.reset_vector()
-            .map_err(
-                |e| ErrorKind::InvalidFirmware(Some("vector table too short".into()))
-                    .error_from(e)
-            )?;
+            .wrap_err("Firmware file does not seem valid: vector table too short")?;
 
         debug!("Detected reset vector in firmware file: 0x{:08x}", reset_vector);
 
         // Sanity check.
         if (reset_vector & 0x0800_0000) != 0x0800_0000 {
-            return Err(ErrorKind::InvalidFirmware(Some(format!(
-                "firmware reset vector seems to be outside of reasonable bounds: 0x{:08x}",
-                reset_vector,
-            ))).error().into());
+            return Err(
+                eyre!(
+                    "Firmware file does not seem valid: reset vector address seems to be \
+                    outside of reasonable bounds - 0x{:08x}",
+                    reset_vector
+                )
+            );
         }
 
         let app_start = platform.load_address(Self::Application);
