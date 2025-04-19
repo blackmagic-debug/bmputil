@@ -21,7 +21,9 @@ fn detach_command(matches: &ArgMatches) -> Result<()>
 {
     let matcher = BmpMatcher::from_cli_args(matches);
     let mut results = matcher.find_matching_probes();
-    let dev = results.pop_single("detach")?;
+    let dev = results
+        .pop_single("detach")
+        .map_err(|kind| kind.error())?;
 
     use bmputil::usb::DfuOperatingMode::*;
     match dev.operating_mode() {
@@ -41,7 +43,9 @@ fn flash(matches: &ArgMatches) -> Result<()>
     let matcher = BmpMatcher::from_cli_args(matches);
     let mut results = matcher.find_matching_probes();
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
-    let dev: BmpDevice = results.pop_single("flash")?;
+    let dev: BmpDevice = results
+        .pop_single("flash")
+        .map_err(|kind| kind.error())?;
 
     bmputil::flasher::flash_probe(matches, dev, file_name.into())
 }

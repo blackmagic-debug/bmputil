@@ -26,7 +26,7 @@ use nusb::descriptors::Descriptor;
 use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
-use crate::error::{Error, ErrorKind, ResErrorKind};
+use crate::error::{Error, ErrorKind};
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
 
@@ -914,7 +914,7 @@ impl BmpMatchResults
     }
 
     /// Pops a single found device, handling printing error and warning cases.
-    pub fn pop_single(&mut self, operation: &str) -> Result<BmpDevice, Error>
+    pub fn pop_single(&mut self, operation: &str) -> Result<BmpDevice, ErrorKind>
     {
         if self.found.is_empty() {
             if !self.filtered_out.is_empty() {
@@ -932,7 +932,7 @@ impl BmpMatchResults
                 warn!("Device not found and errors occurred when searching for devices.");
                 warn!("One of these may be why the Black Magic Probe device was not found: {:?}", self.errors.as_slice());
             }
-            return Err(ErrorKind::DeviceNotFound.error());
+            return Err(ErrorKind::DeviceNotFound);
         }
 
         if self.found.len() > 1 {
@@ -942,7 +942,7 @@ impl BmpMatchResults
                 self.found.len()
             );
             error!("Hint: try bmputil info and revise your filter arguments (--serial, --index, --port).");
-            return Err(ErrorKind::TooManyDevices.error());
+            return Err(ErrorKind::TooManyDevices);
         }
 
         if !self.errors.is_empty() {
@@ -955,22 +955,21 @@ impl BmpMatchResults
     }
 
     /// Like `pop_single()`, but does not print helpful diagnostics for edge cases.
-    pub(crate) fn pop_single_silent(&mut self) -> Result<BmpDevice, Error>
+    pub(crate) fn pop_single_silent(&mut self) -> Result<BmpDevice, ErrorKind>
     {
         if self.found.len() > 1 {
-            return Err(ErrorKind::TooManyDevices.error());
+            Err(ErrorKind::TooManyDevices)
         } else if self.found.is_empty() {
-            return Err(ErrorKind::DeviceNotFound.error());
+            Err(ErrorKind::DeviceNotFound)
+        } else {
+            Ok(self.found.remove(0))
         }
-
-        Ok(self.found.remove(0))
     }
 }
 
-
 /// Waits for a Black Magic Probe to reboot, erroring after a timeout.
 ///
-/// This function takes a port string to attempt to keep track of a single physical device
+/// This function takes a port identifier to attempt to keep track of a single physical device
 /// across USB resets.
 ///
 /// This would take a serial number, but serial numbers can actually change between firmware
@@ -991,7 +990,7 @@ pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -
 
     let mut dev = matcher.find_matching_probes().pop_single_silent();
 
-    while let Some(ErrorKind::DeviceNotFound) = dev.err_kind() {
+    while let Err(ErrorKind::DeviceNotFound) = dev {
 
         trace!("Waiting for probe reboot: {} ms", Instant::now().duration_since(start).as_millis());
 
@@ -1000,7 +999,7 @@ pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -
             error!(
                 "Timed-out waiting for Black Magic Probe to re-enumerate!"
             );
-            return Err(ErrorKind::DeviceReboot.error_from(dev.unwrap_err()));
+            return Err(ErrorKind::DeviceReboot.error_from(dev.unwrap_err().error()));
         }
 
         // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
@@ -1016,11 +1015,10 @@ pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -
         }
     }
 
-    let dev = dev?;
+    let dev = dev.map_err(|kind| kind.error())?;
 
     Ok(dev)
 }
-
 
 /// Represents the firmware in use on a device that's supported.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

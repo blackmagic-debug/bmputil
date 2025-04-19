@@ -269,21 +269,3 @@ pub enum ErrorSource
     #[error(transparent)]
     DfuCore(#[from] dfu_core::Error),
 }
-
-/// Extension trait to enable getting the error kind from a Result<T, Error> with one method.
-pub trait ResErrorKind
-{
-    type Kind;
-
-    fn err_kind(&self) -> Option<&Self::Kind>;
-}
-
-impl<T> ResErrorKind for Result<T, Error>
-{
-    type Kind = ErrorKind;
-
-    fn err_kind(&self) -> Option<&Self::Kind>
-    {
-        self.as_ref().err().map(|error| &error.kind)
-    }
-}
