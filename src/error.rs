@@ -121,9 +121,6 @@ impl Display for ErrorKind
             External(source) => {
                 use ErrorSource::*;
                 match source {
-                    StdIo(e) => {
-                        write!(f, "unhandled std::io::Error: {}", e)?;
-                    },
                     Nusb(e) => {
                         write!(f, "unhandled nusb error: {}", e.0)?;
                     },
@@ -211,15 +208,6 @@ impl StdError for Error
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)>
     {
         self.source.as_deref().map(|e| e as &dyn StdError)
-    }
-}
-
-impl From<std::io::Error> for Error
-{
-    fn from(other: std::io::Error) -> Self
-    {
-        use ErrorKind::*;
-        ReleaseMetadataInvalid.error_from(External(ErrorSource::StdIo(other)).error())
     }
 }
 
@@ -316,9 +304,6 @@ impl From<dfu_core::Error> for Error
 #[derive(Debug, Error)]
 pub enum ErrorSource
 {
-    #[error(transparent)]
-    StdIo(#[from] std::io::Error),
-
     #[error(transparent)]
     Nusb(#[from] NusbError),
 
