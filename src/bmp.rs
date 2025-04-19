@@ -991,7 +991,7 @@ pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -
 
     let mut dev = matcher.find_matching_probes().pop_single_silent();
 
-    while let Err(ErrorKind::DeviceNotFound) = dev.err_kind() {
+    while let Some(ErrorKind::DeviceNotFound) = dev.err_kind() {
 
         trace!("Waiting for probe reboot: {} ms", Instant::now().duration_since(start).as_millis());
 

@@ -156,7 +156,6 @@ impl Error
         }
     }
 
-    #[allow(dead_code)]
     /// Add additional context about what was being attempted when this error occurred.
     ///
     /// Example: "reading current firmware version".
@@ -166,7 +165,6 @@ impl Error
         self
     }
 
-    #[allow(dead_code)]
     /// Removes previously added context.
     pub fn without_ctx(mut self) -> Self
     {
@@ -273,18 +271,19 @@ pub enum ErrorSource
 }
 
 /// Extension trait to enable getting the error kind from a Result<T, Error> with one method.
-pub trait ResErrorKind<T>
+pub trait ResErrorKind
 {
     type Kind;
-    fn err_kind(&self) -> Result<&T, &Self::Kind>;
+
+    fn err_kind(&self) -> Option<&Self::Kind>;
 }
 
-impl<T> ResErrorKind<T> for Result<T, Error>
+impl<T> ResErrorKind for Result<T, Error>
 {
     type Kind = ErrorKind;
 
-    fn err_kind(&self) -> Result<&T, &Self::Kind>
+    fn err_kind(&self) -> Option<&Self::Kind>
     {
-        self.as_ref().map_err(|e| &e.kind)
+        self.as_ref().err().map(|error| &error.kind)
     }
 }
