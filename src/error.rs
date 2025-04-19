@@ -4,7 +4,7 @@
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 //! Module for error handling code.
 
-use std::{fmt::{Display, Formatter}, path::PathBuf};
+use std::fmt::{Display, Formatter};
 use std::error::Error as StdError;
 
 use thiserror::Error;
@@ -18,12 +18,6 @@ type BoxedError = Box<dyn StdError + Send + Sync>;
 #[derive(Debug)]
 pub enum ErrorKind
 {
-    /// Failed to read firmware file.
-    FirmwareFileIo(/** filename **/ Option<PathBuf>),
-
-    /// Specified firmware seems invalid.
-    InvalidFirmware(/** why **/ Option<String>),
-
     /// Current operation only supports one Black Magic Probe but more tha none device was found.
     TooManyDevices,
 
@@ -94,8 +88,6 @@ impl Display for ErrorKind
     {
         use ErrorKind::*;
         match self {
-            FirmwareFileIo(None) => write!(f, "failed to read firmware file")?,
-            FirmwareFileIo(Some(filename)) => write!(f, "failed to read firmware file {}", filename.to_string_lossy())?,
             TooManyDevices => write!(f, "current operation only supports one Black Magic Probe device but more than one device was found")?,
             DeviceNotFound => write!(f, "Black Magic Probe device not found (check connection?)")?,
             DeviceDisconnectDuringOperation => write!(f, "Black Magic Probe device found disconnected")?,
@@ -108,8 +100,6 @@ impl Display for ErrorKind
                     thing,
                 )?;
             },
-            InvalidFirmware(None) => write!(f, "specified firmware does not seem valid")?,
-            InvalidFirmware(Some(why)) => write!(f, "specified firmware does not seem valid: {}", why)?,
             ReleaseMetadataInvalid => write!(f, "Black Magic Debug release metadata was mallformed")?,
             External(source) => {
                 use ErrorSource::*;
@@ -154,22 +144,6 @@ impl Error
             source,
             context: None
         }
-    }
-
-    /// Add additional context about what was being attempted when this error occurred.
-    ///
-    /// Example: "reading current firmware version".
-    pub fn with_ctx(mut self, ctx: &str) -> Self
-    {
-        self.context = Some(ctx.to_string());
-        self
-    }
-
-    /// Removes previously added context.
-    pub fn without_ctx(mut self) -> Self
-    {
-        self.context = None;
-        self
     }
 }
 
