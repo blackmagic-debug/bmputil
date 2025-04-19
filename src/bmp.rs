@@ -976,7 +976,7 @@ impl BmpMatchResults
 /// versions, and thus also between application and bootloader mode, so serial number is not a
 /// reliable way to keep track of a single device across USB resets.
 // TODO: test how reliable the port path is on multiple platforms.
-pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -> Result<BmpDevice, Error>
+pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -> Result<BmpDevice>
 {
     let silence_timeout = timeout / 2;
 
@@ -999,7 +999,7 @@ pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -
             error!(
                 "Timed-out waiting for Black Magic Probe to re-enumerate!"
             );
-            return Err(ErrorKind::DeviceReboot.error_from(dev.unwrap_err().error()));
+            return Err(ErrorKind::DeviceReboot.error_from(dev.unwrap_err().error()).into());
         }
 
         // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
