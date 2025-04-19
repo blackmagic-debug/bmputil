@@ -208,15 +208,6 @@ impl StdError for Error
     }
 }
 
-impl From<NusbError> for Error
-{
-    fn from(other: NusbError) -> Self
-    {
-        use ErrorKind::*;
-        External(ErrorSource::Nusb(other)).error()
-    }
-}
-
 impl From<dfu_nusb::Error> for Error
 {
     fn from(other: dfu_nusb::Error) -> Self
