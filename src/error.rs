@@ -139,9 +139,6 @@ impl Display for ErrorKind
                     Goblin(e) => {
                         write!(f, "unhandled ELF parsing error: {}", e)?;
                     },
-                    SerdeJSON(e) => {
-                        write!(f, "unhandled serde JSON parsing error: {}", e)?;
-                    }
                 };
             },
         };
@@ -328,15 +325,6 @@ impl From<goblin::error::Error> for Error
     }
 }
 
-impl From<serde_json::Error> for Error
-{
-    fn from(other: serde_json::Error) -> Self
-    {
-        use ErrorKind::*;
-        ReleaseMetadataInvalid.error_from(External(ErrorSource::SerdeJSON(other)).error())
-    }
-}
-
 /// Sources of external error in this library.
 #[derive(Debug, Error)]
 pub enum ErrorSource
@@ -358,9 +346,6 @@ pub enum ErrorSource
 
     #[error(transparent)]
     Goblin(#[from] goblin::error::Error),
-
-    #[error(transparent)]
-    SerdeJSON(#[from] serde_json::Error),
 }
 
 /// Extension trait to enable getting the error kind from a Result<T, Error> with one method.
