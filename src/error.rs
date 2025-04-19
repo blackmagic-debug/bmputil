@@ -9,8 +9,6 @@ use std::error::Error as StdError;
 
 use thiserror::Error;
 
-use crate::S;
-
 /// More convenient alias for `Box<dyn StdError + Send + Sync>`,
 /// which shows up in a few signatures and structs.
 type BoxedError = Box<dyn StdError + Send + Sync>;
@@ -214,15 +212,15 @@ impl From<dfu_nusb::Error> for Error
                 External(ErrorSource::Nusb(source)).error()
             },
             Source::AltSettingNotFound => {
-                DeviceSeemsInvalid(S!("DFU interface (alt mode) not found"))
+                DeviceSeemsInvalid("DFU interface (alt mode) not found".into())
                     .error_from(other)
             },
             Source::FunctionalDescriptorNotFound => {
-                DeviceSeemsInvalid(S!("DFU functional descriptor not found"))
+                DeviceSeemsInvalid("DFU functional descriptor not found".into())
                     .error_from(other)
             },
             Source::FunctionalDescriptor(source) => {
-                DeviceSeemsInvalid(S!("DFU functional interface descriptor"))
+                DeviceSeemsInvalid("DFU functional interface descriptor".into())
                     .error_from(source)
             },
             anything_else => {
@@ -245,11 +243,11 @@ impl From<dfu_core::Error> for Error
                     .error_from(source)
             },
             Source::InvalidAddress => {
-                DeviceSeemsInvalid(S!("DFU interface memory layout string"))
+                DeviceSeemsInvalid("DFU interface memory layout string".into())
                     .error_from(other)
             },
             Source::InvalidInterfaceString => {
-                DeviceSeemsInvalid(S!("DFU interface memory layout string"))
+                DeviceSeemsInvalid("DFU interface memory layout string".into())
                     .error_from(other)
             },
             anything_else => {
