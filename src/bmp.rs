@@ -18,6 +18,8 @@ use dfu_core::DfuIo;
 use dfu_core::DfuProtocol;
 use dfu_nusb::DfuSync;
 use log::{trace, debug, info, warn, error};
+#[cfg(target_os = "macos")]
+use nusb::transfer::TransferError;
 use nusb::{list_devices, Device, DeviceInfo, Interface};
 use nusb::transfer::{Control, ControlType, Recipient};
 use nusb::descriptors::Descriptor;
@@ -343,12 +345,20 @@ impl BmpDevice
             index: iface_number as u16,
         };
 
-        let _response = self.interface.as_ref().unwrap().control_out_blocking(
+        let response = self.interface.as_ref().unwrap().control_out_blocking(
             request,
             &[], // buffer
             Duration::from_secs(1), // timeout for the request
-        )
-        .wrap_err("sending control request")?;
+        );
+
+        // Suppress errors if they're just how the OS handles the device going away due to the request
+        if let Err(error) = response {
+            match error {
+                #[cfg(target_os = "macos")]
+                TransferError::Unknown => {},
+                _ => Err(error)?,
+            }
+        }
 
         info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
