@@ -9,7 +9,9 @@ use std::time::Duration;
 use color_eyre::eyre::{eyre, Result};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
+use reqwest::StatusCode;
 
+use crate::docs_viewer::Viewer;
 use crate::metadata::structs::FirmwareDownload;
 
 pub struct FirmwareMultichoice<'a>
@@ -149,6 +151,14 @@ impl<'a> FirmwareMultichoice<'a>
             // having connectivity problems - better to die early and have them retry
             .timeout(Duration::from_secs(2))
             .send()?;
+
+        match response.status() {
+            // XXX: Need to compute the release URI from the download URI and release name string
+            StatusCode::NOT_FOUND => println!("No documentation found, please go to <> to find out more"),
+            StatusCode::OK => Viewer::display(&variant.friendly_name, &response.text()?)?,
+            status =>
+                Err(eyre!("Something went terribly wrong while grabbing the documentation to display: {}", status))?
+        };
 
         Ok(State::PickAction(name_index))
     }
