@@ -82,6 +82,8 @@ impl<'a> Viewer<'a>
                         KeyCode::Char('q' | 'Q') => self.quit(),
                         KeyCode::Up => self.scroll_up(),
                         KeyCode::Down => self.scroll_down(),
+                        KeyCode::PageUp => self.scroll_page_up(),
+                        KeyCode::PageDown => self.scroll_page_down(),
                         _ => {},
                     }
                 }
@@ -125,6 +127,28 @@ impl<'a> Viewer<'a>
             self.scroll_position = new_position;
         }
     }
+
+    fn scroll_page_up(&mut self)
+    {
+        // Scrolling up by a page also gets to use saturating subtraction so we can't scroll past the front
+        self.scroll_position = self.scroll_position.saturating_sub(self.viewport_size.height.into())
+    }
+
+    fn scroll_page_down(&mut self)
+    {
+        // Scrolling down by a page though needs extra handling too.. start by constructing
+        // what the new scroll position should be
+        let viewport_height: usize = self.viewport_size.height.into();
+        let new_position = self.scroll_position + viewport_height;
+        // Now, if that new position exceeds the actual max scroll position, assign the max scroll
+        // position as the new scroll position
+        if new_position > self.max_scroll {
+            self.scroll_position = self.max_scroll;
+        } else {
+            // Otherwise, store the newly calculated position
+            self.scroll_position = new_position;
+        }
+    }
 }
 
 impl Widget for &mut Viewer<'_>
@@ -151,8 +175,7 @@ impl Widget for &mut Viewer<'_>
         let mut scroll_state = ScrollbarState::new(self.max_scroll)
             .position(self.scroll_position);
         // Build and render the scrollbar to track the content
-        StatefulWidget::render
-        (
+        StatefulWidget::render(
             // Put the scrollbar on the right side, running down the text, and don't display
             // the end arrows
             Scrollbar::new(ScrollbarOrientation::VerticalRight)
