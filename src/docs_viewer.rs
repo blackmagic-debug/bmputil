@@ -7,10 +7,9 @@ use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::layout::{Alignment, Margin, Rect, Size};
 use ratatui::symbols::scrollbar;
-use ratatui::text::Text;
 use ratatui::widgets::{
     Block, BorderType, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
-    Widget
+    Widget, Wrap
 };
 use ratatui::DefaultTerminal;
 use ratatui::Frame;
@@ -18,8 +17,7 @@ use ratatui::Frame;
 pub struct Viewer<'a>
 {
     exit: bool,
-    title: &'a str,
-    docs: Text<'a>,
+    docs: Paragraph<'a>,
 
     viewport_size: Size,
     line_count: usize,
@@ -46,13 +44,22 @@ impl<'a> Viewer<'a>
     fn new(title: &'a String, docs: &'a String, viewport_size: Size) -> Self
     {
         // Convert the documentation to display from Markdown
-        let docs = tui_markdown::from_str(docs);
+        let docs = Paragraph::new(tui_markdown::from_str(docs))
+            // Do not trim indentation for word wrapping
+            .wrap(Wrap { trim: false })
+            .block(
+                // Build a bordered block for presentation
+                Block::bordered()
+                    .title(title.as_str())
+                    .title_alignment(Alignment::Left)
+                    .border_type(BorderType::Rounded)
+                    .padding(Padding::horizontal(1))
+            );
         // Work out how any lines the documentation renders to
-        let line_count = docs.height();
+        let line_count = docs.line_count(viewport_size.width);
 
         Self {
             exit: false,
-            title: title.as_str(),
             docs,
             viewport_size,
             line_count,
@@ -108,6 +115,8 @@ impl<'a> Viewer<'a>
     {
         // Grab the new viewport size and store that
         self.viewport_size = Size::new(width, height);
+        // Recompute the line count
+        self.line_count = self.docs.line_count(width);
         // Figure out if the scroll position is still viable, and adjust it appropriately
         let max_scroll = self.line_count.saturating_sub(height.into());
         if self.scroll_position > max_scroll {
@@ -163,16 +172,8 @@ impl Widget for &mut Viewer<'_>
         Self: Sized
     {
         // Render the contents of the block (the docs text), then the block itself
-        Paragraph::new(self.docs.clone())
+        self.docs.clone()
             .scroll((self.scroll_position as u16, 0))
-            .block(
-                // Build a bordered block for presentation
-                Block::bordered()
-                    .title(self.title)
-                    .title_alignment(Alignment::Left)
-                    .border_type(BorderType::Rounded)
-                    .padding(Padding::horizontal(1))
-            )
             .render(area, buf);
 
         // Build the scrollbar state
