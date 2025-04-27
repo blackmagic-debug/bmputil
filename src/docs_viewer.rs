@@ -5,8 +5,9 @@
 use color_eyre::eyre::Result;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::layout::{Alignment, Rect, Size};
-use ratatui::widgets::{Block, BorderType, Padding, Widget};
+use ratatui::layout::{Alignment, Margin, Rect, Size};
+use ratatui::symbols::scrollbar;
+use ratatui::widgets::{Block, BorderType, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
 use ratatui::DefaultTerminal;
 use ratatui::Frame;
 
@@ -18,6 +19,9 @@ pub struct Viewer<'a>
     docs: &'a str,
 
     viewport_size: Size,
+    line_count: usize,
+    max_scroll: usize,
+    scroll_position: usize,
 }
 
 impl<'a> Viewer<'a>
@@ -38,11 +42,18 @@ impl<'a> Viewer<'a>
 
     fn new(title: &'a String, docs: &'a String, viewport_size: Size) -> Self
     {
+        // Work out how any lines the documentation renders to
+        let line_count = tui_markdown::from_str(docs).lines.len();
+
         Self {
             exit: false,
             title: title.as_str(),
             docs: docs.as_str(),
             viewport_size,
+            line_count,
+            // Compute the maximum scrolling position for the scrollbar
+            max_scroll: line_count.saturating_sub(viewport_size.height.into()),
+            scroll_position: 0,
         }
     }
 
@@ -73,7 +84,7 @@ impl<'a> Viewer<'a>
                     }
                 }
             },
-            Event::Resize(width, height) => self.viewport_size = Size::new(width, height),
+            Event::Resize(width, height) => self.handle_resize(width, height),
             _ => {},
         }
         Ok(())
@@ -83,6 +94,19 @@ impl<'a> Viewer<'a>
     {
         self.exit = true
     }
+
+    fn handle_resize(&mut self, width: u16, height: u16)
+    {
+        // Grab the new viewport size and store that
+        self.viewport_size = Size::new(width, height);
+        // Figure out if the scroll position is still viable, and adjust it appropriately
+        let max_scroll = self.line_count.saturating_sub(height.into());
+        if self.scroll_position > max_scroll {
+            self.scroll_position = max_scroll
+        }
+        // Update the max scroll position too
+        self.max_scroll = max_scroll;
+    }
 }
 
 impl Widget for &mut Viewer<'_>
@@ -91,6 +115,7 @@ impl Widget for &mut Viewer<'_>
     where
         Self: Sized
     {
+        // Convert the documentation to display from Markdown
         let docs_text = tui_markdown::from_str(self.docs);
 
         // Build a bordered block for presentation
@@ -103,5 +128,23 @@ impl Widget for &mut Viewer<'_>
         // Render the contents of the block (the docs text), then the block itself
         docs_text.render(block.inner(area), buf);
         block.render(area, buf);
+
+        // Build the scrollbar state
+        let mut scroll_state = ScrollbarState::new(self.max_scroll)
+            .position(self.scroll_position);
+        // Build and render the scrollbar to track the content
+        StatefulWidget::render
+        (
+            // Put the scrollbar on the right side, running down the text, and don't display
+            // the end arrows
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .symbols(scrollbar::VERTICAL)
+                .begin_symbol(None)
+                .end_symbol(None),
+            // Scrollbar should be displayed inside the side of the block, not overwriting the corners
+            area.inner(Margin::new(0, 1)),
+            buf,
+            &mut scroll_state
+        );
     }
 }
