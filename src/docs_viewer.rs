@@ -80,6 +80,8 @@ impl<'a> Viewer<'a>
                 if key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char('q' | 'Q') => self.quit(),
+                        KeyCode::Up => self.scroll_up(),
+                        KeyCode::Down => self.scroll_down(),
                         _ => {},
                     }
                 }
@@ -106,6 +108,22 @@ impl<'a> Viewer<'a>
         }
         // Update the max scroll position too
         self.max_scroll = max_scroll;
+    }
+
+    fn scroll_up(&mut self)
+    {
+        // Scrolling up is easy.. just keep subtracting 1 until we reach 0 and keep it at 0
+        self.scroll_position = self.scroll_position.saturating_sub(1)
+    }
+
+    fn scroll_down(&mut self)
+    {
+        // Scrolling down is a bit harder - start by computing what the next scroll position should be
+        let new_position = self.scroll_position + 1;
+        // Now, if that does not exceed the actual max scroll position, we can update our scroll position
+        if new_position <= self.max_scroll {
+            self.scroll_position = new_position;
+        }
     }
 }
 
