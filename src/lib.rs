@@ -5,6 +5,7 @@
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
 pub mod bmp;
+pub mod docs_viewer;
 pub mod error;
 pub mod elf;
 pub mod firmware_selector;
