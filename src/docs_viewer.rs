@@ -7,6 +7,7 @@ use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::layout::{Alignment, Margin, Rect, Size};
 use ratatui::symbols::scrollbar;
+use ratatui::text::Text;
 use ratatui::widgets::{
     Block, BorderType, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
     Widget, Wrap
@@ -192,5 +193,10 @@ impl Widget for &mut Viewer<'_>
             buf,
             &mut scroll_state
         );
+
+        // Render the key bindings help
+        Text::from(" ⋏⋎: scroll, ⊼⊻: scroll page, q: quit to menu ")
+            .centered()
+            .render(area.rows().last().unwrap(), buf);
     }
 }
