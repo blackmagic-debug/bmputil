@@ -18,6 +18,7 @@ use log::error;
 
 use crate::bmp::BmpDevice;
 use crate::bmp::BmpMatcher;
+use crate::firmware_selector::FirmwareMultichoice;
 use crate::flasher;
 use crate::metadata::download_metadata;
 use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata, Probe};
@@ -205,30 +206,12 @@ fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>>
         }
         // Otherwise, if there's more than one we have to ask the user to make a choice
         _ => {
-            // Map the variant list to create selection items
-            let items: Vec<_> = firmware.variants
-                .iter()
-                .map(|(_, variant)| variant.friendly_name.as_str())
-                .collect();
-
-            // Figure out which one the user wishes to use
-            let selection = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("Which firmware variant would you like to run on your probe?")
-                .items(items.as_slice())
-                .interact_opt()?;
-            // Extract and return that one, if the user didn't cancel selection
-            Ok(
-                selection
-                    .map(|index| items[index])
-                    .and_then(
-                        |friendly_name| {
-                            firmware.variants
-                                .iter()
-                                .find(|(_, variant)| variant.friendly_name == friendly_name)
-                        }
-                    )
-                    .map(|(_, variant)| variant)
-            )
+            // Enter the selection FSM to either extract a selection from the user, or cancellation
+            let mut chooser = FirmwareMultichoice::new(&firmware.variants);
+            while !chooser.complete() {
+                chooser.step()?;
+            }
+            Ok(chooser.selection())
         }
     }
 }
