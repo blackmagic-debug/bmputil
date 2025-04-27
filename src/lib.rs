@@ -7,6 +7,7 @@
 pub mod bmp;
 pub mod error;
 pub mod elf;
+pub mod firmware_selector;
 pub mod flasher;
 pub mod metadata;
 pub mod switcher;
