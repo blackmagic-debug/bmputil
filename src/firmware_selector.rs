@@ -62,6 +62,10 @@ impl<'a> FirmwareMultichoice<'a>
         self.state = match self.state {
             State::PickFirmware => self.firmware_selection()?,
             State::PickAction(index) => self.action_selection(index)?,
+            // FlashFirmware and Cancel are both terminal actions whereby the FSM is done,
+            // so maintain homeostatis for them here.
+            State::FlashFirmware(index) => State::FlashFirmware(index),
+            State::Cancel => State::Cancel,
             _ => todo!(),
         };
 
