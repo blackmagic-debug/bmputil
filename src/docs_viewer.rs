@@ -9,7 +9,8 @@ use ratatui::layout::{Alignment, Margin, Rect, Size};
 use ratatui::symbols::scrollbar;
 use ratatui::text::Text;
 use ratatui::widgets::{
-    Block, BorderType, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget
+    Block, BorderType, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
+    Widget
 };
 use ratatui::DefaultTerminal;
 use ratatui::Frame;
@@ -161,16 +162,18 @@ impl Widget for &mut Viewer<'_>
     where
         Self: Sized
     {
-        // Build a bordered block for presentation
-        let block = Block::bordered()
-            .title(self.title)
-            .title_alignment(Alignment::Left)
-            .border_type(BorderType::Rounded)
-            .padding(Padding::horizontal(1));
-
         // Render the contents of the block (the docs text), then the block itself
-        self.docs.clone().render(block.inner(area), buf);
-        block.render(area, buf);
+        Paragraph::new(self.docs.clone())
+            .scroll((self.scroll_position as u16, 0))
+            .block(
+                // Build a bordered block for presentation
+                Block::bordered()
+                    .title(self.title)
+                    .title_alignment(Alignment::Left)
+                    .border_type(BorderType::Rounded)
+                    .padding(Padding::horizontal(1))
+            )
+            .render(area, buf);
 
         // Build the scrollbar state
         let mut scroll_state = ScrollbarState::new(self.max_scroll)
