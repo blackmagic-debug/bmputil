@@ -7,16 +7,18 @@ use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::layout::{Alignment, Margin, Rect, Size};
 use ratatui::symbols::scrollbar;
-use ratatui::widgets::{Block, BorderType, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
+use ratatui::text::Text;
+use ratatui::widgets::{
+    Block, BorderType, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget
+};
 use ratatui::DefaultTerminal;
 use ratatui::Frame;
-
 
 pub struct Viewer<'a>
 {
     exit: bool,
     title: &'a str,
-    docs: &'a str,
+    docs: Text<'a>,
 
     viewport_size: Size,
     line_count: usize,
@@ -42,13 +44,15 @@ impl<'a> Viewer<'a>
 
     fn new(title: &'a String, docs: &'a String, viewport_size: Size) -> Self
     {
+        // Convert the documentation to display from Markdown
+        let docs = tui_markdown::from_str(docs);
         // Work out how any lines the documentation renders to
-        let line_count = tui_markdown::from_str(docs).lines.len();
+        let line_count = docs.height();
 
         Self {
             exit: false,
             title: title.as_str(),
-            docs: docs.as_str(),
+            docs,
             viewport_size,
             line_count,
             // Compute the maximum scrolling position for the scrollbar
@@ -157,9 +161,6 @@ impl Widget for &mut Viewer<'_>
     where
         Self: Sized
     {
-        // Convert the documentation to display from Markdown
-        let docs_text = tui_markdown::from_str(self.docs);
-
         // Build a bordered block for presentation
         let block = Block::bordered()
             .title(self.title)
@@ -168,7 +169,7 @@ impl Widget for &mut Viewer<'_>
             .padding(Padding::horizontal(1));
 
         // Render the contents of the block (the docs text), then the block itself
-        docs_text.render(block.inner(area), buf);
+        self.docs.clone().render(block.inner(area), buf);
         block.render(area, buf);
 
         // Build the scrollbar state
