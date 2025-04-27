@@ -10,6 +10,7 @@ use color_eyre::eyre::{eyre, Result};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use reqwest::StatusCode;
+use url::Url;
 
 use crate::docs_viewer::Viewer;
 use crate::metadata::structs::FirmwareDownload;
@@ -129,6 +130,25 @@ impl<'a> FirmwareMultichoice<'a>
         })
     }
 
+    fn compute_release_uri(&self, variant: &FirmwareDownload) -> Url
+    {
+        // Clone the download URI for this firmware variant and convert the path part into a Path
+        let mut uri = variant.uri.clone();
+        let mut path = PathBuf::from(uri.path());
+        // Find where the release tag component is in the path, stripping back to that
+        while path.components().count() != 0 && !path.ends_with(self.release) {
+            path.pop();
+        }
+        // Now replace the preceeding `/download/` chunk with `/tag/`
+        path.pop();
+        path.set_file_name("tag");
+        path.push(self.release);
+        // Having completed that, replace the path component of the URI
+        uri.set_path(path.to_str().unwrap());
+        // And now return the completed URI
+        uri
+    }
+
     fn show_documentation(&self, name_index: usize, variant_index: usize) -> Result<State>
     {
         // Extract which firmware download we're to work with
@@ -154,7 +174,9 @@ impl<'a> FirmwareMultichoice<'a>
 
         match response.status() {
             // XXX: Need to compute the release URI from the download URI and release name string
-            StatusCode::NOT_FOUND => println!("No documentation found, please go to <> to find out more"),
+            StatusCode::NOT_FOUND => println!(
+                "No documentation found, please go to {} to find out more", self.compute_release_uri(variant)
+            ),
             StatusCode::OK => Viewer::display(&variant.friendly_name, &response.text()?)?,
             status =>
                 Err(eyre!("Something went terribly wrong while grabbing the documentation to display: {}", status))?
