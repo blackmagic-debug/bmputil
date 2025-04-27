@@ -56,7 +56,7 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
 
     // Grab down the metadata index
     let metadata = download_metadata(cache)?;
-    let firmware = match pick_release(&metadata, &variant, &firmware_version)? {
+    let (release, firmware) = match pick_release(&metadata, &variant, &firmware_version)? {
         Some(firmware) => firmware,
         None => {
             println!("firmware release selection cancelled, stopping operation");
@@ -65,7 +65,7 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
     };
 
     // Now see which variant of the firmware the user wants to use
-    let firmware_variant = match pick_firmware(firmware)? {
+    let firmware_variant = match pick_firmware(release, firmware)? {
         Some(variant) => variant,
         None => {
             println!("firmware variant selection cancelled, stopping operation");
@@ -163,7 +163,7 @@ fn parse_firmware_identity(identity: &String) -> ProbeIdentity
 }
 
 fn pick_release<'a>(metadata: &'a Metadata, variant: &Probe, firmware_version: &String) ->
-    Result<Option<&'a Firmware>>
+    Result<Option<(&'a str, &'a Firmware)>>
 {
     // Filter out releases that don't support this probe, and filter out the one the probe is currently running
     // if there is only a single variant in the release (multi-variant releases still need to be shown)
@@ -190,10 +190,10 @@ fn pick_release<'a>(metadata: &'a Metadata, variant: &Probe, firmware_version: &
         Some(release) => release,
         None => return Ok(None),
     };
-    Ok(Some(&metadata.releases[items[selection].as_str()].firmware[&variant]))
+    Ok(Some((items[selection].as_str(), &metadata.releases[items[selection].as_str()].firmware[&variant])))
 }
 
-fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>>
+fn pick_firmware<'a>(release: &'a str, firmware: &'a Firmware) -> Result<Option<&'a FirmwareDownload>>
 {
     match firmware.variants.len() {
         // If there are now firmware variants for this release, that's an error
@@ -207,7 +207,7 @@ fn pick_firmware(firmware: &Firmware) -> Result<Option<&FirmwareDownload>>
         // Otherwise, if there's more than one we have to ask the user to make a choice
         _ => {
             // Enter the selection FSM to either extract a selection from the user, or cancellation
-            let mut chooser = FirmwareMultichoice::new(&firmware.variants);
+            let mut chooser = FirmwareMultichoice::new(release, &firmware.variants);
             while !chooser.complete() {
                 chooser.step()?;
             }

@@ -15,6 +15,7 @@ use crate::metadata::structs::FirmwareDownload;
 pub struct FirmwareMultichoice<'a>
 {
     state: State,
+    release: &'a str,
     variants: Vec<&'a FirmwareDownload>,
     friendly_names: Vec<&'a str>,
 }
@@ -32,7 +33,7 @@ enum State
 
 impl<'a> FirmwareMultichoice<'a>
 {
-    pub fn new(variants: &'a BTreeMap<String, FirmwareDownload>) -> Self
+    pub fn new(release: &'a str, variants: &'a BTreeMap<String, FirmwareDownload>) -> Self
     {
         // Map the variant list to create selection items
         let friendly_names: Vec<_> = variants
@@ -43,6 +44,7 @@ impl<'a> FirmwareMultichoice<'a>
         // Construct the new multi-choice object that will start in the default firmware selection state
         Self {
             state: State::default(),
+            release,
             variants: variants.values().collect(),
             friendly_names
         }
