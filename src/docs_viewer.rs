@@ -5,7 +5,7 @@
 use color_eyre::eyre::Result;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{Alignment, Rect, Size};
 use ratatui::widgets::{Block, BorderType, Padding, Widget};
 use ratatui::DefaultTerminal;
 use ratatui::Frame;
@@ -16,6 +16,8 @@ pub struct Viewer<'a>
     exit: bool,
     title: &'a str,
     docs: &'a str,
+
+    viewport_size: Size,
 }
 
 impl<'a> Viewer<'a>
@@ -25,7 +27,7 @@ impl<'a> Viewer<'a>
         // Grab the console, putting it in TUI mode
         let mut terminal = ratatui::init();
         // Turn the Markdown to display into a viewer
-        let mut viewer = Self::new(title, docs);
+        let mut viewer = Self::new(title, docs, terminal.size()?);
 
         // Run the viewer and wait to see what the user does
         let result = viewer.run(&mut terminal);
@@ -34,12 +36,13 @@ impl<'a> Viewer<'a>
         result
     }
 
-    fn new(title: &'a String, docs: &'a String) -> Self
+    fn new(title: &'a String, docs: &'a String, viewport_size: Size) -> Self
     {
         Self {
             exit: false,
             title: title.as_str(),
             docs: docs.as_str(),
+            viewport_size,
         }
     }
 
@@ -70,6 +73,7 @@ impl<'a> Viewer<'a>
                     }
                 }
             },
+            Event::Resize(width, height) => self.viewport_size = Size::new(width, height),
             _ => {},
         }
         Ok(())
