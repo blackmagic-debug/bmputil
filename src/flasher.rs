@@ -134,10 +134,12 @@ impl Firmware
                             // bootloader rebooting and we can safely ignore it
                             #[cfg(any(target_os = "linux", target_os = "android"))]
                             TransferError::Disconnected => Ok(()),
-                            // If the error reported on Windows was a STALL, that was just the
+                            // If the error reported was a STALL, that was just the
                             // bootloader rebooting and we can safely ignore it
-                            #[cfg(any(target_os = "windows", target_os = "macos"))]
                             TransferError::Stall => Ok(()),
+                            // If the error reported on macOS was unknown, this is most probably just the
+                            // OS having a bad time tracking the result of the detach packet and the
+                            // device rebooting as a result, so we can safely ignore it
                             #[cfg(target_os = "macos")]
                             TransferError::Unknown => Ok(()),
                             _ => {
