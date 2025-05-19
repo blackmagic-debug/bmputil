@@ -1,3 +1,5 @@
+# `bmputil` companion utility to Black Magic Debug
+
 [![Discord](https://img.shields.io/discord/613131135903596547?logo=discord)](https://discord.gg/P7FYThy)
 
 A management utility for debuggers running the [Black Magic Debug firmware](https://black-magic.org/).
@@ -25,7 +27,8 @@ This is extra experimental, and will require administrator access on the first r
 
 Alternatively, you can build and install the tool from source. This assumes that you have Rust (and
 git, etc) installed already.
-```
+
+```sh
 git clone https://github.com/blackmagic-debug/bmputil.git
 cd bmputil
 cargo install --path .
@@ -47,11 +50,13 @@ the path of the extracted WDK redistributable components.
 The first goal of this tool is to serve as a more ergonomic, dedicated to BMP DFU programmer. This utility is meant to replace the need for dfu-util and stm32_mem.py script. We can take advantage of the fact that we only have to support a specific target and DFU implementation to make for a nicer user experience. Additionally we can eventually provide automatic firmware update/upgrade commands as we know the location where to look for BMP firmwares. And even further, eventually, provide BMP specific configuration functions.
 
 Currently implemented:
+
 * Find and detect Black Magic Probe (BMP) debuggers connected to the system.
 * Check firmware type and version on the attached BMPs.
 * Flash Firmware using the DFU protocol onto the BMPs connected to the system.
 
 Planned:
+
 * Search for new firmware releases.
 * Provide automated upgrade to newest command.
 * Configure BMP firmware defaults. (will require firmware support for permanent settings)
