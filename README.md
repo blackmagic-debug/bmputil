@@ -52,18 +52,23 @@ For building the tool on Windows, please see the
 
 ## Current Status
 
-The first goal of this tool is to serve as a more ergonomic, dedicated to BMP DFU programmer. This utility is meant to replace the need for dfu-util and stm32_mem.py script. We can take advantage of the fact that we only have to support a specific target and DFU implementation to make for a nicer user experience. Additionally we can eventually provide automatic firmware update/upgrade commands as we know the location where to look for BMP firmwares. And even further, eventually, provide BMP specific configuration functions.
+The first goal of this tool is to serve as a more ergonomic, dedicated to BMD, DFU programmer. This utility is meant
+to replace the need for dfu-util and the old stm32_mem.py script. We take advantage of the fact that we only have to
+support a specific target and a small number of DFU implementations to make for a nicer user experience. Additionally
+we provide an automatic firmware switching command as we know the location where to look for BMD firmware builds. It
+is planned to eventually provide BMD-specific configuration functions and automated build customisability, allowing
+the tool to bake a firmware image for you that pulls together the combination of targets you care about.
 
 Currently implemented:
 
 * Find and detect Black Magic Probe (BMP) debuggers connected to the system.
 * Check firmware type and version on the attached BMPs.
 * Flash Firmware using the DFU protocol onto the BMPs connected to the system.
-* Search for new firmware releases.
+* Automated download of metadata as-needed to pick up new releases.
+* Guided switching of the running firmware w/ automated firmware download.
 
 Planned:
 
-* Provide automated upgrade to newest command.
 * Configure BMP firmware defaults. (will require firmware support for permanent settings)
 * And many more... :)
 
