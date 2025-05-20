@@ -11,13 +11,13 @@ which you have connected and what their serial numbers are.
 
 ## Installation
 
-Binary releases for Linux, Mac (arm64/AArch64) and Windows (amr64/AArch64) are now available with every
+Binary releases for Linux, mac OS (amd64/AArch64) and Windows (amd64/AArch64) are now available with every
 [release](https://github.com/blackmagic-debug/bmputil/releases). These should work out-of-the-box with no
 extra dependencies or software needing to be installed.
 
-Alternately, you can install directly from [crates.io](https://crates.io/crates/bmputil) with cargo.
+Alternately, you can install directly from [crates.io](https://crates.io/crates/bmputil) via cargo.
 
-First install Rust on your computer using `rustup`. Follow the instructions on the
+First install Rust on your computer using `rustup`. For this, you can follow the instructions on the
 [Rust Lang website](https://www.rust-lang.org/tools/install).
 
 Then, install bmputil using `cargo install bmputil`. The tool will be available as `bmputil-cli`.
@@ -27,24 +27,30 @@ This will require administrator access when it occurs, and uses the Windows Driv
 
 ## Building from source
 
-Alternatively, you can build and install the tool from source. This assumes that you have Rust (and
-git, etc) installed already.
+Alternatively, you can build and install the tool from source if you want something newer than the latest
+crates.io release. This assumes that you have Rust (and git, etc) installed already.
 
 ```sh
-git clone https://github.com/blackmagic-debug/bmputil.git
+git clone https://github.com/blackmagic-debug/bmputil
 cd bmputil
 cargo b -r
 ```
 
-If you are working on patches or contributions to the tool, you can obviously use `cargo build` and
-`cargo run [params]` as needed.
+You can then copy the resulting binary from `target/release/bmputil-cli` to some place on `$PATH`.
+
+Alternatively, `cargo install --path .` can be used in place of `cargo b -r`, or
+`cargo install https://github.com/blackmagic-debug/bmputil` in place of the manual clone and build to automate this.
+
+If you are working on patches or contributions to the tool, then you can use `cargo build` (`cargo b`) and
+`cargo run [params]` as needed to build test and run the tool. The `-r` (`--release`) option does a release
+build.
 
 ### Windows
 
 For building the tool on Windows, please see the
 [Black Magic Debug website guide](https://black-magic.org/knowledge/bmputil-on-windows.html) on the process.
 
-## Features
+## Current Status
 
 The first goal of this tool is to serve as a more ergonomic, dedicated to BMP DFU programmer. This utility is meant to replace the need for dfu-util and stm32_mem.py script. We can take advantage of the fact that we only have to support a specific target and DFU implementation to make for a nicer user experience. Additionally we can eventually provide automatic firmware update/upgrade commands as we know the location where to look for BMP firmwares. And even further, eventually, provide BMP specific configuration functions.
 
