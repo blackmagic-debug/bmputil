@@ -132,7 +132,7 @@ impl Firmware
                         DfuNusbError::Transfer(error) => match error {
                             // If the error reported on Linux was a disconnection, that was just the
                             // bootloader rebooting and we can safely ignore it
-                            #[cfg(any(target_os = "linux", target_os = "android"))]
+                            #[cfg(any(target_os = "linux", target_os = "android", target_os = "windows"))]
                             TransferError::Disconnected => Ok(()),
                             // If the error reported was a STALL, that was just the
                             // bootloader rebooting and we can safely ignore it
