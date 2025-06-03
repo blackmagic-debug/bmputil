@@ -9,7 +9,7 @@ default-run = "bmputil-cli"
 
 [dependencies]
 anstyle = "1.0"
-clap = { version = "4.0", default-features = false, features = ["std", "color", "help", "usage", "unicode", "wrap_help", "unstable-styles", "cargo"] }
+clap = { version = "4.0", default-features = false, features = ["std", "color", "help", "usage", "unicode", "wrap_help", "cargo", "derive", "suggestions"] }
 env_logger = "0.11"
 dfu-core = { version = "0.7.0", features = ["std"] }
 dfu-nusb = "0.1.1"
