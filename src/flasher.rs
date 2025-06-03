@@ -9,7 +9,6 @@ use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
 
-use clap::ArgMatches;
 use color_eyre::eyre::{eyre, Context, Result};
 use dfu_nusb::Error as DfuNusbError;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -18,7 +17,7 @@ use nusb::transfer::TransferError;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
-use crate::elf;
+use crate::{elf, AllowDangerous, BmpParams, FlashParams};
 use crate::usb::PortId;
 
 pub struct Firmware
@@ -30,22 +29,26 @@ pub struct Firmware
 
 impl Firmware
 {
-    pub fn new(matches: &ArgMatches, device: &BmpDevice, firmware_data: Vec<u8>) -> Result<Self>
+    pub fn new<Params>(params: &Params, device: &BmpDevice, firmware_data: Vec<u8>) -> Result<Self>
+    where
+        Params: BmpParams + FlashParams
     {
         let firmware_length = firmware_data.len();
         let firmware_length = u32::try_from(firmware_length)
             .expect("firmware filesize exceeded 32 bits! Firmware binary must be invalid (too big)");
 
         Ok(Self {
-            firmware_type: Self::determine_firmware_type(matches, device, &firmware_data)?,
+            firmware_type: Self::determine_firmware_type(params, device, &firmware_data)?,
             data: firmware_data,
             length: firmware_length,
         })
     }
 
-    fn determine_firmware_type(
-        matches: &ArgMatches, device: &BmpDevice, firmware_data: &Vec<u8>
+    fn determine_firmware_type<Params>(
+        params: &Params, device: &BmpDevice, firmware_data: &Vec<u8>
     ) -> Result<FirmwareType>
+    where
+        Params: BmpParams + FlashParams
     {
         // Figure out what kind of firmware we're being asked to work with here
         // Using the platform to determine the link address.
@@ -56,38 +59,34 @@ impl Firmware
         debug!("Firmware file was detected as {}", firmware_type);
 
         // But allow the user to override that type, if they *really* know what they are doing.
-        let firmware_type = if let Some(location) = matches
-            .get_one::<String>("override-firmware-type").map(|s| s.as_str()) {
-            if let Some("really") = matches.get_one::<String>("allow-dangerous-options").map(|s| s.as_str()) {
-                warn!("Overriding firmware-type detection and flashing to user-specified location ({}) instead!", location);
-            } else {
-                // We're ignoring errors for setting the color because the most important thing is
-                // getting the message itself out.
-                // If the messages themselves don't write, though, then we might as well just panic.
-                let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-                let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
-                write!(&mut stderr, "WARNING: ").expect("failed to write to stderr");
-                let _res = stderr.reset();
-                writeln!(
-                    &mut stderr,
-                    "--override-firmware-type is used to override the firmware type detection and flash \
-                    a firmware binary to a location other than the one that it seems to be designed for.\n\
-                    This is a potentially destructive operation and can result in an unbootable device! \
-                    (can require a second, external JTAG debugger and manual wiring to fix!)\n\
-                    \nDo not use this option unless you are a firmware developer and really know what you are doing!\n\
-                    \nIf you are sure this is really what you want to do, run again with --allow-dangerous-options=really"
-                ).expect("failed to write to stderr");
-                std::process::exit(1);
-            };
-            if location == "bootloader" {
-                FirmwareType::Bootloader
-            } else if location == "application" {
-                FirmwareType::Application
-            } else {
-                unreachable!("Clap ensures invalid option cannot be passed to --override-firmware-type");
-            }
-        } else {
-            firmware_type
+        let firmware_type = match params.override_firmware_type() {
+            Some(override_firmware_type) => {
+                match params.allow_dangerous_options() {
+                    AllowDangerous::Really =>
+                        warn!("Overriding firmware-type detection and flashing to user-specified location ({}) instead!", override_firmware_type),
+                    AllowDangerous::Never => {
+                        // We're ignoring errors for setting the color because the most important thing is
+                        // getting the message itself out.
+                        // If the messages themselves don't write, though, then we might as well just panic.
+                        let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+                        let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
+                        write!(&mut stderr, "WARNING: ").expect("failed to write to stderr");
+                        let _res = stderr.reset();
+                        writeln!(
+                            &mut stderr,
+                            "--override-firmware-type is used to override the firmware type detection and flash \
+                            a firmware binary to a location other than the one that it seems to be designed for.\n\
+                            This is a potentially destructive operation and can result in an unbootable device! \
+                            (can require a second, external JTAG debugger and manual wiring to fix!)\n\
+                            \nDo not use this option unless you are a firmware developer and really know what you are doing!\n\
+                            \nIf you are sure this is really what you want to do, run again with --allow-dangerous-options=really"
+                        ).expect("failed to write to stderr");
+                        std::process::exit(1);
+                    }
+                }
+                override_firmware_type
+            },
+            None => firmware_type,
         };
 
         Ok(firmware_type)
@@ -238,14 +237,16 @@ fn check_programming(port: PortId) -> Result<()>
     Ok(())
 }
 
-pub fn flash_probe(matches: &ArgMatches, mut device: BmpDevice, file_name: PathBuf) -> Result<()>
+pub fn flash_probe<Params>(params: &Params, mut device: BmpDevice, file_name: PathBuf) -> Result<()>
+where
+    Params: BmpParams + FlashParams
 {
     let firmware_data = read_firmware(file_name)?;
 
     // Grab the the port the probe can be found on, which we need to re-find the probe after rebooting.
     let port = device.port();
 
-    let firmware = Firmware::new(matches, &device, firmware_data)?;
+    let firmware = Firmware::new(params, &device, firmware_data)?;
 
     // If we can't get the string descriptors, try to go ahead with flashing anyway.
     // It's unlikely that other control requests will succeed, but the OS might be messing with

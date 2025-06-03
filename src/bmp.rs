@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
 
-use clap::ArgMatches;
 use clap::builder::PossibleValue;
 use clap::ValueEnum;
 use color_eyre::eyre::{eyre, Context, Error, Report, Result};
@@ -28,6 +27,7 @@ use nusb::descriptors::Descriptor;
 use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
+use crate::BmpParams;
 use crate::error::ErrorKind;
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
@@ -750,11 +750,13 @@ impl BmpMatcher
         Default::default()
     }
 
-    pub fn from_cli_args(matches: &ArgMatches) -> Self
+    pub fn from_params<Params>(params: &Params) -> Self
+    where
+        Params: BmpParams,
     {
         Self::new()
-            .index(matches.get_one::<usize>("index").map(|&value| value))
-            .serial(matches.get_one::<String>("serial_number").map(|s| s.as_str()))
+            .index(params.index())
+            .serial(params.serial_number())
             .port(None)
     }
 
