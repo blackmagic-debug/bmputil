@@ -4,6 +4,8 @@
 // SPDX-FileContributor: Written by Piotr Esden-Tempski <piotr@esden.net>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
+use crate::bmp::FirmwareType;
+
 pub mod bmp;
 pub mod docs_viewer;
 pub mod error;
@@ -17,3 +19,21 @@ pub mod usb;
 pub mod windows;
 pub mod probe_identity;
 
+pub trait BmpParams
+{
+    fn index(&self) -> Option<usize>;
+    fn serial_number(&self) -> Option<&str>;
+    fn allow_dangerous_options(&self) -> AllowDangerous;
+}
+
+pub trait FlashParams
+{
+    fn override_firmware_type(&self) -> Option<FirmwareType>;
+}
+
+#[derive(Clone, Copy)]
+pub enum AllowDangerous
+{
+    Never,
+    Really
+}
