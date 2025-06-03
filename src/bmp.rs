@@ -13,6 +13,8 @@ use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
 
 use clap::ArgMatches;
+use clap::builder::PossibleValue;
+use clap::ValueEnum;
 use color_eyre::eyre::{eyre, Context, Error, Report, Result};
 use dfu_core::DfuIo;
 use dfu_core::DfuProtocol;
@@ -685,6 +687,22 @@ impl Default for FirmwareType
     }
 }
 
+impl ValueEnum for FirmwareType
+{
+    fn value_variants<'a>() -> &'a [Self]
+    {
+        &[Self::Application, Self::Bootloader]
+    }
+
+    fn to_possible_value(&self) -> Option<PossibleValue>
+    {
+        match self {
+            Self::Bootloader => Some("bootloader".into()),
+            Self::Application => Some("application".into()),
+        }
+    }
+}
+
 
 /// File formats that Black Magic Probe firmware can be in.
 pub enum FirmwareFormat
@@ -716,8 +734,6 @@ impl FirmwareFormat
         }
     }
 }
-
-
 
 #[derive(Debug, Clone, Default)]
 pub struct BmpMatcher
