@@ -4,6 +4,9 @@
 // SPDX-FileContributor: Written by Piotr Esden-Tempski <piotr@esden.net>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
+use clap::builder::PossibleValue;
+use clap::ValueEnum;
+
 use crate::bmp::FirmwareType;
 
 pub mod bmp;
@@ -36,4 +39,20 @@ pub enum AllowDangerous
 {
     Never,
     Really
+}
+
+impl ValueEnum for AllowDangerous
+{
+    fn value_variants<'a>() -> &'a [Self]
+    {
+        &[Self::Never, Self::Really]
+    }
+
+    fn to_possible_value(&self) -> Option<PossibleValue>
+    {
+        match self {
+            Self::Never => Some("never".into()),
+            Self::Really => Some("really".into()),
+        }
+    }
 }
