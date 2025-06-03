@@ -8,13 +8,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use clap::ArgMatches;
 use color_eyre::eyre::{eyre, Result};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use directories::ProjectDirs;
 use indicatif::ProgressBar;
 
+use crate::BmpParams;
 use crate::bmp::BmpDevice;
 use crate::bmp::BmpMatcher;
 use crate::firmware_selector::FirmwareMultichoice;
@@ -22,11 +22,14 @@ use crate::flasher;
 use crate::metadata::download_metadata;
 use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata};
 use crate::probe_identity::{ProbeIdentity, Version};
+use crate::FlashParams;
 
-pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
+pub fn switch_firmware<Params>(params: &Params, paths: &ProjectDirs) -> Result<()>
+where
+    Params: BmpParams + FlashParams,
 {
     // Start by figuring out which probe to use for the operation
-    let probe = match select_probe(matches)? {
+    let probe = match select_probe(params)? {
         Some(probe) => probe,
         None => {
             println!("Black Magic Debug probe selection cancelled, stopping operation");
@@ -69,13 +72,15 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
     let elf_file = download_firmware(firmware_variant, cache)?;
 
     // Having done all of that, finally try to Flash the new firmware on the probe
-    flasher::flash_probe(matches, probe, elf_file)
+    flasher::flash_probe(params, probe, elf_file)
 }
 
-fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>>
+fn select_probe<Params>(params: &Params) -> Result<Option<BmpDevice>>
+where
+    Params: BmpParams,
 {
     // Start by seeing if there are any probes, filtered by any match critera supplied
-    let matcher = BmpMatcher::from_cli_args(matches);
+    let matcher = BmpMatcher::from_params(params);
     let mut results = matcher.find_matching_probes();
     // Turn that into a list of devices (if there were no devices found, this turns
     // that into an error appropriately)
