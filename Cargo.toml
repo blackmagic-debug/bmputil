@@ -19,7 +19,6 @@ const_format = "0.2"
 anyhow = "1.0"
 thiserror = "2.0"
 indicatif = "0.17"
-termcolor = "1.4"
 goblin = { version = "0.9", default-features = false, features = ["std", "elf32", "elf64", "endian_fd"] }
 libc = "0.2"
 bstr = "1.10.0"
