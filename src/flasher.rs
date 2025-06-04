@@ -10,11 +10,11 @@ use std::thread;
 use std::time::Duration;
 
 use color_eyre::eyre::{eyre, Context, Result};
+use color_eyre::owo_colors::OwoColorize;
 use dfu_nusb::Error as DfuNusbError;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, warn};
 use nusb::transfer::TransferError;
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
 use crate::{elf, AllowDangerous, BmpParams, FlashParams};
@@ -65,22 +65,15 @@ impl Firmware
                     AllowDangerous::Really =>
                         warn!("Overriding firmware-type detection and flashing to user-specified location ({}) instead!", override_firmware_type),
                     AllowDangerous::Never => {
-                        // We're ignoring errors for setting the color because the most important thing is
-                        // getting the message itself out.
-                        // If the messages themselves don't write, though, then we might as well just panic.
-                        let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-                        let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
-                        write!(&mut stderr, "WARNING: ").expect("failed to write to stderr");
-                        let _res = stderr.reset();
-                        writeln!(
-                            &mut stderr,
-                            "--override-firmware-type is used to override the firmware type detection and flash \
+                        eprintln!(
+                            "{} --override-firmware-type is used to override the firmware type detection and flash \
                             a firmware binary to a location other than the one that it seems to be designed for.\n\
                             This is a potentially destructive operation and can result in an unbootable device! \
                             (can require a second, external JTAG debugger and manual wiring to fix!)\n\
                             \nDo not use this option unless you are a firmware developer and really know what you are doing!\n\
-                            \nIf you are sure this is really what you want to do, run again with --allow-dangerous-options=really"
-                        ).expect("failed to write to stderr");
+                            \nIf you are sure this is really what you want to do, run again with --allow-dangerous-options=really",
+                            "WARNING:".red()
+                        );
                         std::process::exit(1);
                     }
                 }
@@ -162,22 +155,11 @@ impl Firmware
 
 fn intel_hex_error() -> !
 {
-    // We're ignoring errors for setting the color because the most important thing
-    // is getting the message itself out.
-    // If the messages themselves don't write, though, then we might as well just panic.
-    let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-    let _res = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
-    write!(&mut stderr, "Error: ")
-        .expect("failed to write to stderr");
-    let _res = stderr.reset();
-    writeln!(
-        &mut stderr,
-        "The specified firmware file appears to be an Intel HEX file, but Intel HEX files are not \
+    eprintln!(
+        "{} The specified firmware file appears to be an Intel HEX file, but Intel HEX files are not \
         currently supported. Please use a binary file (e.g. blackmagic.bin), \
-        or an ELF (e.g. blackmagic.elf) to flash.",
-    )
-    .expect("failed to write to stderr");
-
+        or an ELF (e.g. blackmagic.elf) to flash.", "Error:".red()
+    );
     std::process::exit(1);
 }
 
