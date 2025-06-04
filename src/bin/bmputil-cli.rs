@@ -113,6 +113,7 @@ struct SwitchArguments
 }
 
 #[derive(Args)]
+#[group(multiple = false)]
 struct RebootArguments
 {
     #[arg(long = "dfu", default_value_t = false)]
@@ -184,19 +185,42 @@ impl TypedValueParser for ConfirmedBoolParser
     }
 }
 
-fn detach_command(cli_args: &CliArguments) -> Result<()>
+fn reboot_command(cli_args: &CliArguments, reboot_args: &RebootArguments) -> Result<()>
 {
     let matcher = BmpMatcher::from_params(cli_args);
     let mut results = matcher.find_matching_probes();
-    let dev = results
+    let mut dev = results
         .pop_single("detach")
         .map_err(|kind| kind.error())?;
 
     use bmputil::usb::DfuOperatingMode::*;
+
+    if reboot_args.dfu {
+        return match dev.operating_mode() {
+            Runtime => {
+                println!("Rebooting probe into bootloader...");
+                dev.detach_and_destroy().wrap_err("detaching device")
+            },
+            FirmwareUpgrade => {
+                println!("Probe already in bootloader, nothing to do.");
+                Ok(())
+            },
+        };
+    }
+    if reboot_args.repeat {
+        println!("Switching probe between bootloader and firmware...");
+        return dev.detach_and_destroy().wrap_err("detaching device");
+    }
+
     match dev.operating_mode() {
-        Runtime => println!("Requesting device detach from runtime mode to DFU mode..."),
-        FirmwareUpgrade => println!("Requesting device detach from DFU mode to runtime mode..."),
-    };
+        Runtime => {
+            println!("Rebooting probe...");
+            // This'll take us from the firmware into the bootloader
+            dev.detach_and_enumerate().wrap_err("detaching device")?;
+            // Now take us back in the post-match step
+        }
+        FirmwareUpgrade => println!("Rebooting probe into firmware...")
+    }
 
     dev.detach_and_destroy().wrap_err("detaching device")
 }
@@ -331,7 +355,7 @@ fn main() -> Result<()>
             ProbeCommmands::Info(_) => info_command(&cli_args),
             ProbeCommmands::Update(flash_args) => flash(&cli_args, flash_args),
             ProbeCommmands::Switch(_) => bmputil::switcher::switch_firmware(&cli_args, &paths),
-            ProbeCommmands::Reboot(_) => detach_command(&cli_args),
+            ProbeCommmands::Reboot(reboot_args) => reboot_command(&cli_args, reboot_args),
             #[cfg(windows)]
             ProbeCommmands::InstallDrivers(driver_args) => {
                 windows::ensure_access(
