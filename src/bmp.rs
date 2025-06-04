@@ -4,7 +4,7 @@
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
 use std::fmt::Debug;
-use std::mem;
+use std::{mem, result};
 use std::thread;
 use std::io::Read;
 use std::cell::{RefCell, Ref};
@@ -25,7 +25,7 @@ use nusb::transfer::{Control, ControlType, Recipient};
 use nusb::descriptors::Descriptor;
 use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
-
+use crate::bmp_matcher::BmpMatcher;
 use crate::error::ErrorKind;
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
@@ -717,264 +717,6 @@ impl FirmwareFormat
     }
 }
 
-
-
-#[derive(Debug, Clone, Default)]
-pub struct BmpMatcher
-{
-    index: Option<usize>,
-    serial: Option<String>,
-    port: Option<PortId>,
-}
-
-impl BmpMatcher
-{
-    pub fn new() -> Self
-    {
-        Default::default()
-    }
-
-    pub fn from_cli_args(matches: &ArgMatches) -> Self
-    {
-        Self::new()
-            .index(matches.get_one::<usize>("index").map(|&value| value))
-            .serial(matches.get_one::<String>("serial_number").map(|s| s.as_str()))
-            .port(None)
-    }
-
-    /// Set the index to match against.
-    #[must_use]
-    pub fn index(mut self, idx: Option<usize>) -> Self
-    {
-        self.index = idx;
-        self
-    }
-
-    /// Set the serial number to match against.
-    #[must_use]
-    pub fn serial<'s, IntoOptStrT>(mut self, serial: IntoOptStrT) -> Self
-        where IntoOptStrT: Into<Option<&'s str>>
-    {
-        self.serial = serial.into().map(|s| s.to_string());
-        self
-    }
-
-    /// Set the port path to match against.
-    #[must_use]
-    pub fn port(mut self, port: Option<PortId>) -> Self
-    {
-        self.port = port;
-        self
-    }
-
-    /// Get any index previously set with `.index()`.
-    pub fn get_index(&self) -> Option<usize>
-    {
-        self.index
-    }
-
-    /// Get any serial number previously set with `.serial()`.
-    pub fn get_serial(&self) -> Option<&str>
-    {
-        self.serial.as_deref()
-    }
-
-    /// Get any port path previously set with `.port()`.
-    pub fn get_port(&self) -> Option<PortId>
-    {
-        self.port.clone()
-    }
-
-    /// Find all connected Black Magic Probe devices that match from the command-line criteria.
-    ///
-    /// This uses the `serial_number`, `index`, and `port` values from `matches`, treating any that
-    /// were not provided as always matching.
-    ///
-    /// This function returns all found devices and all errors that occurred during the search.
-    /// This is so errors are not hidden, but also do not prevent matching devices from being found.
-    /// However, if the length of the error `Vec` is not 0, you should consider the results
-    /// potentially incomplete.
-    ///
-    /// The `index` matcher *includes* devices that errored when attempting to match them.
-    pub fn find_matching_probes(&self) -> BmpMatchResults
-    {
-        let mut results = BmpMatchResults {
-            found: Vec::new(),
-            filtered_out: Vec::new(),
-            errors: Vec::new(),
-        };
-
-        let devices = match list_devices() {
-            Ok(d) => d,
-            Err(e) => {
-                results.errors.push(e.into());
-                return results;
-            },
-        };
-
-        // Filter out devices that don't match the Black Magic Probe's vid/pid in the first place.
-        let devices = devices
-            .filter(|dev| {
-                let vid = dev.vendor_id();
-                let pid = dev.product_id();
-                BmpPlatform::from_vid_pid(Vid(vid), Pid(pid)).is_some()
-            });
-
-        for (index, device_info) in devices.enumerate() {
-            // Note: the control flow in this function is kind of weird, due to the lack of early returns
-            // (since we're returning all successes and errors).
-
-            // If we're trying to match against a serial number
-            let serial_matches = match &self.serial {
-                Some(serial) => {
-                    // Try to extract the serial number for this device
-                    match device_info.serial_number() {
-                        // If they match, we're done here - happy days
-                        Some(s) => s == serial.as_str(),
-                        // Otherwise, mark teh result false
-                        None => false
-                    }
-                }
-                // If no serial number was specified, treat as matching.
-                None => true
-            };
-
-            // Consider the index to match if it equals that of the device or if one was not specified at all.
-            let index_matches = self.index.map_or(true, |needle| needle == index);
-
-            // Consider the port to match if it equals that of the device or if one was not specified at all.
-            let port_matches = self.port.as_ref().map_or(true, |p| {
-                let port = PortId::new(&device_info);
-
-                p == &port
-            });
-
-            // Finally, check the provided matchers.
-            if index_matches && port_matches && serial_matches {
-                match BmpDevice::from_usb_device(device_info) {
-                    Ok(bmpdev) => results.found.push(bmpdev),
-                    Err(e) => {
-                        results.errors.push(e);
-                        continue;
-                    },
-                };
-            } else {
-                results.filtered_out.push(device_info);
-            }
-        }
-
-
-        // Now, after all this, return all the devices we found, what devices were filtered out, and any errors that
-        // occured along the way.
-        results
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct BmpMatchResults
-{
-    pub found: Vec<BmpDevice>,
-    pub filtered_out: Vec<DeviceInfo>,
-    pub errors: Vec<Report>,
-}
-
-impl BmpMatchResults
-{
-    /// Pops all found devices, handling printing error and warning cases.
-    pub fn pop_all(&mut self) -> Result<Vec<BmpDevice>>
-    {
-        if self.found.is_empty() {
-
-            // If there was only one, print that one for the user.
-            if self.filtered_out.len() == 1 {
-                if let Ok(bmpdev) = BmpDevice::from_usb_device(self.filtered_out.pop().unwrap()) {
-                    warn!(
-                        "Matching device not found, but and the following Black Magic Probe device was filtered out: {}",
-                        &bmpdev,
-                    );
-                } else {
-                    warn!("Matching device not found but 1 Black Magic Probe device was filtered out.");
-                }
-                warn!("Filter arguments (--serial, --index, --port) may be incorrect.");
-            } else if self.filtered_out.len() > 1 {
-                warn!(
-                    "Matching devices not found but {} Black Magic Probe devices were filtered out.",
-                    self.filtered_out.len(),
-                );
-                warn!("Filter arguments (--serial, --index, --port) may be incorrect.");
-            }
-
-
-            if !self.errors.is_empty() {
-                warn!("Device not found and errors occurred when searching for devices.");
-                warn!("One of these may be why the Black Magic Probe device was not found: {:?}", self.errors.as_slice());
-            }
-            return Err(ErrorKind::DeviceNotFound.error().into());
-        }
-
-        if !self.errors.is_empty() {
-            warn!("Matching device found but errors occurred when searching for devices.");
-            warn!("It is unlikely but possible that the incorrect device was selected!");
-            warn!("Other device errors: {:?}", self.errors.as_slice());
-        }
-
-        Ok(mem::take(&mut self.found))
-    }
-
-    /// Pops a single found device, handling printing error and warning cases.
-    pub fn pop_single(&mut self, operation: &str) -> Result<BmpDevice, ErrorKind>
-    {
-        if self.found.is_empty() {
-            if !self.filtered_out.is_empty() {
-                let (suffix, verb) = if self.filtered_out.len() > 1 { ("s", "were") } else { ("", "was") };
-                warn!(
-                    "Matching device not found and {} Black Magic Probe device{} {} filtered out.",
-                    self.filtered_out.len(),
-                    suffix,
-                    verb,
-                );
-                warn!("Filter arguments (--serial, --index, --port may be incorrect.");
-            }
-
-            if !self.errors.is_empty() {
-                warn!("Device not found and errors occurred when searching for devices.");
-                warn!("One of these may be why the Black Magic Probe device was not found: {:?}", self.errors.as_slice());
-            }
-            return Err(ErrorKind::DeviceNotFound);
-        }
-
-        if self.found.len() > 1 {
-            error!(
-                "{} operation only accepts one Black Magic Probe device, but {} were found!",
-                operation,
-                self.found.len()
-            );
-            error!("Hint: try bmputil info and revise your filter arguments (--serial, --index, --port).");
-            return Err(ErrorKind::TooManyDevices);
-        }
-
-        if !self.errors.is_empty() {
-            warn!("Matching device found but errors occurred when searching for devices.");
-            warn!("It is unlikely but possible that the incorrect device was selected!");
-            warn!("Other device errors: {:?}", self.errors.as_slice());
-        }
-
-        Ok(self.found.remove(0))
-    }
-
-    /// Like `pop_single()`, but does not print helpful diagnostics for edge cases.
-    pub(crate) fn pop_single_silent(&mut self) -> Result<BmpDevice, ErrorKind>
-    {
-        if self.found.len() > 1 {
-            Err(ErrorKind::TooManyDevices)
-        } else if self.found.is_empty() {
-            Err(ErrorKind::DeviceNotFound)
-        } else {
-            Ok(self.found.remove(0))
-        }
-    }
-}
-
 /// Waits for a Black Magic Probe to reboot, erroring after a timeout.
 ///
 /// This function takes a port identifier to attempt to keep track of a single physical device
@@ -986,51 +728,26 @@ impl BmpMatchResults
 // TODO: test how reliable the port path is on multiple platforms.
 pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -> Result<BmpDevice>
 {
-    let silence_timeout = timeout / 2;
+    let matcher = BmpMatcher::new_with_port(port);
+    let retry_duration = Duration::from_millis(200);
 
-    let matcher = BmpMatcher {
-        index: None,
-        serial: None,
-        port: Some(port),
+    // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
+    // don't need to peg the CPU waiting for it to come back up.
+    let execute = move |fraction| {
+        // If we've been trying for over half the full timeout, start logging warnings.
+        if fraction < 0.5 {
+            matcher.find_matching_probes().pop_single_silent()
+        } else {
+            matcher.find_matching_probes().pop_single(operation)
+        }
     };
 
-    let start = Instant::now();
+    let dev = crate::helper::retry_with_delay_time_with_match(execute,
+        //Match only if it isn't device not found
+        |res| !matches!(res, Err(ErrorKind::DeviceNotFound)),
+        timeout, retry_duration);
 
-    let mut dev = matcher.find_matching_probes().pop_single_silent();
-
-    while let Err(ErrorKind::DeviceNotFound) = dev {
-
-        trace!("Waiting for probe reboot: {} ms", Instant::now().duration_since(start).as_millis());
-
-        // If it's been more than the timeout length, error out.
-        if Instant::now().duration_since(start) > timeout {
-            error!(
-                "Timed-out waiting for Black Magic Probe to re-enumerate!"
-            );
-            return dev
-                .map_err(
-                    |kind|
-                    Error::from(kind.error())
-                        .wrap_err("Black Magic Probe device did not come back online (invalid firmware?)")
-                )
-        }
-
-        // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
-        // don't need to peg the CPU waiting for it to come back up.
-        // TODO: make this configurable and/or optimize?
-        thread::sleep(Duration::from_millis(200));
-
-        // If we've been trying for over half the full timeout, start logging warnings.
-        if Instant::now().duration_since(start) > silence_timeout {
-            dev = matcher.find_matching_probes().pop_single(operation);
-        } else {
-            dev = matcher.find_matching_probes().pop_single_silent();
-        }
-    }
-
-    let dev = dev.map_err(|kind| kind.error())?;
-
-    Ok(dev)
+    Ok(dev.map_err(|kind| kind.error())?)
 }
 
 /// Represents the firmware in use on a device that's supported.
