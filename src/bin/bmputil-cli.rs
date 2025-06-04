@@ -82,6 +82,7 @@ enum ProbeCommmands
 struct InfoArguments
 {
     #[arg(long = "list-targets", default_value_t = false)]
+    /// List the target supported by a particular probe (if the firmware is new enough)
     list_targets: bool,
 }
 
@@ -282,17 +283,31 @@ fn display_releases(paths: &ProjectDirs) -> Result<()>
     Ok(())
 }
 
-fn info_command(cli_args: &CliArguments) -> Result<()>
+fn list_targets(probe: BmpDevice) -> Result<()>
 {
-    let matcher = BmpMatcher::from_params(cli_args);
+    Ok(())
+}
 
+fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()>
+{
+    // Try and identify all the probes on the system that are allowed by the invocation
+    let matcher = BmpMatcher::from_params(cli_args);
     let mut results = matcher.find_matching_probes();
 
+    // If we were invoked to list the targets supported by a specific probe, dispatch to the function for that
+    if info_args.list_targets {
+        return list_targets(
+            results
+                .pop_single("list targets")
+                .map_err(|kind| kind.error())?
+        )
+    }
+
+    // Otherwise, turn the result set into a list and go through them displaying them
     let devices = results.pop_all()?;
-
     let multiple = devices.len() > 1;
-    for (index, dev) in devices.iter().enumerate() {
 
+    for (index, dev) in devices.iter().enumerate() {
         println!("Found: {}", dev);
 
         // If we have multiple connected probes, then additionally display their index
@@ -360,7 +375,7 @@ fn main() -> Result<()>
 
     match &cli_args.subcommand {
         ToplevelCommmands::Probe(probe_args) => match &probe_args.subcommand {
-            ProbeCommmands::Info(_) => info_command(&cli_args),
+            ProbeCommmands::Info(info_args) => info_command(&cli_args, info_args),
             ProbeCommmands::Update(update_args) => {
                 if let Some(subcommand) = &update_args.subcommand {
                     match subcommand {
