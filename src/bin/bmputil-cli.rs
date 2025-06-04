@@ -3,23 +3,162 @@
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
+use std::ffi::OsStr;
 use std::str::FromStr;
 
 use anstyle;
-use clap::{ArgAction, Command, Arg, ArgMatches, crate_version, crate_description, crate_name};
+use clap::builder::TypedValueParser;
+use clap::{Arg, ArgAction, Args, Command, Parser, Subcommand};
 use clap::builder::styling::Styles;
 use color_eyre::eyre::{Context, Result};
 use directories::ProjectDirs;
 use log::{info, error};
 
-use bmputil::bmp::{BmpDevice, BmpMatcher};
+use bmputil::{AllowDangerous, BmpParams, FlashParams};
+use bmputil::bmp::{BmpDevice, BmpMatcher, FirmwareType};
 use bmputil::metadata::download_metadata;
 #[cfg(windows)]
 use bmputil::windows;
 
-fn detach_command(matches: &ArgMatches) -> Result<()>
+#[derive(Parser)]
+#[command(version, about, styles(style()), disable_colored_help(false), arg_required_else_help(true))]
+struct CliArguments
 {
-    let matcher = BmpMatcher::from_cli_args(matches);
+    #[arg(global = true, short = 's', long = "serial", alias = "serial-number")]
+    /// Use the device with the given serial number
+    serial_number: Option<String>,
+    #[arg(global = true, long = "index", value_parser = usize::from_str)]
+    /// Use the nth found device (may be unstable!)
+    index: Option<usize>,
+    #[arg(global = true, short = 'p', long = "port")]
+    /// Use the device on the given USB port
+    port: Option<String>,
+    #[arg(global = true, long = "allow-dangerous-options", hide = true, default_value_t = AllowDangerous::Never)]
+    #[arg(value_enum)]
+    /// Allow usage of advanced, dangerous options that can result in unbootable devices (use with heavy caution!)
+    allow_dangerous_options: AllowDangerous,
+
+    #[cfg(windows)]
+    #[arg(global = true, long = "windows-wdi-install-mode", value_parser = u32::from_str, hide = true)]
+    /// Internal argument used when re-executing this command to acquire admin for installing drivers
+    windows_wdi_install_mode: Option<u32>,
+
+    #[command(subcommand)]
+    pub subcommand: ToplevelCommmands,
+}
+
+#[derive(Subcommand)]
+enum ToplevelCommmands
+{
+    /// Print information about connected Black Magic Probe devices
+    Info,
+    /// Flash new firmware onto a Black Magic Probe device
+    Flash(FlashArguments),
+    /// Display information about available downloadable firmware releases
+    Releases,
+    /// Switch the firmware being used on a given probe
+    Switch(SwitchArguments),
+    /// Advanced utility commands for developers
+    #[command(subcommand)]
+    Debug(DebugCommands),
+}
+
+#[derive(Args)]
+struct FlashArguments
+{
+    firmware_binary: String,
+    #[arg(long = "override-firmware-type", hide_short_help = true, value_enum)]
+    /// Flash the specified firmware space regardless of autodetected firmware type
+    override_firmware_type: Option<FirmwareType>,
+    #[arg(long = "force-override-flash", hide = true, default_value_t = false, value_parser = ConfirmedBoolParser {})]
+    #[arg(action = ArgAction::Set)]
+    /// Forcibly override firmware type autodetection and Flash anyway (may result in an unbootable device!)
+    force_override_flash: bool,
+}
+
+#[derive(Args)]
+struct SwitchArguments
+{
+    #[arg(long = "override-firmware-type", hide_short_help = true, value_enum)]
+    /// Flash the specified firmware space regardless of autodetected firmware type
+    override_firmware_type: Option<FirmwareType>,
+    #[arg(long = "force-override-flash", hide = true, default_value_t = false, value_parser = ConfirmedBoolParser {})]
+    #[arg(action = ArgAction::Set)]
+    /// Forcibly override firmware type autodetection and Flash anyway (may result in an unbootable device!)
+    force_override_flash: bool,
+}
+
+#[derive(Subcommand)]
+#[command(arg_required_else_help(true), subcommand_required(true))]
+enum DebugCommands
+{
+    /// Request device to switch from runtime mode to DFU mode or vice versa
+    Detach,
+    #[cfg(windows)]
+    /// Install USB drivers for BMP devices, and quit
+    InstallDrivers(DriversArguments),
+}
+
+#[cfg(windows)]
+#[derive(Args)]
+struct DriversArguments
+{
+    #[arg(long = "force", default_value_t = false)]
+    /// Install the driver even if one is already installed
+    force: bool,
+}
+
+impl BmpParams for CliArguments
+{
+    fn index(&self) -> Option<usize>
+    {
+        self.index
+    }
+
+    fn serial_number(&self) -> Option<&str>
+    {
+        self.serial_number.as_ref().map(|serial| serial.as_str())
+    }
+
+    fn allow_dangerous_options(&self) -> AllowDangerous
+    {
+        self.allow_dangerous_options
+    }
+}
+
+impl FlashParams for CliArguments
+{
+    fn override_firmware_type(&self) -> Option<FirmwareType>
+    {
+        match &self.subcommand {
+            ToplevelCommmands::Flash(flash_args) => flash_args.override_firmware_type,
+            ToplevelCommmands::Switch(switch_args) => switch_args.override_firmware_type,
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ConfirmedBoolParser {}
+
+impl TypedValueParser for ConfirmedBoolParser
+{
+    type Value = bool;
+
+    fn parse_ref(
+        &self, cmd: &Command, _arg: Option<&Arg>, value: &OsStr,
+    ) -> Result<Self::Value, clap::Error>
+    {
+        let value = value.to_str().ok_or_else(|| {
+            clap::Error::new(clap::error::ErrorKind::InvalidUtf8).with_cmd(cmd)
+        })?;
+        Ok(value == "really")
+    }
+}
+
+fn detach_command(cli_args: &CliArguments) -> Result<()>
+{
+    let matcher = BmpMatcher::from_params(cli_args);
     let mut results = matcher.find_matching_probes();
     let dev = results
         .pop_single("detach")
@@ -34,20 +173,19 @@ fn detach_command(matches: &ArgMatches) -> Result<()>
     dev.detach_and_destroy().wrap_err("detaching device")
 }
 
-fn flash(matches: &ArgMatches) -> Result<()>
+fn flash(cli_args: &CliArguments, flash_args: &FlashArguments) -> Result<()>
 {
-    let file_name = matches.get_one::<String>("firmware_binary").map(|s| s.as_str())
-        .expect("No firmware file was specified!"); // Should be impossible, thanks to clap.
+    let file_name = flash_args.firmware_binary.as_str();
 
     // Try to find the Black Magic Probe device based on the filter arguments.
-    let matcher = BmpMatcher::from_cli_args(matches);
+    let matcher = BmpMatcher::from_params(cli_args);
     let mut results = matcher.find_matching_probes();
     // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
     let dev: BmpDevice = results
         .pop_single("flash")
         .map_err(|kind| kind.error())?;
 
-    bmputil::flasher::flash_probe(matches, dev, file_name.into())
+    bmputil::flasher::flash_probe(cli_args, dev, file_name.into())
 }
 
 fn display_releases(paths: &ProjectDirs) -> Result<()>
@@ -84,9 +222,9 @@ fn display_releases(paths: &ProjectDirs) -> Result<()>
     Ok(())
 }
 
-fn info_command(matches: &ArgMatches) -> Result<()>
+fn info_command(cli_args: &CliArguments) -> Result<()>
 {
-    let matcher = BmpMatcher::from_cli_args(matches);
+    let matcher = BmpMatcher::from_params(cli_args);
 
     let mut results = matcher.find_matching_probes();
 
@@ -134,176 +272,21 @@ fn main() -> Result<()>
         .parse_default_env()
         .init();
 
-    let mut parser = Command::new(crate_name!());
-    if cfg!(windows) {
-        parser = parser
-            .arg(Arg::new("windows-wdi-install-mode")
-                .long("windows-wdi-install-mode")
-                .required(false)
-                .value_parser(u32::from_str)
-                .action(ArgAction::Set)
-                .global(true)
-                .hide(true)
-                .help("Internal argument used when re-executing this command to acquire admin for installing drivers")
-            );
-    }
-    parser = parser
-        .about(crate_description!())
-        .version(crate_version!())
-        .styles(style())
-        .disable_colored_help(false)
-        .arg_required_else_help(true)
-        .arg(Arg::new("serial_number")
-            .short('s')
-            .long("serial")
-            .alias("serial-number")
-            .required(false)
-            .action(ArgAction::Set)
-            .global(true)
-            .help("Use the device with the given serial number")
-        )
-        .arg(Arg::new("index")
-            .long("index")
-            .required(false)
-            .value_parser(usize::from_str)
-            .action(ArgAction::Set)
-            .global(true)
-            .help("Use the nth found device (may be unstable!)")
-        )
-        .arg(Arg::new("port")
-            .short('p')
-            .long("port")
-            .required(false)
-            .action(ArgAction::Set)
-            .global(true)
-            .help("Use the device on the given USB port")
-        )
-        .arg(Arg::new("allow-dangerous-options")
-            .long("allow-dangerous-options")
-            .global(true)
-            .action(ArgAction::Set)
-            .value_parser(["really"])
-            .hide(true)
-            .help("Allow usage of advanced, dangerous options that can result in unbootable devices (use with heavy caution!)")
-        )
-        .subcommand(Command::new("info")
-            .display_order(0)
-            .about("Print information about connected Black Magic Probe devices")
-        )
-        .subcommand(Command::new("flash")
-            .display_order(1)
-            .about("Flash new firmware onto a Black Magic Probe device")
-            .arg(Arg::new("firmware_binary")
-                .action(ArgAction::Set)
-                .required(true)
-            )
-            .arg(Arg::new("override-firmware-type")
-                .long("override-firmware-type")
-                .required(false)
-                .action(ArgAction::Set)
-                .value_parser(["bootloader", "application"])
-                .hide_short_help(true)
-                .help("flash the specified firmware space regardless of autodetected firmware type")
-            )
-            .arg(Arg::new("force-override-flash")
-                .long("force-override-flash")
-                .required(false)
-                .action(ArgAction::Set)
-                .value_parser(["really"])
-                .hide(true)
-                .help("forcibly override firmware-type autodetection and flash anyway (may result in an unbootable device!)")
-            )
-        )
-        .subcommand(Command::new("releases")
-            .display_order(3)
-            .about("Display information about available downloadable firmware releases")
-        )
-        .subcommand(Command::new("switch")
-            .display_order(2)
-            .about("Switch the firmware being used on a given probe")
-            .arg(Arg::new("override-firmware-type")
-                .long("override-firmware-type")
-                .required(false)
-                .action(ArgAction::Set)
-                .value_parser(["bootloader", "application"])
-                .hide_short_help(true)
-                .help("flash the specified firmware space regardless of autodetected firmware type")
-            )
-            .arg(Arg::new("force-override-flash")
-                .long("force-override-flash")
-                .required(false)
-                .action(ArgAction::Set)
-                .value_parser(["really"])
-                .hide(true)
-                .help("forcibly override firmware-type autodetection and flash anyway (may result in an unbootable device!)")
-            )
-        );
+    let cli_args = CliArguments::parse();
 
-    let mut debug_subcmd = Command::new("debug")
-        .display_order(10)
-        .about("Advanced utility commands for developers")
-        .arg_required_else_help(true)
-        .subcommand_required(true)
-        .subcommand(Command::new("detach")
-            .about("Request device to switch from runtime mode to DFU mode or vice versa")
-        );
-
-    if cfg!(windows) {
-        debug_subcmd = debug_subcmd
-            // TODO: add a way to uninstall drivers from bmputil as well.
-            .subcommand(Command::new("install-drivers")
-                .about("Install USB drivers for BMP devices, and quit")
-                .arg(Arg::new("force")
-                    .long("--force")
-                    .required(false)
-                    .action(ArgAction::Set)
-                    .help("install the driver even if one is already installed")
-                )
-            );
-    }
-
-    parser = parser.subcommand(debug_subcmd);
-
-    let matches = parser.get_matches();
-
-    let (subcommand, subcommand_matches) = matches.subcommand()
-        .expect("No subcommand given!"); // Should be impossible, thanks to clap.
-
-    // Minor HACK: these Windows specific subcommands and operations need to be checked and handled
-    // before the others.
+    // If the user hasn't requested us to go installing drivers explicitly, make sure that we
+    // actually have sufficient permissions here to do what is needed
     #[cfg(windows)]
-    {
-        // If the install-driver subcommand was explicitly specified, then perform that operation
-        // and exit.
-        match subcommand {
-            "debug" => match subcommand_matches.subcommand() {
-                Some(("install-drivers", install_driver_matches)) => {
-
-                    let wdi_install_parent_pid: Option<&u32> = matches
-                        .get_one::<u32>("windows-wdi-install-mode");
-
-                    let force: bool = install_driver_matches.contains_id("force");
-
-                    windows::ensure_access(
-                        wdi_install_parent_pid.copied(),
-                        true, // explicitly_requested.
-                        force,
-                    );
-                    std::process::exit(0);
-                },
-                _ => (),
-            },
-            _ => (),
+    match cli_args.subcommand {
+        ToplevelCommmands::Debug(DebugCommands::InstallDrivers(_)) => (),
+        // Potentially install drivers, but still do whatever else the user wanted.
+        _ => {
+            windows::ensure_access(
+                cli_args.windows_wdi_install_mode,
+                false, // explicitly_requested
+                false, // force
+            );
         }
-
-        // Otherwise, potentially install drivers, but still do whatever else the user wanted.
-        windows::ensure_access(
-            matches
-                .get_one::<u32>("windows-wdi-install-mode")
-                .copied(),
-            false, // explicitly_requested
-            false, // force
-        );
     }
 
     // Try to get the application paths available
@@ -315,15 +298,22 @@ fn main() -> Result<()>
         }
     };
 
-    match subcommand {
-        "info" => info_command(subcommand_matches),
-        "flash" => flash(subcommand_matches),
-        "debug" => match subcommand_matches.subcommand().unwrap() {
-            ("detach", detach_matches) => detach_command(detach_matches),
-            other => unreachable!("Unhandled subcommand {:?}", other),
+    match &cli_args.subcommand {
+        ToplevelCommmands::Info => info_command(&cli_args),
+        ToplevelCommmands::Flash(flash_args) => flash(&cli_args, flash_args),
+        ToplevelCommmands::Debug(debug_command) => match debug_command {
+            DebugCommands::Detach => detach_command(&cli_args),
+            #[cfg(windows)]
+            DebugCommands::InstallDrivers(driver_args) => {
+                windows::ensure_access(
+                    cli_args.windows_wdi_install_mode,
+                    true, // explicitly_requested.
+                    driver_args.force,
+                );
+                Ok(())
+            },
         },
-        "releases" => display_releases(&paths),
-        "switch" => bmputil::switcher::switch_firmware(subcommand_matches, &paths),
-        &_ => unimplemented!(),
+        ToplevelCommmands::Releases => display_releases(&paths),
+        ToplevelCommmands::Switch(_) => bmputil::switcher::switch_firmware(&cli_args, &paths),
     }
 }
