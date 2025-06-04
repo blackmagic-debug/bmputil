@@ -216,6 +216,7 @@ dependencies = [
  "anyhow",
  "bstr",
  "clap",
+ "clap_complete",
  "color-eyre",
  "const_format",
  "deelevate",
@@ -375,6 +376,15 @@ dependencies = [
  "terminal_size",
  "unicase",
  "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "clap_complete"
+version = "4.5.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a554639e42d0c838336fc4fbedb9e2df3ad1fa4acda149f9126b4ccfcd7900f"
+dependencies = [
+ "clap",
 ]
 
 [[package]]
