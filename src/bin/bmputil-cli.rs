@@ -47,8 +47,6 @@ enum ToplevelCommmands
 {
     /// Actions to be performed against a probe
     Probe(ProbeArguments),
-    /// Display information about available downloadable firmware releases
-    Releases,
 }
 
 #[derive(Args)]
@@ -60,7 +58,7 @@ struct ProbeArguments
     allow_dangerous_options: AllowDangerous,
 
     #[command(subcommand)]
-    pub subcommand: ProbeCommmands,
+    subcommand: ProbeCommmands,
 }
 
 #[derive(Subcommand)]
@@ -70,7 +68,7 @@ enum ProbeCommmands
     /// Print information about connected Black Magic Probe devices
     Info(InfoArguments),
     /// Update the firmware running on a Black Magic Probe
-    Update(FlashArguments),
+    Update(UpdateArguments),
     /// Switch the firmware being used on a given probe
     Switch(SwitchArguments),
     // Reboot a Black Magic Probe (potentially into its bootloader)
@@ -84,11 +82,11 @@ enum ProbeCommmands
 struct InfoArguments
 {
     #[arg(long = "list-targets", default_value_t = false)]
-    list_targets: bool
+    list_targets: bool,
 }
 
 #[derive(Args)]
-struct FlashArguments
+struct UpdateArguments
 {
     firmware_binary: String,
     #[arg(long = "override-firmware-type", hide_short_help = true, value_enum)]
@@ -98,6 +96,16 @@ struct FlashArguments
     #[arg(action = ArgAction::Set)]
     /// Forcibly override firmware type autodetection and Flash anyway (may result in an unbootable device!)
     force_override_flash: bool,
+
+    #[command(subcommand)]
+    subcommand: Option<UpdateCommands>
+}
+
+#[derive(Subcommand)]
+enum UpdateCommands
+{
+    /// List available releases and firmware that can be downloaded
+    List
 }
 
 #[derive(Args)]
@@ -225,7 +233,7 @@ fn reboot_command(cli_args: &CliArguments, reboot_args: &RebootArguments) -> Res
     dev.detach_and_destroy().wrap_err("detaching device")
 }
 
-fn flash(cli_args: &CliArguments, flash_args: &FlashArguments) -> Result<()>
+fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments) -> Result<()>
 {
     let file_name = flash_args.firmware_binary.as_str();
 
@@ -353,7 +361,15 @@ fn main() -> Result<()>
     match &cli_args.subcommand {
         ToplevelCommmands::Probe(probe_args) => match &probe_args.subcommand {
             ProbeCommmands::Info(_) => info_command(&cli_args),
-            ProbeCommmands::Update(flash_args) => flash(&cli_args, flash_args),
+            ProbeCommmands::Update(update_args) => {
+                if let Some(subcommand) = &update_args.subcommand {
+                    match subcommand {
+                        UpdateCommands::List => display_releases(&paths),
+                    }
+                } else {
+                    update_probe(&cli_args, update_args)
+                }
+            }
             ProbeCommmands::Switch(_) => bmputil::switcher::switch_firmware(&cli_args, &paths),
             ProbeCommmands::Reboot(reboot_args) => reboot_command(&cli_args, reboot_args),
             #[cfg(windows)]
@@ -366,6 +382,5 @@ fn main() -> Result<()>
                 Ok(())
             },
         }
-        ToplevelCommmands::Releases => display_releases(&paths),
     }
 }
