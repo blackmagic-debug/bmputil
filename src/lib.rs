@@ -26,11 +26,11 @@ pub trait BmpParams
 {
     fn index(&self) -> Option<usize>;
     fn serial_number(&self) -> Option<&str>;
-    fn allow_dangerous_options(&self) -> AllowDangerous;
 }
 
 pub trait FlashParams
 {
+    fn allow_dangerous_options(&self) -> AllowDangerous;
     fn override_firmware_type(&self) -> Option<FirmwareType>;
 }
 

@@ -32,10 +32,6 @@ struct CliArguments
     #[arg(global = true, short = 'p', long = "port")]
     /// Use the device on the given USB port
     port: Option<String>,
-    #[arg(global = true, long = "allow-dangerous-options", hide = true, default_value_t = AllowDangerous::Never)]
-    #[arg(value_enum)]
-    /// Allow usage of advanced, dangerous options that can result in unbootable devices (use with heavy caution!)
-    allow_dangerous_options: AllowDangerous,
 
     #[cfg(windows)]
     #[arg(global = true, long = "windows-wdi-install-mode", value_parser = u32::from_str, hide = true)]
@@ -49,17 +45,46 @@ struct CliArguments
 #[derive(Subcommand)]
 enum ToplevelCommmands
 {
-    /// Print information about connected Black Magic Probe devices
-    Info,
-    /// Flash new firmware onto a Black Magic Probe device
-    Flash(FlashArguments),
+    /// Actions to be performed against a probe
+    Probe(ProbeArguments),
     /// Display information about available downloadable firmware releases
     Releases,
+}
+
+#[derive(Args)]
+struct ProbeArguments
+{
+    #[arg(global = true, long = "allow-dangerous-options", hide = true, default_value_t = AllowDangerous::Never)]
+    #[arg(value_enum)]
+    /// Allow usage of advanced, dangerous options that can result in unbootable devices (use with heavy caution!)
+    allow_dangerous_options: AllowDangerous,
+
+    #[command(subcommand)]
+    pub subcommand: ProbeCommmands,
+}
+
+#[derive(Subcommand)]
+#[command(arg_required_else_help(true))]
+enum ProbeCommmands
+{
+    /// Print information about connected Black Magic Probe devices
+    Info(InfoArguments),
+    /// Update the firmware running on a Black Magic Probe
+    Update(FlashArguments),
     /// Switch the firmware being used on a given probe
     Switch(SwitchArguments),
-    /// Advanced utility commands for developers
-    #[command(subcommand)]
-    Debug(DebugCommands),
+    // Reboot a Black Magic Probe (potentially into its bootloader)
+    Reboot(RebootArguments),
+    #[cfg(windows)]
+    /// Install USB drivers for BMP devices, and quit
+    InstallDrivers(DriversArguments),
+}
+
+#[derive(Args)]
+struct InfoArguments
+{
+    #[arg(long = "list-targets", default_value_t = false)]
+    list_targets: bool
 }
 
 #[derive(Args)]
@@ -87,15 +112,13 @@ struct SwitchArguments
     force_override_flash: bool,
 }
 
-#[derive(Subcommand)]
-#[command(arg_required_else_help(true), subcommand_required(true))]
-enum DebugCommands
+#[derive(Args)]
+struct RebootArguments
 {
-    /// Request device to switch from runtime mode to DFU mode or vice versa
-    Detach,
-    #[cfg(windows)]
-    /// Install USB drivers for BMP devices, and quit
-    InstallDrivers(DriversArguments),
+    #[arg(long = "dfu", default_value_t = false)]
+    dfu: bool,
+    #[arg(long = "repeat", default_value_t = false)]
+    repeat: bool,
 }
 
 #[cfg(windows)]
@@ -118,20 +141,26 @@ impl BmpParams for CliArguments
     {
         self.serial_number.as_deref()
     }
-
-    fn allow_dangerous_options(&self) -> AllowDangerous
-    {
-        self.allow_dangerous_options
-    }
 }
 
 impl FlashParams for CliArguments
 {
+    fn allow_dangerous_options(&self) -> AllowDangerous
+    {
+        match &self.subcommand {
+            ToplevelCommmands::Probe(probe_args) => probe_args.allow_dangerous_options,
+            _ => AllowDangerous::Never,
+        }
+    }
+
     fn override_firmware_type(&self) -> Option<FirmwareType>
     {
         match &self.subcommand {
-            ToplevelCommmands::Flash(flash_args) => flash_args.override_firmware_type,
-            ToplevelCommmands::Switch(switch_args) => switch_args.override_firmware_type,
+            ToplevelCommmands::Probe(probe_args) => match &probe_args.subcommand {
+                ProbeCommmands::Update(flash_args) => flash_args.override_firmware_type,
+                ProbeCommmands::Switch(switch_args) => switch_args.override_firmware_type,
+                _ => None,
+            }
             _ => None,
         }
     }
@@ -277,7 +306,7 @@ fn main() -> Result<()>
     // actually have sufficient permissions here to do what is needed
     #[cfg(windows)]
     match cli_args.subcommand {
-        ToplevelCommmands::Debug(DebugCommands::InstallDrivers(_)) => (),
+        ToplevelCommmands::Probe(ProbeArguments { subcommand: ProbeCommmands::InstallDrivers(_), .. }) => (),
         // Potentially install drivers, but still do whatever else the user wanted.
         _ => {
             windows::ensure_access(
@@ -298,12 +327,13 @@ fn main() -> Result<()>
     };
 
     match &cli_args.subcommand {
-        ToplevelCommmands::Info => info_command(&cli_args),
-        ToplevelCommmands::Flash(flash_args) => flash(&cli_args, flash_args),
-        ToplevelCommmands::Debug(debug_command) => match debug_command {
-            DebugCommands::Detach => detach_command(&cli_args),
+        ToplevelCommmands::Probe(probe_args) => match &probe_args.subcommand {
+            ProbeCommmands::Info(_) => info_command(&cli_args),
+            ProbeCommmands::Update(flash_args) => flash(&cli_args, flash_args),
+            ProbeCommmands::Switch(_) => bmputil::switcher::switch_firmware(&cli_args, &paths),
+            ProbeCommmands::Reboot(_) => detach_command(&cli_args),
             #[cfg(windows)]
-            DebugCommands::InstallDrivers(driver_args) => {
+            ProbeCommmands::InstallDrivers(driver_args) => {
                 windows::ensure_access(
                     cli_args.windows_wdi_install_mode,
                     true, // explicitly_requested.
@@ -311,8 +341,7 @@ fn main() -> Result<()>
                 );
                 Ok(())
             },
-        },
+        }
         ToplevelCommmands::Releases => display_releases(&paths),
-        ToplevelCommmands::Switch(_) => bmputil::switcher::switch_firmware(&cli_args, &paths),
     }
 }
