@@ -6,7 +6,6 @@
 use std::ffi::OsStr;
 use std::str::FromStr;
 
-use anstyle;
 use clap::builder::TypedValueParser;
 use clap::{Arg, ArgAction, Args, Command, Parser, Subcommand};
 use clap::builder::styling::Styles;
@@ -117,7 +116,7 @@ impl BmpParams for CliArguments
 
     fn serial_number(&self) -> Option<&str>
     {
-        self.serial_number.as_ref().map(|serial| serial.as_str())
+        self.serial_number.as_deref()
     }
 
     fn allow_dangerous_options(&self) -> AllowDangerous
