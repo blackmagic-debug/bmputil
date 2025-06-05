@@ -65,7 +65,7 @@ pub struct Firmware
 	pub variants: BTreeMap<String, FirmwareDownload>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct FirmwareDownload
 {
