@@ -15,3 +15,5 @@ pub mod switcher;
 pub mod usb;
 #[cfg(windows)]
 pub mod windows;
+pub mod bmp_matcher;
+mod helper;

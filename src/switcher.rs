@@ -17,7 +17,7 @@ use indicatif::ProgressBar;
 use log::error;
 
 use crate::bmp::BmpDevice;
-use crate::bmp::BmpMatcher;
+use crate::bmp_matcher::BmpMatcher;
 use crate::firmware_selector::FirmwareMultichoice;
 use crate::flasher;
 use crate::metadata::download_metadata;

@@ -12,7 +12,8 @@ use color_eyre::eyre::{Context, Result};
 use directories::ProjectDirs;
 use log::{info, error};
 
-use bmputil::bmp::{BmpDevice, BmpMatcher};
+use bmputil::bmp_matcher::BmpMatcher;
+use bmputil::bmp::BmpDevice;
 use bmputil::metadata::download_metadata;
 #[cfg(windows)]
 use bmputil::windows;
