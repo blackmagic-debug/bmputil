@@ -15,3 +15,4 @@ pub mod switcher;
 pub mod usb;
 #[cfg(windows)]
 pub mod windows;
+mod probe_identity;
