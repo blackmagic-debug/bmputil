@@ -5,22 +5,13 @@ use crate::metadata::structs::Probe;
 
 const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
 const BMP_PRODUCT_STRING_LENGTH: usize = BMP_PRODUCT_STRING.len();
-
-struct ProbeName{
-    name: String,
-}
-struct ProbeNameVersion{
-    name: String,
-    version: String,
-}
+const NATIVE_BPM: &str = "native";
 
 pub enum ProbeIdentity{
-    ProbeVersion(ProbeNameVersion),
-    Probe(ProbeName),
+    ProbeVersion { name: String, version: String },
+    Probe {name: String},
     None
 }
-
-const NATIVE_BPM: &str = "native";
 
 fn probe_from_bpm(input: &str) -> Result<String>{
     let opening_paren = input.find('(');
@@ -57,9 +48,9 @@ fn version_from_bpm(input: &str) -> Result<String>{
 impl From<String> for ProbeIdentity {
     fn from(identity: String) -> Self {
         if identity == BMP_PRODUCT_STRING {
-            ProbeIdentity::Probe(ProbeName {
+            ProbeIdentity::Probe {
                 name: NATIVE_BPM.into()
-            })
+            }
         }
         else if identity.starts_with(BMP_PRODUCT_STRING) {
             let probe_result = probe_from_bpm(&identity[BMP_PRODUCT_STRING_LENGTH..]);
@@ -75,10 +66,10 @@ impl From<String> for ProbeIdentity {
             let version = version_from_bpm(&identity[BMP_PRODUCT_STRING_LENGTH..]);
 
             match version {
-                Ok(version) => ProbeIdentity::ProbeVersion(ProbeNameVersion{
+                Ok(version) => ProbeIdentity::ProbeVersion{
                     name: probe,
                     version
-                }),
+                },
                 Err(error) => {
                     warn!("Error while parsing version string: {}", error);
                     ProbeIdentity::None
@@ -96,8 +87,8 @@ impl ProbeIdentity
 {
     fn probe_name(&self) -> Option<String>{
         match &self{
-            ProbeIdentity::ProbeVersion(probe) => Some(probe.name.to_string()),
-            ProbeIdentity::Probe(probe) => Some(probe.name.to_string()),
+            ProbeIdentity::ProbeVersion{name, ..} => Some(name.to_string()),
+            ProbeIdentity::Probe{name} => Some(name.to_string()),
             ProbeIdentity::None => None,
         }
     }
@@ -113,8 +104,8 @@ impl ProbeIdentity
 
     pub fn version(self) -> Option<String> {
         match self{
-            ProbeIdentity::ProbeVersion(probe) => Some(probe.version),
-            ProbeIdentity::Probe(_) => Some("v1.6".to_string()),
+            ProbeIdentity::ProbeVersion{version, ..} => Some(version),
+            ProbeIdentity::Probe{..} => Some("v1.6".to_string()),
             ProbeIdentity::None => None,
         }
     }
