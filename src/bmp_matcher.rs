@@ -21,13 +21,13 @@ impl BmpMatcher
     {
         Default::default()
     }
+
     pub fn new_with_port(port: PortId) -> Self
     {
         Self {
             port: Some(port),
             ..Default::default()    
         }
-        
     }
 
     pub fn from_cli_args(matches: &ArgMatches) -> Self
@@ -49,7 +49,8 @@ impl BmpMatcher
     /// Set the serial number to match against.
     #[must_use]
     pub fn serial<'s, IntoOptStrT>(mut self, serial: IntoOptStrT) -> Self
-    where IntoOptStrT: Into<Option<&'s str>>
+    where 
+        IntoOptStrT: Into<Option<&'s str>>
     {
         self.serial = serial.into().map(|s| s.to_string());
         self

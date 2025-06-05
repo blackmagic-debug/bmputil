@@ -4,7 +4,7 @@
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
 use std::fmt::Debug;
-use std::{mem, result};
+use std::mem;
 use std::thread;
 use std::io::Read;
 use std::cell::{RefCell, Ref};
@@ -25,8 +25,10 @@ use nusb::transfer::{Control, ControlType, Recipient};
 use nusb::descriptors::Descriptor;
 use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
+
 use crate::bmp_matcher::BmpMatcher;
 use crate::error::ErrorKind;
+use crate::helper;
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
 use crate::usb::{Vid, Pid, DfuOperatingMode};
 
@@ -742,7 +744,7 @@ pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -
         }
     };
 
-    let dev = crate::helper::retry_with_delay_time_with_match(execute,
+    let dev = helper::retry_with_delay_time_with_match(execute,
         //Match only if it isn't device not found
         |res| !matches!(res, Err(ErrorKind::DeviceNotFound)),
         timeout, retry_duration);
