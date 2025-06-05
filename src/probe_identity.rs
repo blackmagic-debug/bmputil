@@ -25,7 +25,7 @@ impl From<String> for ProbeIdentity {
         let mut probe = None;
         let mut version = None;
 
-        // BMD product strings are in one ofthe following forms:
+        // BMD product strings are in one of the following forms:
         // Recent: Black Magic Probe v2.0.0-rc2
         //       : Black Magic Probe (ST-Link v2) v1.10.0-1273-g2b1ce9aee
         //    Old: Black Magic Probe
@@ -37,7 +37,7 @@ impl From<String> for ProbeIdentity {
         match opening_paren {
             // If there isn't one, we're dealing with nominally a native probe
             None => {
-                // Knowing this, let's see if there are enough characters for a version string, and if there are.. extract it
+                // Knowing this, let's see if there are enough characters for a version string, and if there are, extract it.
                 if identity.len() > BMP_PRODUCT_STRING_LENGTH {
                     let version_begin = identity.rfind(' ').expect("There should be enough chars to find the space");
                     version = Some(identity[version_begin + 1..].to_string());
@@ -55,7 +55,7 @@ impl From<String> for ProbeIdentity {
                         if let Some(version_begin) = version_begin {
                             version = Some(identity[closing_paren + version_begin + 1..].to_string());
                         }
-                        // Now we've dealth with the version information, grab everything inside the ()'s as the
+                        // Now we've dealt with the version information, grab everything inside the ()'s as the
                         // product string for this probe (normalised to lower case)
                         probe = Some(identity[BMP_PRODUCT_STRING_LENGTH + opening_paren + 1 ..=closing_paren].to_lowercase());
                     }
@@ -78,8 +78,8 @@ impl ProbeIdentity
     }
 
     pub fn version(&self) -> &str {
-        // If we don't know what version of firmware is on the probe, presume it's v1.6 for now..
-        // We can't actually know which prior version to v1.6 it actually is but it's very old either way
+        // If we don't know what version of firmware is on the probe, presume it's v1.6 for now.
+        // We can't actually know which prior version to v1.6 it actually is, but it's very old either way
         match &self.version {
             Some(version) => version,
             None => "v1.6",
