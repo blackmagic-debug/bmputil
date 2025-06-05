@@ -1,88 +1,145 @@
-use std::fs;
-use std::fs::File;
-use std::path::{Path, PathBuf};
-use std::time::Duration;
-use color_eyre::eyre;
-use color_eyre::eyre::eyre;
-use dialoguer::Select;
-use dialoguer::theme::ColorfulTheme;
-use indicatif::ProgressBar;
-use log::error;
-use crate::firmware_selector::FirmwareMultichoice;
-use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata, Probe};
+use color_eyre::eyre::{eyre, Result};
+use color_eyre::Report;
+use log::warn;
+use crate::metadata::structs::Probe;
 
 const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
 const BMP_PRODUCT_STRING_LENGTH: usize = BMP_PRODUCT_STRING.len();
 
-pub struct ProbeIdentity
-{
-    probe: Option<String>,
-    pub version: Option<String>,
+struct ProbeName{
+    name: String,
+}
+struct ProbeNameVersion{
+    name: String,
+    version: String,
+}
+
+pub enum ProbeIdentity{
+    ProbeVersion(ProbeNameVersion),
+    Probe(ProbeName),
+    None
+}
+
+const NATIVE_BPM: &str = "native";
+
+fn probe_from_bpm(input: &str) -> Result<String>{
+    let opening_paren = input.find('(');
+    let closing_paren = input.find(')');
+
+    match (opening_paren, closing_paren) {
+        (None, None) => Ok(NATIVE_BPM.into()),
+        (Some(opening_paren), Some(closing_paren)) => {
+            if opening_paren > closing_paren {
+                Err(eyre!("'(' is defined after ')'"))
+            }
+            else{
+               Ok(input[opening_paren+1..closing_paren].to_string().to_lowercase())
+            }
+        }
+        (Some(_), None) => Err(eyre!("No ')' defined")),
+        (None, Some(_)) => Err(eyre!("No '(' defined")),
+    }
+}
+
+fn version_from_bpm(input: &str) -> Result<String>{
+    let start_index = input.rfind(' ')
+        .ok_or_else(|| eyre!("Invalid version string"))?;
+
+    let version = input[start_index + 1..].to_string();
+
+    if version.trim().is_empty() {
+        return Err(eyre!("Version is empty or only whitespace"));
+    }
+
+    Ok(version)
 }
 
 impl From<String> for ProbeIdentity {
     fn from(identity: String) -> Self {
-        let mut probe = None;
-        let mut version = None;
+        if identity == BMP_PRODUCT_STRING {
+            ProbeIdentity::Probe(ProbeName {
+                name: NATIVE_BPM.into()
+            })
+        }
+        else if identity.starts_with(BMP_PRODUCT_STRING) {
+            let probe_result = probe_from_bpm(&identity[BMP_PRODUCT_STRING_LENGTH..]);
 
-        // BMD product strings are in one of the following forms:
-        // Recent: Black Magic Probe v2.0.0-rc2
-        //       : Black Magic Probe (ST-Link v2) v1.10.0-1273-g2b1ce9aee
-        //    Old: Black Magic Probe
-        // From this we want to extract two main things: version (if available), and probe variety
-        // (probe variety meaning alternative platform kind if not a BMP itself)
-
-        // Let's start out easy - check to see if the string contains an opening paren (alternate platform)
-        let opening_paren = identity[BMP_PRODUCT_STRING_LENGTH..].find('(');
-        match opening_paren {
-            // If there isn't one, we're dealing with nominally a native probe
-            None => {
-                // Knowing this, let's see if there are enough characters for a version string, and if there are, extract it.
-                if identity.len() > BMP_PRODUCT_STRING_LENGTH {
-                    let version_begin = identity.rfind(' ').expect("There should be enough chars to find the space");
-                    version = Some(identity[version_begin + 1..].to_string());
+            let probe = match probe_result {
+                Ok(probe) => probe,
+                Err(error) => {
+                    warn!("Error while parsing probe string: {}", error);
+                    return  ProbeIdentity::None
                 }
-                probe = Some("native".into());
-            },
-            Some(opening_paren) => {
-                let closing_paren = identity[opening_paren..].find(')');
-                match closing_paren {
-                    None => error!("Product description for device is invalid, found opening '(' but no closing ')'"),
-                    Some(closing_paren) => {
-                        // If we did find the closing ')', then see if we've got a version string
-                        let version_begin = identity[closing_paren..].find(' ');
-                        // If we do, then extract whatever's left of the string as the version number
-                        if let Some(version_begin) = version_begin {
-                            version = Some(identity[closing_paren + version_begin + 1..].to_string());
-                        }
-                        // Now we've dealt with the version information, grab everything inside the ()'s as the
-                        // product string for this probe (normalised to lower case)
-                        probe = Some(identity[BMP_PRODUCT_STRING_LENGTH + opening_paren + 1 ..=closing_paren].to_lowercase());
-                    }
-                }
-            },
-        };
+            };
+            
+            let version = version_from_bpm(&identity[BMP_PRODUCT_STRING_LENGTH..]);
 
-        ProbeIdentity { probe, version }
+            match version {
+                Ok(version) => ProbeIdentity::ProbeVersion(ProbeNameVersion{
+                    name: probe,
+                    version
+                }),
+                Err(error) => {
+                    warn!("Error while parsing version string: {}", error);
+                    ProbeIdentity::None
+                }
+            }            
+        }
+        else {
+            ProbeIdentity::None
+        }
+
     }
 }
 
 impl ProbeIdentity
 {
-    pub fn variant(&self) -> color_eyre::Result<Probe>
-    {
-        match &self.probe {
-            Some(product) => product.as_str().try_into(),
-            None => Err(eyre!("Probe has invalid product string")),
+    fn probe_name(&self) -> Option<String>{
+        match &self{
+            ProbeIdentity::ProbeVersion(probe) => Some(probe.name.to_string()),
+            ProbeIdentity::Probe(probe) => Some(probe.name.to_string()),
+            ProbeIdentity::None => None,
         }
     }
+    
+    pub fn variant(&self) -> Result<Probe, Report>
+    {
+        let probe_version = self.probe_name()
+            .ok_or_else(|| eyre!("No product string discovered."))?;
+        
+        probe_version.as_str().try_into()
+    }
 
-    pub fn version(&self) -> &str {
-        // If we don't know what version of firmware is on the probe, presume it's v1.6 for now.
-        // We can't actually know which prior version to v1.6 it actually is, but it's very old either way
-        match &self.version {
-            Some(version) => version,
-            None => "v1.6",
+
+    pub fn version(self) -> Option<String> {
+        match self{
+            ProbeIdentity::ProbeVersion(probe) => Some(probe.version),
+            ProbeIdentity::Probe(_) => Some("v1.6".to_string()),
+            ProbeIdentity::None => None,
+        }
+    }
+}
+
+impl TryFrom<&str> for Probe {
+    type Error = Report;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "96b carbon" => Ok(Probe::_96bCarbon),
+            "blackpill-f401cc" => Ok(Probe::BlackpillF401CC),
+            "blackpill-f401ce" => Ok(Probe::BlackpillF401CE),
+            "blackpill-f411ce" => Ok(Probe::BlackpillF411CE),
+            "ctxlink" => Ok(Probe::CtxLink),
+            "f072-if" => Ok(Probe::F072),
+            "f3-if" => Ok(Probe::F3),
+            "f4discovery" => Ok(Probe::F4Discovery),
+            "hydrabus" => Ok(Probe::HydraBus),
+            "launchpad icdi" => Ok(Probe::LaunchpadICDI),
+            "native" => Ok(Probe::Native),
+            "st-link/v2" => Ok(Probe::Stlink),
+            "st-link v3" => Ok(Probe::Stlinkv3),
+            "swlink" => Ok(Probe::Swlink),
+            _ => Err(eyre!("Probe with unknown product string encountered")),
         }
     }
 }
@@ -95,31 +152,39 @@ mod tests {
     fn extract_native(){
         let res: ProbeIdentity = "Black Magic Probe v2.0.0-rc2".to_string().into();
 
-        assert_eq!(res.probe, Some("native".into()));
-        assert_eq!(res.version, Some("v2.0.0-rc2".into()));
+        assert_eq!(res.probe_name(), Some("native".into()));
+        assert_eq!(res.version(), Some("v2.0.0-rc2".into()));
     }
 
     #[test]
     fn extract_old(){
         let res: ProbeIdentity = "Black Magic Probe".to_string().into();
-
-        assert_eq!(res.probe, Some("native".into()));
-        assert_eq!(res.version, None);
+        
+        assert_eq!(res.probe_name(), Some("native".into()));
+        assert_eq!(res.version(), Some("v1.6".into()));
     }
 
     #[test]
     fn extract_st_link(){
         let res: ProbeIdentity = "Black Magic Probe (ST-Link v2) v1.10.0-1273-g2b1ce9aee".to_string().into();
 
-        assert_eq!(res.probe, Some("st-link v2".into()));
-        assert_eq!(res.version, Some("v1.10.0-1273-g2b1ce9aee".into()));
+        assert_eq!(res.probe_name(), Some("st-link v2".into()));
+        assert_eq!(res.version(), Some("v1.10.0-1273-g2b1ce9aee".into()));
     }
 
     #[test]
     fn extract_without_closing(){
         let res: ProbeIdentity = "Black Magic Probe (ST-Link".to_string().into();
 
-        assert_eq!(res.probe, None);
-        assert_eq!(res.version, None);
+        assert_eq!(res.probe_name(), None);
+        assert_eq!(res.version(), None);
+    }
+    
+    #[test]
+    fn unknown(){
+        let res: ProbeIdentity = "Something (v1.2.3)".to_string().into();
+
+        assert_eq!(res.probe_name(), None);
+        assert_eq!(res.version(), None);
     }
 }
