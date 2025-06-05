@@ -21,7 +21,7 @@ use crate::firmware_selector::FirmwareMultichoice;
 use crate::flasher;
 use crate::metadata::download_metadata;
 use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata};
-use crate::probe_identity::ProbeIdentity;
+use crate::probe_identity::{ProbeIdentity, Version};
 
 pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
 {
@@ -33,10 +33,15 @@ pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
             return Ok(());
         }
     };
-    println!("Probe {} ({}) selected for firmware update", probe.firmware_identity()?, probe.serial_number()?);
+
+    let firmware_identity_string = probe.firmware_identity()?;
+    println!("Probe {} ({}) selected for firmware update", firmware_identity_string, probe.serial_number()?);
 
     // Now extract the probe's identification, and check it's valid
-    let identity: ProbeIdentity = probe.firmware_identity()?.into();
+    let identity: ProbeIdentity = firmware_identity_string.try_into().map_err(|err| {
+        println!("Couldn't extract an identity from firmware descriptor string: {}", err);
+        eyre!("Couldn't extract an identity from firmware descriptor string")
+    })?;
 
     // Figure out where the firmware and metadata cache is
     let cache = paths.cache_dir();
@@ -77,7 +82,7 @@ fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>>
     let mut devices = results.pop_all()?;
     // Figure out what to do based on the numeber of matching probes
     match devices.len() {
-        0 => Err(eyre!("No probe to select")),
+        0 => panic!("This state shouldn't happen, because devices should contain at least 1"),
         // If we have just one probe, return that and be done
         1 => Ok(Some(devices.remove(0))),
         // Otherwise, we've got more than one, so ask the user to make a choice
@@ -107,18 +112,26 @@ fn select_probe(matches: &ArgMatches) -> Result<Option<BmpDevice>>
 fn pick_release(metadata: &Metadata, identity: ProbeIdentity) ->
     Result<Option<(&str, &Firmware)>>
 {
-    let variant = &identity.variant()?;
-    let firmware_version = &identity.version()
-        .ok_or(eyre!("Missing firmware version"))?;
+    let variant = &identity.variant();
+    let firmware_version = match &identity.version {
+        // If we don't know what version of firmware is on the probe, presume it's v1.6 for now.
+        // We can't actually know which prior version to v1.6 it actually is, but it's very old either way
+        Version::Unknown => {
+            println!("Old firmware version is detected, pretending this is version 'v1.6'");
+            "v1.6"
+        },
+        Version::Known(firmware) => firmware
+    };
 
     // Filter out releases that don't support this probe, and filter out the one the probe is currently running
     // if there is only a single variant in the release (multi-variant releases still need to be shown)
     let releases: Vec<_> = metadata.releases
         .iter()
-        .filter(|&(version, _)| firmware_version != version)
-        .filter(|&(_, release)| release.firmware[variant].variants.len() != 1)
         .filter(
-            |&(_, release)| release.firmware.contains_key(&variant))
+            |&(version, release)|
+                !(firmware_version == version && release.firmware[variant].variants.len() == 1) &&
+                    release.firmware.contains_key(&variant)
+        )
         .collect();
 
     let mut items: Vec<_> = releases

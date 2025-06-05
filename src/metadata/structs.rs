@@ -33,7 +33,7 @@ pub struct Release
 }
 
 /// Enumeration of the valid probe platforms
-#[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
 pub enum Probe
 {
 	_96bCarbon,
