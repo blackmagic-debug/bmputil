@@ -9,20 +9,18 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::ArgMatches;
-use color_eyre::eyre;
 use color_eyre::eyre::{eyre, Result};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use directories::ProjectDirs;
 use indicatif::ProgressBar;
-use log::error;
 
 use crate::bmp::BmpDevice;
 use crate::bmp::BmpMatcher;
 use crate::firmware_selector::FirmwareMultichoice;
 use crate::flasher;
 use crate::metadata::download_metadata;
-use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata, Probe};
+use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata};
 use crate::probe_identity::ProbeIdentity;
 
 pub fn switch_firmware(matches: &ArgMatches, paths: &ProjectDirs) -> Result<()>
@@ -110,7 +108,8 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) ->
     Result<Option<(&str, &Firmware)>>
 {
     let variant = &identity.variant()?;
-    let firmware_version = identity.version();
+    let firmware_version = &identity.version()
+        .ok_or(eyre!("Missing firmware version"))?;
 
     // Filter out releases that don't support this probe, and filter out the one the probe is currently running
     // if there is only a single variant in the release (multi-variant releases still need to be shown)
@@ -198,28 +197,4 @@ fn download_firmware(variant: &FirmwareDownload, cache_path: &Path) -> Result<Pa
 
     // Return where that is for further use
     Ok(cache_file_name)
-}
-
-impl TryFrom<&str> for Probe {
-    type Error = eyre::Report;
-
-    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        match value {
-            "96b carbon" => Ok(Probe::_96bCarbon),
-            "blackpill-f401cc" => Ok(Probe::BlackpillF401CC),
-            "blackpill-f401ce" => Ok(Probe::BlackpillF401CE),
-            "blackpill-f411ce" => Ok(Probe::BlackpillF411CE),
-            "ctxlink" => Ok(Probe::CtxLink),
-            "f072-if" => Ok(Probe::F072),
-            "f3-if" => Ok(Probe::F3),
-            "f4discovery" => Ok(Probe::F4Discovery),
-            "hydrabus" => Ok(Probe::HydraBus),
-            "launchpad icdi" => Ok(Probe::LaunchpadICDI),
-            "native" => Ok(Probe::Native),
-            "st-link/v2" => Ok(Probe::Stlink),
-            "st-link v3" => Ok(Probe::Stlinkv3),
-            "swlink" => Ok(Probe::Swlink),
-            _ => Err(eyre!("Probe with unknown product string encountered")),
-        }
-    }
 }
