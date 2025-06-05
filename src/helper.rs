@@ -5,7 +5,7 @@ pub fn retry_with_delay_time<T, E, F>(f: F, max_duration: Duration, delay: Durat
 where
     F: Fn(f64) -> Result<T, E>
 {
-    retry_with_delay_time_with_match(f, |_| true, max_duration, delay)
+    retry_with_delay_time_with_match(f, |m| m.is_ok(), max_duration, delay)
 }
 
 pub fn retry_with_delay_time_with_match<T, E, F, M>(f: F, matcher: M, max_duration: Duration, delay: Duration) -> Result<T, E>
