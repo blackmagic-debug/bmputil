@@ -9,7 +9,7 @@ use std::str::FromStr;
 use clap::builder::TypedValueParser;
 use clap::{Arg, ArgAction, Args, Command, Parser, Subcommand};
 use clap::builder::styling::Styles;
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{eyre, Context, Result};
 use directories::ProjectDirs;
 use log::{info, error};
 
@@ -71,7 +71,7 @@ enum ProbeCommmands
     Update(UpdateArguments),
     /// Switch the firmware being used on a given probe
     Switch(SwitchArguments),
-    // Reboot a Black Magic Probe (potentially into its bootloader)
+    /// Reboot a Black Magic Probe (potentially into its bootloader)
     Reboot(RebootArguments),
     #[cfg(windows)]
     /// Install USB drivers for BMP devices, and quit
@@ -89,7 +89,7 @@ struct InfoArguments
 #[derive(Args)]
 struct UpdateArguments
 {
-    firmware_binary: String,
+    firmware_binary: Option<String>,
     #[arg(long = "override-firmware-type", hide_short_help = true, value_enum)]
     /// Flash the specified firmware space regardless of autodetected firmware type
     override_firmware_type: Option<FirmwareType>,
@@ -236,7 +236,11 @@ fn reboot_command(cli_args: &CliArguments, reboot_args: &RebootArguments) -> Res
 
 fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments) -> Result<()>
 {
-    let file_name = flash_args.firmware_binary.as_str();
+    let file_name = if let Some(file_name) = &flash_args.firmware_binary {
+        file_name.as_str()
+    } else {
+        return Err(eyre!("TODO: handle when the binary is not given and do an upgrade using metadata"));
+    };
 
     // Try to find the Black Magic Probe device based on the filter arguments.
     let matcher = BmpMatcher::from_params(cli_args);
