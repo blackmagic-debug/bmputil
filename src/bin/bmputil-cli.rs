@@ -4,11 +4,13 @@
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
 use std::ffi::OsStr;
+use std::io::stdout;
 use std::str::FromStr;
 
 use clap::builder::TypedValueParser;
-use clap::{Arg, ArgAction, Args, Command, Parser, Subcommand};
+use clap::{Arg, ArgAction, Args, Command, CommandFactory, Parser, Subcommand};
 use clap::builder::styling::Styles;
+use clap_complete::{generate, Shell};
 use color_eyre::eyre::{eyre, Context, Result};
 use directories::ProjectDirs;
 use log::{info, error};
@@ -47,6 +49,8 @@ enum ToplevelCommmands
 {
     /// Actions to be performed against a probe
     Probe(ProbeArguments),
+    /// Generate completions data for the shell
+    Complete(CompletionArguments),
 }
 
 #[derive(Args)]
@@ -138,6 +142,12 @@ struct DriversArguments
     #[arg(long = "force", default_value_t = false)]
     /// Install the driver even if one is already installed
     force: bool,
+}
+
+#[derive(Args)]
+struct CompletionArguments
+{
+    shell: Shell,
 }
 
 impl BmpParams for CliArguments
@@ -400,6 +410,16 @@ fn main() -> Result<()>
                 );
                 Ok(())
             },
-        }
+        },
+        ToplevelCommmands::Complete(comp_args) => {
+            let mut cmd = CliArguments::command();
+            generate(
+                comp_args.shell,
+                &mut cmd,
+                "bmputil-cli",
+                &mut stdout()
+            );
+            Ok(())
+        },
     }
 }
