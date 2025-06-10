@@ -161,7 +161,8 @@ impl<'a> FirmwareMultichoice<'a>
         Ok(uri)
     }
 
-    fn calculate_documentation_url(&self, variant_uri: &Url) -> Result<Url>{
+    fn calculate_documentation_url(&self, variant_uri: &Url) -> Result<Url>
+    {
         // Convert the path compoment of the download URI to a Path
         let mut docs_path = PathBuf::from(variant_uri.path());
         // Replace the file extension from ".elf" to ".md"
@@ -177,7 +178,8 @@ impl<'a> FirmwareMultichoice<'a>
         Ok(docs_uri)
     }
 
-    fn download_documentation(&self, variant: &FirmwareDownload) -> Result<Option<String>>{
+    fn download_documentation(&self, variant: &FirmwareDownload) -> Result<Option<String>>
+    {
         // Extract which firmware download we're to work with
         // Convert the path compoment of the download URI to a Path
         let docs_uri = self.calculate_documentation_url(&variant.uri)?;
@@ -221,7 +223,6 @@ impl<'a> FirmwareMultichoice<'a>
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
