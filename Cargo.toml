@@ -1,6 +1,6 @@
 [package]
 name = "bmputil"
-description = "Black Magic Probe Firmware Manager"
+description = "Black Magic Probe companion utility"
 version = "1.0.0-rc.1"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/blackmagic-debug/bmputil"
