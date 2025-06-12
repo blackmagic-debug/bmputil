@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
+// SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
+// SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
+
 use std::fmt::{Display, Formatter};
 use color_eyre::eyre::{eyre, Result};
 use color_eyre::Report;
@@ -87,7 +92,7 @@ fn parse_version_from_identity_string(input: &str) -> Result<Version, ParseVersi
     if !version.starts_with('v') {
         return Err(ParseVersionError::NotStartingWithV(version));
     }
-    
+
     if version.trim().is_empty() {
         return Err(ParseVersionError::EmptyOrWhitespaceVersion);
     }
