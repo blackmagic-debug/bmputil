@@ -114,8 +114,7 @@ where
     }
 }
 
-fn pick_release(metadata: &Metadata, identity: ProbeIdentity) ->
-    Result<Option<(&str, &Firmware)>>
+fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(&str, &Firmware)>>
 {
     let variant = &identity.variant();
     let firmware_version = match &identity.version {

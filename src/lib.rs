@@ -16,11 +16,11 @@ pub mod elf;
 pub mod firmware_selector;
 pub mod flasher;
 pub mod metadata;
+pub mod probe_identity;
 pub mod switcher;
 pub mod usb;
 #[cfg(windows)]
 pub mod windows;
-pub mod probe_identity;
 
 pub trait BmpParams
 {
