@@ -19,7 +19,6 @@ use nusb::transfer::TransferError;
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
 use crate::{elf, AllowDangerous, BmpParams, FlashParams};
 use crate::usb::PortId;
-use crate::probe_identity::Version;
 
 pub struct Firmware
 {
@@ -208,10 +207,7 @@ fn check_programming(port: PortId) -> Result<()>
             e
         })?;
 
-    let version_string = match identity.version {
-        Version::Unknown => " <invalid version>".into(),
-        Version::Known(version) => version
-    };
+    let version_string = identity.version.to_string();
 
     println!("Black Magic Probe successfully rebooted into firmware version {}", version_string);
 

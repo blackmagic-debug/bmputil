@@ -8,11 +8,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::Result;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use directories::ProjectDirs;
 use indicatif::ProgressBar;
+use log::warn;
 
 use crate::BmpParams;
 use crate::bmp::BmpDevice;
@@ -21,7 +22,7 @@ use crate::firmware_selector::FirmwareMultichoice;
 use crate::flasher;
 use crate::metadata::download_metadata;
 use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata};
-use crate::probe_identity::{ProbeIdentity, Version};
+use crate::probe_identity::{ProbeIdentity, VersionNumber};
 use crate::FlashParams;
 
 pub fn switch_firmware<Params>(params: &Params, paths: &ProjectDirs) -> Result<()>
@@ -115,11 +116,17 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(
     let firmware_version = match &identity.version {
         // If we don't know what version of firmware is on the probe, presume it's v1.6 for now.
         // We can't actually know which prior version to v1.6 it actually is, but it's very old either way
-        Version::Unknown => {
-            println!("Old firmware version is detected, pretending this is version 'v1.6'");
-            "v1.6"
+        VersionNumber::Unknown => {
+            warn!("Old firmware version is detected, pretending this is version 'v1.6'");
+            "v1.6".into()
         },
-        Version::Known(firmware) => firmware
+        // If the version number is invalid, or a Git hash only, we don't know what it is and should
+        // use an empty string
+        VersionNumber::Invalid | VersionNumber::GitHash(_) => {
+            warn!("Firmware is of an unknown version");
+            "".into()
+        },
+        VersionNumber::FullVersion(parts) => parts.to_string()
     };
 
     // Filter out releases that don't support this probe, and filter out the one the probe is currently running
@@ -128,7 +135,7 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(
         .iter()
         .filter(
             |&(version, release)|
-                !(firmware_version == version && release.firmware[variant].variants.len() == 1) &&
+                !(firmware_version.as_str() == version && release.firmware[variant].variants.len() == 1) &&
                     release.firmware.contains_key(&variant)
         )
         .collect();
