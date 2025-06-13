@@ -37,14 +37,9 @@ where
         }
     };
 
-    let firmware_identity_string = probe.firmware_identity()?;
-    println!("Probe {} ({}) selected for firmware update", firmware_identity_string, probe.serial_number()?);
-
     // Now extract the probe's identification, and check it's valid
-    let identity: ProbeIdentity = firmware_identity_string.try_into().map_err(|err| {
-        println!("Couldn't extract an identity from firmware descriptor string: {}", err);
-        eyre!("Couldn't extract an identity from firmware descriptor string")
-    })?;
+    let identity = probe.firmware_identity()?;
+    println!("Probe {} ({}) selected for firmware update", identity, probe.serial_number()?);
 
     // Figure out where the firmware and metadata cache is
     let cache = paths.cache_dir();

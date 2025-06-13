@@ -19,6 +19,7 @@ use nusb::transfer::TransferError;
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
 use crate::{elf, AllowDangerous, BmpParams, FlashParams};
 use crate::usb::PortId;
+use crate::probe_identity::Version;
 
 pub struct Firmware
 {
@@ -200,19 +201,17 @@ fn check_programming(port: PortId) -> Result<()>
 
     // Now the device has come back, we need to see if the firmware programming cycle succeeded.
     // This starts by extracting the firmware identity string to check
-    let product_string = dev
+    let identity = dev
         .firmware_identity()
         .map_err(|e| {
             error!("Error reading firmware version after flash! Invalid firmware?");
             e
         })?;
 
-    // XXX: This does terrible things if the firmware is older than v1.7, or the operation failed
-    // and we're actually still in the bootloader and it's not the project bootloader.
-    let version_string = product_string
-        .chars()
-        .skip("Black Magic Probe ".len())
-        .collect::<String>();
+    let version_string = match identity.version {
+        Version::Unknown => " <invalid version>".into(),
+        Version::Known(version) => version
+    };
 
     println!("Black Magic Probe successfully rebooted into firmware version {}", version_string);
 
