@@ -6,8 +6,7 @@
 use std::cmp::Ordering;
 
 use std::fmt::{Display, Formatter};
-use color_eyre::eyre::{eyre, Result};
-use color_eyre::Report;
+use color_eyre::eyre::{eyre, Report, Result};
 
 use crate::metadata::structs::Probe;
 
@@ -265,6 +264,105 @@ impl PartialOrd for VersionNumber<'_>
                 }
             }
         }
+    }
+}
+
+impl<'a> TryFrom<&'a str> for VersionParts<'a>
+{
+    type Error = Report;
+
+    fn try_from(value: &'a str) -> Result<Self>
+    {
+        // The caller already chopped the leading `v` off, so..
+        // Start by extracting each of the components, one dot at a time.
+        // Look for the first '.' and extract the major version number
+        let major_end = value.find('.').unwrap_or_else(|| value.len());
+        let major = value[..major_end].parse::<usize>()?;
+
+        let mut value = if major_end == value.len() {
+            &value[major_end..]
+        } else {
+            &value[major_end + 1..]
+        };
+
+        // Next, find another dot if possible and extract the minor
+        let minor_end = value.find('.').unwrap_or_else(|| value.len());
+        let minor = value[..minor_end].parse::<usize>()?;
+
+        value = if minor_end == value.len() {
+            &value[minor_end..]
+        } else {
+            &value[minor_end + 1..]
+        };
+
+        // And one more time - this time for the revision number, and look for a '-'
+        let revision_end = value.find('-').unwrap_or_else(|| value.len());
+        let revision = value[..revision_end].parse::<usize>()?;
+
+        value = if revision_end == value.len() {
+            &value[revision_end..]
+        } else {
+            &value[revision_end + 1..]
+        };
+
+        // Now look from the end for another '-', this time to see if the dirty marker is set
+        let dirty_begin = value
+            .rfind('-')
+            .map(|value| value + 1)
+            .unwrap_or(0);
+        let dirty = &value[dirty_begin..] == "dirty";
+        // If the marker was present, remove it from the string
+        if dirty {
+            value = &value[..dirty_begin];
+            if value.ends_with('-') {
+                value = &value[..value.len() - 1];
+            }
+        }
+
+        // Depending on how much string is left, we need to do different things here..
+        // If there is no string left, the kind is a release and we're done
+        let kind = if value.is_empty() {
+            VersionKind::Release
+        } else {
+            // More to come? okay.. let's see if this is a release candidate next then
+            let candidate = if value.starts_with("rc") {
+                let rc_end = value.find('-').unwrap_or_else(|| value.len());
+                let rc_number = value[2..rc_end].parse::<usize>()?;
+
+                value = if rc_end == value.len() {
+                    &value[rc_end..]
+                } else {
+                    &value[rc_end + 1..]
+                };
+
+                Some(rc_number)
+            } else {
+                None
+            };
+            // If there's anything left, we now have Git version information.
+            // First comes the number of commits since the tag this is referenced to was made
+            if !value.is_empty() {
+                // Find the middle '-' and parse the first part as a number
+                let commits_end = value
+                    .find('-')
+                    .ok_or_else(|| eyre!("Version string has invalid form of Git version tag {:?}", value))?;
+                let commits = value[..commits_end].parse::<usize>()?;
+                // Now take everything after the '-' as a hash
+                let hash = &value[commits_end + 1..];
+                VersionKind::Development(GitVersion { commits, hash, release_candidate: candidate })
+            } else {
+                candidate.map(|rc_number| VersionKind::ReleaseCandidate(rc_number)).unwrap()
+            }
+        };
+
+        Ok(Self
+        {
+            major,
+            minor,
+            revision,
+            kind,
+            dirty,
+        })
     }
 }
 
