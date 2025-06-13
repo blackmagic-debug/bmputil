@@ -3,6 +3,8 @@
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 // SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
+use std::cmp::Ordering;
+
 use std::fmt::{Display, Formatter};
 use color_eyre::eyre::{eyre, Result};
 use color_eyre::Report;
@@ -50,6 +52,46 @@ enum ParseVersionError
     FormattingPatternError,
     EmptyOrWhitespaceVersion,
     NotStartingWithV(String),
+}
+
+#[derive(Eq)]
+pub struct VersionString<'a>
+{
+    value: String,
+    version_number: VersionNumber<'a>,
+}
+
+#[derive(PartialEq, Eq, Ord)]
+enum VersionNumber<'a>
+{
+    Invalid,
+    GitHash(&'a str),
+    FullVersion(VersionParts<'a>),
+}
+
+#[derive(PartialEq, Eq, Ord)]
+struct VersionParts<'a>
+{
+    major: usize,
+    minor: usize,
+    revision: usize,
+    kind: VersionKind<'a>,
+    dirty: bool,
+}
+
+#[derive(PartialEq, Eq, Ord)]
+enum VersionKind<'a>
+{
+    Release,
+    ReleaseCandidate(usize),
+    Development(GitVersion<'a>),
+}
+
+#[derive(Eq, Ord)]
+struct GitVersion<'a>
+{
+    commits: usize,
+    hash: &'a str,
 }
 
 impl Display for ParseVersionError
@@ -172,6 +214,161 @@ impl TryFrom<String> for Probe
             "st-link v3" => Ok(Probe::Stlinkv3),
             "swlink" => Ok(Probe::Swlink),
             _ => Err(eyre!("Probe with unknown product string encountered")),
+        }
+    }
+}
+
+impl PartialEq for VersionString<'_>
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.value == other.value
+    }
+}
+
+impl PartialOrd for VersionString<'_>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    {
+        self.version_number.partial_cmp(&other.version_number)
+    }
+}
+
+impl PartialOrd for VersionNumber<'_>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    {
+        // There's no ordering invalid version numbers, or Git hash only ones beyond equality
+        match self {
+            Self::Invalid => None,
+            Self::GitHash(lhs) => {
+                match other {
+                    // If the other number is also a GitHash, check if they're equal.
+                    // For everything else, there's no way to compare
+                    Self::GitHash(rhs) => {
+                        if lhs == rhs {
+                            Some(Ordering::Equal)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            },
+            Self::FullVersion(lhs) => {
+                // If we're a full version though then if the RHS is also a full version, apply full
+                // partial comparison - everything else cannot be ordered however.
+                match other {
+                    Self::Invalid | Self::GitHash(_) => None,
+                    Self::FullVersion(rhs) => lhs.partial_cmp(rhs),
+                }
+            }
+        }
+    }
+}
+
+impl PartialOrd for VersionParts<'_>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    {
+        // First, check to see if the major is larger or smaller than the other
+        if self.major < other.major {
+            return Some(Ordering::Less);
+        } else if self.major > other.major {
+            return Some(Ordering::Greater);
+        }
+
+        // Next check the minor in the same way
+        if self.minor < other.minor {
+            return Some(Ordering::Less);
+        } else if self.minor > other.minor {
+            return Some(Ordering::Greater);
+        }
+
+        // Now check the revision number
+        if self.revision < other.revision {
+            return Some(Ordering::Less);
+        } else if self.revision > other.revision {
+            return Some(Ordering::Greater);
+        }
+
+        // If we got here, the major, minor, and revision numbers all match.. so,
+        // we can properly check the ordering on the kind as we're comparing all the same base numbers
+        if self.kind < other.kind {
+            return Some(Ordering::Less)
+        } else if self.kind > other.kind {
+            return Some(Ordering::Greater)
+        }
+
+        // If the version given is `-dirty`, but other is not, we are a higher version number
+        // (and likewise the other way around - other is the higher then). If they're equal,
+        // then the version numbers are equivilent.
+        if self.dirty && !other.dirty {
+            Some(Ordering::Greater)
+        } else if !self.dirty && other.dirty {
+            Some(Ordering::Less)
+        } else {
+            Some(Ordering::Equal)
+        }
+    }
+}
+
+impl PartialOrd for VersionKind<'_>
+{
+    /// NB: These orderings are only true IFF we are comparing the same base versions in VersionParts.
+    /// a release candidate comes before a release, but development builds come after that release(candidate).
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    {
+        match self {
+            Self::Release => {
+                // A release comes after a release candidate but before its development builds
+                match other {
+                    Self::Release => Some(Ordering::Equal),
+                    Self::ReleaseCandidate(_) => Some(Ordering::Greater),
+                    Self::Development(_) => Some(Ordering::Less),
+                }
+            },
+            Self::ReleaseCandidate(lhs) => {
+                // A release candidate comes before a release and its development builds, but candidates
+                // a strongly ordered relative to each other for a given release
+                match other {
+                    Self::Release => Some(Ordering::Less),
+                    Self::ReleaseCandidate(rhs) => lhs.partial_cmp(rhs),
+                    Self::Development(_) => Some(Ordering::Less),
+                }
+            },
+            Self::Development(lhs) => {
+                // Development builds come after everything else, but are strongly ordered relative to each other
+                match other {
+                    Self::Development(rhs) => lhs.partial_cmp(rhs),
+                    _ => Some(Ordering::Greater),
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq for GitVersion<'_>
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.commits == other.commits &&
+        self.hash == other.hash
+    }
+}
+
+impl PartialOrd for GitVersion<'_>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    {
+        if self.commits < other.commits {
+            Some(Ordering::Less)
+        } else if self.commits > other.commits {
+            Some(Ordering::Greater)
+        } else if self.hash == other.hash {
+            Some(Ordering::Equal)
+        } else {
+            None
         }
     }
 }
