@@ -34,17 +34,6 @@ enum ParseNameError
     FoundNotMatchedParenthesis
 }
 
-impl Display for ParseNameError
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result
-    {
-        match self {
-            ParseNameError::OpeningParenthesisAfterClosingParenthesis => write!(f, "A '(' parenthesis is found after a ')'."),
-            ParseNameError::FoundNotMatchedParenthesis => write!(f, "Not a matching pair of parenthesis found."),
-        }
-    }
-}
-
 #[derive(Debug)]
 enum ParseVersionError
 {
@@ -92,6 +81,17 @@ struct GitVersion<'a>
     release_candidate: Option<usize>,
     commits: usize,
     hash: &'a str,
+}
+
+impl Display for ParseNameError
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result
+    {
+        match self {
+            ParseNameError::OpeningParenthesisAfterClosingParenthesis => write!(f, "A '(' parenthesis is found after a ')'."),
+            ParseNameError::FoundNotMatchedParenthesis => write!(f, "Not a matching pair of parenthesis found."),
+        }
+    }
 }
 
 impl Display for ParseVersionError
