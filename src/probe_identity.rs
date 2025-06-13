@@ -14,18 +14,11 @@ const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
 const BMP_PRODUCT_STRING_LENGTH: usize = BMP_PRODUCT_STRING.len();
 const BMP_NATIVE: &str = "native";
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Version
-{
-    Unknown,
-    Known(String),
-}
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct ProbeIdentity
 {
     probe: Probe,
-    pub version: Version,
+    pub version: VersionNumber,
 }
 
 enum ParseNameError
@@ -39,7 +32,6 @@ enum ParseVersionError
 {
     FormattingPatternError,
     EmptyOrWhitespaceVersion,
-    NotStartingWithV(String),
 }
 
 #[derive(PartialEq, Eq, Ord)]
@@ -95,12 +87,11 @@ impl Display for ParseVersionError
         match self {
             ParseVersionError::FormattingPatternError => write!(f, "The version failed to match the pattern of '{} (<version number>)'.", BMP_PRODUCT_STRING),
             ParseVersionError::EmptyOrWhitespaceVersion => write!(f, "The extracted version is empty or whitespace"),
-            ParseVersionError::NotStartingWithV(version_string) => write!(f, "Version doesn't start with v, got '{}'", version_string),
         }
     }
 }
 
-fn parse_name_from_identity_string(input: &str) -> Result<String, ParseNameError>
+fn parse_name_from_identity_string(input: &str) -> Result<&str, ParseNameError>
 {
     let opening_paren = input.find('(');
     let closing_paren = input.find(')');
@@ -111,7 +102,7 @@ fn parse_name_from_identity_string(input: &str) -> Result<String, ParseNameError
             if opening_paren > closing_paren {
                 Err(ParseNameError::OpeningParenthesisAfterClosingParenthesis)
             } else {
-               Ok(input[opening_paren+1..closing_paren].to_string())
+                Ok(&input[opening_paren+1..closing_paren])
             }
         }
         (Some(_), None) => Err(ParseNameError::FoundNotMatchedParenthesis),
@@ -119,21 +110,16 @@ fn parse_name_from_identity_string(input: &str) -> Result<String, ParseNameError
     }
 }
 
-fn parse_version_from_identity_string(input: &str) -> Result<Version, ParseVersionError>
+fn parse_version_from_identity_string(input: &str) -> Result<&str, ParseVersionError>
 {
     let start_index = input.rfind(' ').ok_or_else(|| ParseVersionError::FormattingPatternError)?;
-
-    let version = input[start_index + 1..].to_string();
-
-    if !version.starts_with('v') {
-        return Err(ParseVersionError::NotStartingWithV(version));
-    }
+    let version = &input[start_index + 1..];
 
     if version.trim().is_empty() {
         return Err(ParseVersionError::EmptyOrWhitespaceVersion);
     }
 
-    Ok(Version::Known(version))
+    Ok(version)
 }
 
 impl TryFrom<String> for ProbeIdentity
@@ -159,7 +145,7 @@ impl TryFrom<String> for ProbeIdentity
         if identity == BMP_PRODUCT_STRING {
             return Ok(ProbeIdentity {
                 probe: Probe::Native,
-                version: Version::Unknown,
+                version: VersionNumber::Unknown,
             })
         }
 
@@ -173,7 +159,7 @@ impl TryFrom<String> for ProbeIdentity
         let version = version_result.or_else(|error| Err(eyre!("Error while parsing version string: {}", error)))?;
         Ok(ProbeIdentity {
             probe,
-            version
+            version: version.into()
         })
     }
 }
@@ -190,8 +176,10 @@ impl Display for ProbeIdentity
         }
         // Translate the version string as best as possible to a readable form
         match &self.version {
-            Version::Unknown => write!(f, " <invalid version>"),
-            Version::Known(version) => write!(f, " {}", version),
+            VersionNumber::Unknown => Ok(()),
+            VersionNumber::Invalid => write!(f, " <invalid version>"),
+            VersionNumber::GitHash(hash) => write!(f, " {}", hash),
+            VersionNumber::FullVersion(version_parts) => write!(f, " {}", version_parts.to_string()),
         }
     }
 }
