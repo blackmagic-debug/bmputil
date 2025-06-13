@@ -122,19 +122,18 @@ fn parse_version_from_identity_string(input: &str) -> Result<&str, ParseVersionE
     Ok(version)
 }
 
-impl TryFrom<String> for ProbeIdentity
+impl TryFrom<&str> for ProbeIdentity
 {
     type Error = Report;
 
-    // BMD product strings are in one of the following forms:
-    // Recent: Black Magic Probe v2.0.0-rc2
-    //       : Black Magic Probe (ST-Link v2) v1.10.0-1273-g2b1ce9aee
-    //       : Black Magic Probe v2.0.0-rc2-65-g221c3031f
-    //    Old: Black Magic Probe
-
-    fn try_from(value: String) -> Result<Self>
+    fn try_from(identity: &str) -> Result<Self>
     {
-        let identity = value;
+        // BMD product strings are in one of the following forms:
+        // Recent: Black Magic Probe v2.0.0-rc2
+        //       : Black Magic Probe (ST-Link/v2) v1.10.0-1273-g2b1ce9aee
+        //    Old: Black Magic Probe
+        // From this we want to extract two main things: version (if available), and probe variety
+        // (probe variety meaning alternative platform kind if not a BMP itself)
 
         // Every identity should start with 'Black Magic Probe'
         if !identity.starts_with(BMP_PRODUCT_STRING) {
@@ -161,6 +160,16 @@ impl TryFrom<String> for ProbeIdentity
             probe,
             version: version.into()
         })
+    }
+}
+
+impl TryFrom<String> for ProbeIdentity
+{
+    type Error = Report;
+
+    fn try_from(identity: String) -> Result<Self>
+    {
+        identity.as_str().try_into()
     }
 }
 
