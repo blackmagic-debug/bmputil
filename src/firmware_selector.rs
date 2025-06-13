@@ -110,59 +110,79 @@ impl<'a> FirmwareMultichoice<'a>
             .iter()
             .enumerate()
             .find(|(_, variant)| variant.friendly_name == friendly_name)
-            .unwrap(); // Can't fail anyway..
+            .expect("This shouldn't fail!");
 
         // Ask the user what they wish to do
-        let items = ["Flash to probe", "Show documentation", "Choose a different variant"];
+        const ACTIONS: [(&str, fn(usize, usize) -> State); 3]= [
+            ("Flash to probe", |_, variant_index| State::FlashFirmware(variant_index)),
+            ("Show documentation", |name_index, variant_index| State::ShowDocs(name_index, variant_index)),
+            ("Choose a different variant", |_, _| State::PickFirmware),
+        ];
+
+        let items = ACTIONS.iter().map(|(label, _)| *label).collect::<Vec<_>>();
+
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("What action would you like to take with this firmware?")
             .items(&items)
             .interact_opt()?;
 
-        Ok(match selection {
-            Some(item) => match item {
-                0 => State::FlashFirmware(variant_index),
-                1 => State::ShowDocs(name_index, variant_index),
-                2 => State::PickFirmware,
-                _ => Err(eyre!("Impossible selection for action"))?
-            },
-            None => State::Cancel,
-        })
+        let selected_state = selection
+            .and_then(|item| ACTIONS.get(item).map(|&(_, action)| action(name_index, variant_index)))
+            .unwrap_or(State::Cancel);
+
+        Ok(selected_state)
     }
 
-    fn compute_release_uri(&self, variant: &FirmwareDownload) -> Url
+    fn compute_release_uri(&self, variant: &FirmwareDownload) -> Result<Url>
     {
         // Clone the download URI for this firmware variant and convert the path part into a Path
         let mut uri = variant.uri.clone();
         let mut path = PathBuf::from(uri.path());
         // Find where the release tag component is in the path, stripping back to that
-        while path.components().count() != 0 && !path.ends_with(self.release) {
-            path.pop();
+
+        if !path.components().any(|c| c.as_os_str() == self.release) {
+            Err(eyre!("This firmware URL doesn't contain the release '{}'", self.release))?
+        }
+
+        while !path.ends_with(self.release) {
+            if !path.pop() {
+                Err(eyre!("Something went wrong while unwinding path"))?;
+            }
         }
         // Now replace the preceeding `/download/` chunk with `/tag/`
-        path.pop();
+        if !path.pop() {
+            Err(eyre!("Path should have at least one component"))?;
+        }
         path.set_file_name("tag");
         path.push(self.release);
         // Having completed that, replace the path component of the URI
         uri.set_path(path.to_str().unwrap());
         // And now return the completed URI
-        uri
+        Ok(uri)
     }
 
-    fn show_documentation(&self, name_index: usize, variant_index: usize) -> Result<State>
+    fn calculate_documentation_url(&self, variant_uri: &Url) -> Result<Url>
     {
-        // Extract which firmware download we're to work with
-        let variant = self.variants[variant_index];
         // Convert the path compoment of the download URI to a Path
-        let mut docs_path = PathBuf::from(variant.uri.path());
+        let mut docs_path = PathBuf::from(variant_uri.path());
         // Replace the file extension from ".elf" to ".md"
         docs_path.set_extension("md");
         // Convert back into a URI
-        let mut docs_uri = variant.uri.clone();
+        let mut docs_uri = variant_uri.clone();
         docs_uri.set_path(
-            docs_path.to_str()
-                .expect("Something went terribly wrong building the documentation URI")
+            docs_path
+                .to_str()
+                .ok_or_else(|| eyre!("Something went terribly wrong building the documentation URI"))?
         );
+
+        Ok(docs_uri)
+    }
+
+    fn download_documentation(&self, variant: &FirmwareDownload) -> Result<Option<String>>
+    {
+        // Extract which firmware download we're to work with
+        // Convert the path compoment of the download URI to a Path
+        let docs_uri = self.calculate_documentation_url(&variant.uri)?;
 
         // Now try and download this documentation file
         let client = reqwest::blocking::Client::new();
@@ -174,14 +194,94 @@ impl<'a> FirmwareMultichoice<'a>
 
         match response.status() {
             // XXX: Need to compute the release URI from the download URI and release name string
-            StatusCode::NOT_FOUND => println!(
-                "No documentation found, please go to {} to find out more", self.compute_release_uri(variant)
-            ),
-            StatusCode::OK => Viewer::display(&variant.friendly_name, &response.text()?)?,
+            StatusCode::NOT_FOUND => {
+                println!("No documentation found, please go to {} to find out more", self.compute_release_uri(variant)?);
+                Ok(None)
+            },
+            StatusCode::OK => Ok(Some(response.text()?)),
             status =>
                 Err(eyre!("Something went terribly wrong while grabbing the documentation to display: {}", status))?
+        }
+    }
+
+    fn show_documentation(&self, name_index: usize, variant_index: usize) -> Result<State>
+    {
+        // Extract which firmware download we're to work with
+        let response = self.download_documentation(&self.variants[variant_index]);
+
+        match response {
+            Err(error) => Err(error),
+            Ok(content) => {
+                if let Some(text) = content {
+                    let variant = self.variants[variant_index];
+                    let title = &variant.friendly_name;
+                    Viewer::display(title, &text)?
+                };
+
+                Ok(State::PickAction(name_index))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compute_release_uri_success(){
+        let variant = FirmwareDownload{
+            friendly_name: "Black Magic Debug for BMP (full)".to_string(),
+            file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
+            uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
         };
 
-        Ok(State::PickAction(name_index))
+        let map = &BTreeMap::from([
+            ("full".to_string(), variant.clone())
+        ]);
+
+        let multiple_choice = FirmwareMultichoice::new("v1.10.0", map);
+
+        let res = multiple_choice.compute_release_uri(&variant);
+
+        //Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
+        assert_eq!(res.unwrap(), Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/tag/v1.10.0").unwrap());
+    }
+
+    #[test]
+    fn compute_release_uri_error(){
+        let variant = FirmwareDownload{
+            friendly_name: "Black Magic Debug for BMP (full)".to_string(),
+            file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
+            uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
+        };
+
+        let map = &BTreeMap::from([
+            ("full".to_string(), variant.clone())
+        ]);
+
+        let multiple_choice = FirmwareMultichoice::new("error", map);
+
+        let res = multiple_choice.compute_release_uri(&variant);
+
+        //Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
+        assert_eq!(res.unwrap_err().to_string(), "This firmware URL doesn't contain the release 'error'");
+    }
+
+    #[test]
+    fn calculate_documentation_url_success(){
+        let variant = FirmwareDownload{
+            friendly_name: "Black Magic Debug for BMP (common targets)".to_string(),
+            file_name: PathBuf::from("blackmagic-native-common-v2.0.0-rc1.elf"),
+            uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.elf").expect("Setup url shouldn't fail"),
+        };
+
+        let map = &BTreeMap::default();
+
+        let multiple_choice = FirmwareMultichoice::new("native", map);
+        let res = multiple_choice.calculate_documentation_url(&variant.uri);
+
+        //Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
+        assert_eq!(res.unwrap(), Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.md").unwrap());
     }
 }
