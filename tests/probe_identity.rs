@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use color_eyre::eyre::{eyre, Result};
+    use color_eyre::eyre::Result;
     use bmputil::metadata::structs::Probe;
     use bmputil::probe_identity::{ProbeIdentity, Version};
     
@@ -37,10 +37,12 @@ mod tests {
     #[test]
     fn extract_version_only_hash_error()
     {
-        let res: Result<ProbeIdentity> = String::from("Black Magic Probe g221c3031f").try_into();
-        
-        let expected  = eyre!("Still implement, must start with v");
-        assert!(matches!(res, Err(expected)));
+        let result: Result<ProbeIdentity> = String::from("Black Magic Probe g221c3031f").try_into();
+
+        assert!(result.is_err());
+        if let Err(err) = result {
+            assert_eq!(err.to_string(), "Error while parsing version string: Version doesn't start with v, got 'g221c3031f'");
+        }
     }
 
     #[test]
@@ -56,18 +58,22 @@ mod tests {
     #[test]
     fn extract_without_closing()
     {
-        let res: Result<ProbeIdentity> = "Black Magic Probe (ST-Link".to_string().try_into();
+        let result: Result<ProbeIdentity> = "Black Magic Probe (ST-Link".to_string().try_into();
 
-        let expected  = eyre!("Error while parsing probe string: Not a matching pair of parenthesis found.");
-        assert!(matches!(res, Err(expected)));
+        assert!(result.is_err());
+        if let Err(err) = result {
+            assert_eq!(err.to_string(), "Error while parsing probe string: Not a matching pair of parenthesis found.");
+        }
     }
 
     #[test]
     fn unknown()
     {
-        let res: Result<ProbeIdentity> = String::from("Something (v1.2.3)").try_into();
+        let result: Result<ProbeIdentity> = String::from("Something (v1.2.3)").try_into();
 
-        let expected  = eyre!("Product string doesn't start with 'Black Magic Probe'");
-        assert!(matches!(res, Err(expected)));
+        assert!(result.is_err());
+        if let Err(err) = result {
+            assert_eq!(err.to_string(), "Product string doesn't start with 'Black Magic Probe'");
+        }
     }
 }

@@ -44,6 +44,7 @@ enum ParseVersionError
 {
     FormattingPatternError,
     EmptyOrWhitespaceVersion,
+    NotStartingWithV(String),
 }
 
 impl Display for ParseVersionError
@@ -53,6 +54,7 @@ impl Display for ParseVersionError
         match self {
             ParseVersionError::FormattingPatternError => write!(f, "The version failed to match the pattern of '{} (<version number>)'.", BMP_PRODUCT_STRING),
             ParseVersionError::EmptyOrWhitespaceVersion => write!(f, "The extracted version is empty or whitespace"),
+            ParseVersionError::NotStartingWithV(version_string) => write!(f, "Version doesn't start with v, got '{}'", version_string),
         }
     }
 }
@@ -82,6 +84,10 @@ fn parse_version_from_identity_string(input: &str) -> Result<Version, ParseVersi
 
     let version = input[start_index + 1..].to_string();
 
+    if !version.starts_with('v') {
+        return Err(ParseVersionError::NotStartingWithV(version));
+    }
+    
     if version.trim().is_empty() {
         return Err(ParseVersionError::EmptyOrWhitespaceVersion);
     }
