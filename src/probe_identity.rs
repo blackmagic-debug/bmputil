@@ -382,6 +382,22 @@ impl TryFrom<&str> for VersionParts
     }
 }
 
+impl ToString for VersionParts
+{
+    fn to_string(&self) -> String
+    {
+        // Build out the base version string
+        let mut version = format!("{}.{}.{}", self.major, self.minor, self.revision);
+        // Now flatten out the kind value
+        version += &self.kind.to_string();
+        // And finally, if the version represents a dirty build, add that before we return
+        if self.dirty {
+            version += "-dirty";
+        }
+        version
+    }
+}
+
 impl PartialOrd for VersionParts
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
@@ -428,6 +444,18 @@ impl PartialOrd for VersionParts
     }
 }
 
+impl ToString for VersionKind
+{
+    fn to_string(&self) -> String
+    {
+        match self {
+            Self::Release => "".into(),
+            Self::ReleaseCandidate(rc_number) => format!("-rc{}", rc_number),
+            Self::Development(git_version) => git_version.to_string(),
+        }
+    }
+}
+
 impl PartialOrd for VersionKind
 {
     /// NB: These orderings are only true IFF we are comparing the same base versions in VersionParts.
@@ -460,6 +488,19 @@ impl PartialOrd for VersionKind
                 }
             }
         }
+    }
+}
+
+impl ToString for GitVersion
+{
+    fn to_string(&self) -> String
+    {
+        let base_version = match self.release_candidate {
+            None => "".into(),
+            Some(rc_number) => format!("-rc{}", rc_number),
+        };
+        let git_version = format!("-{}-{}", self.commits, self.hash);
+        base_version + &git_version
     }
 }
 
