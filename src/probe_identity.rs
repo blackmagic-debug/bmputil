@@ -45,6 +45,7 @@ enum ParseVersionError
 #[derive(PartialEq, Eq, Ord)]
 pub enum VersionNumber
 {
+    Unknown,
     Invalid,
     GitHash(String),
     FullVersion(VersionParts),
@@ -274,6 +275,7 @@ impl PartialOrd for VersionNumber
     {
         // There's no ordering invalid version numbers, or Git hash only ones beyond equality
         match self {
+            Self::Unknown => None,
             Self::Invalid => None,
             Self::GitHash(lhs) => {
                 match other {
@@ -293,7 +295,7 @@ impl PartialOrd for VersionNumber
                 // If we're a full version though then if the RHS is also a full version, apply full
                 // partial comparison - everything else cannot be ordered however.
                 match other {
-                    Self::Invalid | Self::GitHash(_) => None,
+                    Self::Unknown | Self::Invalid | Self::GitHash(_) => None,
                     Self::FullVersion(rhs) => lhs.partial_cmp(rhs),
                 }
             }
