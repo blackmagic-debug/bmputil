@@ -42,45 +42,38 @@ enum ParseVersionError
     NotStartingWithV(String),
 }
 
-#[derive(Eq)]
-pub struct VersionString<'a>
-{
-    value: String,
-    version_number: VersionNumber<'a>,
-}
-
 #[derive(PartialEq, Eq, Ord)]
-enum VersionNumber<'a>
+pub enum VersionNumber
 {
     Invalid,
-    GitHash(&'a str),
-    FullVersion(VersionParts<'a>),
+    GitHash(String),
+    FullVersion(VersionParts),
 }
 
 #[derive(PartialEq, Eq, Ord)]
-struct VersionParts<'a>
+pub struct VersionParts
 {
     major: usize,
     minor: usize,
     revision: usize,
-    kind: VersionKind<'a>,
+    kind: VersionKind,
     dirty: bool,
 }
 
 #[derive(PartialEq, Eq, Ord)]
-enum VersionKind<'a>
+enum VersionKind
 {
     Release,
     ReleaseCandidate(usize),
-    Development(GitVersion<'a>),
+    Development(GitVersion),
 }
 
 #[derive(PartialEq, Eq, Ord)]
-struct GitVersion<'a>
+struct GitVersion
 {
     release_candidate: Option<usize>,
     commits: usize,
-    hash: &'a str,
+    hash: String,
 }
 
 impl Display for ParseNameError
@@ -218,23 +211,46 @@ impl TryFrom<String> for Probe
     }
 }
 
-impl PartialEq for VersionString<'_>
+impl From<&str> for VersionNumber
 {
-    fn eq(&self, other: &Self) -> bool
+    fn from<'a>(value: &str) -> Self
     {
-        self.value == other.value
+        // Check what the version string starts with - if it starts with a 'g', it's a GitHash, 'v' is a version,
+        // anything else is invalid and unknown.
+        if value.starts_with("g") {
+            VersionNumber::GitHash(value[1..].to_string())
+        } else if value.starts_with("v") {
+            // Try to convert the version number into parts
+            let version_parts = VersionParts::try_from(&value[1..]);
+            match version_parts {
+                // If that succeeds return a fully versioned object
+                Ok(version_parts) => VersionNumber::FullVersion(version_parts),
+                // Otherwise it's an invalid version, so chuck back an invalid version object
+                Err(_) => VersionNumber::Invalid,
+            }
+        } else {
+            VersionNumber::Invalid
+        }
     }
 }
 
-impl PartialOrd for VersionString<'_>
+impl From<&String> for VersionNumber
 {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    fn from(value: &String) -> Self
     {
-        self.version_number.partial_cmp(&other.version_number)
+        value.as_str().into()
     }
 }
 
-impl PartialOrd for VersionNumber<'_>
+impl From<String> for VersionNumber
+{
+    fn from(value: String) -> Self
+    {
+        value.as_str().into()
+    }
+}
+
+impl PartialOrd for VersionNumber
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
     {
@@ -267,11 +283,11 @@ impl PartialOrd for VersionNumber<'_>
     }
 }
 
-impl<'a> TryFrom<&'a str> for VersionParts<'a>
+impl TryFrom<&str> for VersionParts
 {
     type Error = Report;
 
-    fn try_from(value: &'a str) -> Result<Self>
+    fn try_from(value: &str) -> Result<Self>
     {
         // The caller already chopped the leading `v` off, so..
         // Start by extracting each of the components, one dot at a time.
@@ -348,7 +364,7 @@ impl<'a> TryFrom<&'a str> for VersionParts<'a>
                     .ok_or_else(|| eyre!("Version string has invalid form of Git version tag {:?}", value))?;
                 let commits = value[..commits_end].parse::<usize>()?;
                 // Now take everything after the '-' as a hash
-                let hash = &value[commits_end + 1..];
+                let hash = value[commits_end + 1..].to_string();
                 VersionKind::Development(GitVersion { commits, hash, release_candidate: candidate })
             } else {
                 candidate.map(|rc_number| VersionKind::ReleaseCandidate(rc_number)).unwrap()
@@ -366,7 +382,7 @@ impl<'a> TryFrom<&'a str> for VersionParts<'a>
     }
 }
 
-impl PartialOrd for VersionParts<'_>
+impl PartialOrd for VersionParts
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
     {
@@ -412,7 +428,7 @@ impl PartialOrd for VersionParts<'_>
     }
 }
 
-impl PartialOrd for VersionKind<'_>
+impl PartialOrd for VersionKind
 {
     /// NB: These orderings are only true IFF we are comparing the same base versions in VersionParts.
     /// a release candidate comes before a release, but development builds come after that release(candidate).
@@ -447,7 +463,7 @@ impl PartialOrd for VersionKind<'_>
     }
 }
 
-impl PartialOrd for GitVersion<'_>
+impl PartialOrd for GitVersion
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
     {
