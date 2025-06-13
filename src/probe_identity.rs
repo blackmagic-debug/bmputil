@@ -87,9 +87,10 @@ enum VersionKind<'a>
     Development(GitVersion<'a>),
 }
 
-#[derive(Eq, Ord)]
+#[derive(PartialEq, Eq, Ord)]
 struct GitVersion<'a>
 {
+    release_candidate: Option<usize>,
     commits: usize,
     hash: &'a str,
 }
@@ -348,19 +349,40 @@ impl PartialOrd for VersionKind<'_>
     }
 }
 
-impl PartialEq for GitVersion<'_>
-{
-    fn eq(&self, other: &Self) -> bool
-    {
-        self.commits == other.commits &&
-        self.hash == other.hash
-    }
-}
-
 impl PartialOrd for GitVersion<'_>
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
     {
+        // Check if this is part of a release candidate-based Git version build
+        match self.release_candidate {
+            Some(lhs_rc_number) => {
+                // It is, so check to see what the other Git version build represents
+                match other.release_candidate {
+                    // If they're both release candidates, start by checking if they're based on the
+                    // same candidate (if they're not, we're done already)
+                    Some(rhs_rc_number) => {
+                        if lhs_rc_number != rhs_rc_number {
+                            return lhs_rc_number.partial_cmp(&rhs_rc_number);
+                        }
+                    },
+                    // Otherwise, if the other is a release, we're already done -
+                    // release candidates come before releases
+                    None => return Some(Ordering::Less),
+                }
+            }
+            None => {
+                // It isi not a release candidate, so check the other to see what that is
+                match other.release_candidate {
+                    // If thee other is a release candidate, we're done - RC's come before releases
+                    Some(_) => return Some(Ordering::Greater),
+                    // Otherwise both represent the same base release, continue
+                    None => {},
+                }
+            }
+        }
+
+        // If the release candidate logic all passed then we should check how many commits different
+        // the two are and if the hashes match
         if self.commits < other.commits {
             Some(Ordering::Less)
         } else if self.commits > other.commits {
