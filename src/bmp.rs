@@ -27,6 +27,7 @@ use nusb::descriptors::Descriptor;
 use dfu_nusb::{DfuNusb, Error as DfuNusbError};
 use dfu_core::{State as DfuState, Error as DfuCoreError};
 
+use crate::probe_identity::ProbeIdentity;
 use crate::BmpParams;
 use crate::error::ErrorKind;
 use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
@@ -203,7 +204,7 @@ impl BmpDevice
     ///
     /// This is characterised by the product string which defines
     /// which kind of BMD-running thing we have and what version it runs
-    pub fn firmware_identity(&self) -> Result<String>
+    pub fn firmware_identity(&self) -> Result<ProbeIdentity>
     {
         self
             .device()
@@ -216,6 +217,7 @@ impl BmpDevice
                 |e| ErrorKind::DeviceSeemsInvalid("no product string descriptor".into())
                     .error_from(e).into()
             )
+            .and_then(|identity| identity.try_into())
     }
 
     /// Returns a string that represents the full port of the device, in the format of
