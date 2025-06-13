@@ -269,6 +269,19 @@ impl From<String> for VersionNumber
     }
 }
 
+impl ToString for VersionNumber
+{
+    fn to_string(&self) -> String
+    {
+        match self {
+            Self::Unknown => "".into(),
+            Self::Invalid => "<invalid version>".into(),
+            Self::GitHash(git_hash) => git_hash.clone(),
+            Self::FullVersion(version_parts) => version_parts.to_string()
+        }
+    }
+}
+
 impl PartialOrd for VersionNumber
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
