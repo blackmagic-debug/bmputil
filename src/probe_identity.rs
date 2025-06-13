@@ -34,7 +34,7 @@ enum ParseVersionError
     EmptyOrWhitespaceVersion,
 }
 
-#[derive(PartialEq, Eq, Ord)]
+#[derive(Debug, PartialEq, Eq, Ord)]
 pub enum VersionNumber
 {
     Unknown,
@@ -43,7 +43,7 @@ pub enum VersionNumber
     FullVersion(VersionParts),
 }
 
-#[derive(PartialEq, Eq, Ord)]
+#[derive(Debug, PartialEq, Eq, Ord)]
 pub struct VersionParts
 {
     major: usize,
@@ -53,16 +53,16 @@ pub struct VersionParts
     dirty: bool,
 }
 
-#[derive(PartialEq, Eq, Ord)]
-enum VersionKind
+#[derive(Debug, PartialEq, Eq, Ord)]
+pub enum VersionKind
 {
     Release,
     ReleaseCandidate(usize),
     Development(GitVersion),
 }
 
-#[derive(PartialEq, Eq, Ord)]
-struct GitVersion
+#[derive(Debug, PartialEq, Eq, Ord)]
+pub struct GitVersion
 {
     release_candidate: Option<usize>,
     commits: usize,
