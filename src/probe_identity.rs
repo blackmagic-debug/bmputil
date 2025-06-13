@@ -177,6 +177,24 @@ impl TryFrom<String> for ProbeIdentity
     }
 }
 
+impl Display for ProbeIdentity
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result
+    {
+        // Probe names always use the product string as a prefix
+        write!(f, "{}", BMP_PRODUCT_STRING)?;
+        // If it's not a native probe, display the variant name
+        if self.probe != Probe::Native {
+            write!(f, " ({})", self.probe.to_string())?;
+        }
+        // Translate the version string as best as possible to a readable form
+        match &self.version {
+            Version::Unknown => write!(f, " <invalid version>"),
+            Version::Known(version) => write!(f, " {}", version),
+        }
+    }
+}
+
 impl ProbeIdentity
 {
     pub fn variant(&self) -> Probe
