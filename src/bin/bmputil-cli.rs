@@ -11,9 +11,9 @@ use clap::builder::TypedValueParser;
 use clap::{Arg, ArgAction, Args, Command, CommandFactory, Parser, Subcommand};
 use clap::builder::styling::Styles;
 use clap_complete::{generate, Shell};
-use color_eyre::eyre::{eyre, Context, Result};
+use color_eyre::eyre::{Context, OptionExt, Result};
 use directories::ProjectDirs;
-use log::{info, error};
+use log::{error, info, warn};
 
 use bmputil::{AllowDangerous, BmpParams, FlashParams};
 use bmputil::bmp::{BmpDevice, BmpMatcher, FirmwareType};
@@ -244,23 +244,44 @@ fn reboot_command(cli_args: &CliArguments, reboot_args: &RebootArguments) -> Res
     dev.detach_and_destroy().wrap_err("detaching device")
 }
 
-fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments) -> Result<()>
+fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &ProjectDirs) -> Result<()>
 {
-    let file_name = if let Some(file_name) = &flash_args.firmware_binary {
-        file_name.as_str()
-    } else {
-        return Err(eyre!("TODO: handle when the binary is not given and do an upgrade using metadata"));
-    };
-
     // Try to find the Black Magic Probe device based on the filter arguments.
     let matcher = BmpMatcher::from_params(cli_args);
     let mut results = matcher.find_matching_probes();
-    // TODO: flashing to multiple BMPs at once should be supported, but maybe we should require some kind of flag?
-    let dev: BmpDevice = results
+    let probe = results
         .pop_single("flash")
         .map_err(|kind| kind.error())?;
 
-    bmputil::flasher::flash_probe(cli_args, dev, file_name.into())
+    // Figure out what file should be written to the probe - if there's something on the command line that takes
+    // precedence, otherwise we use the metadata to pick the most recent full release
+    let file_name = match &flash_args.firmware_binary {
+        Some(file_path) => file_path,
+        None => {
+            // Grab the probe's identity for its version string
+            let identity = &probe.firmware_identity()?;
+            // Grab the current metadata to be able to figure out what the latest is
+            let cache = paths.cache_dir();
+            let metadata = download_metadata(cache)?;
+            // Extract the most recent release from the metadata
+            let current_release = metadata
+                .latest()
+                .ok_or_eyre("Could not determine the latest release of the firmware")?;
+
+            // Check whether the release is newer than the firmware on the probe, and if it is, pick that as the file.
+            // If it is not, print a message and exit successfully.
+            if identity.version >= current_release.0 {
+                info!("Latest release {} is not newer than firmware version {}, not updating",
+                    current_release.0, identity.version);
+                return Ok(());
+            }
+            warn!("Considering upgrade of {} to {}", identity.version, current_release.0);
+
+            return Ok(());
+        },
+    };
+
+    bmputil::flasher::flash_probe(cli_args, probe, file_name.into())
 }
 
 fn display_releases(paths: &ProjectDirs) -> Result<()>
@@ -396,7 +417,7 @@ fn main() -> Result<()>
                         UpdateCommands::List => display_releases(&paths),
                     }
                 } else {
-                    update_probe(&cli_args, update_args)
+                    update_probe(&cli_args, update_args, &paths)
                 }
             }
             ProbeCommmands::Switch(_) => bmputil::switcher::switch_firmware(&cli_args, &paths),
