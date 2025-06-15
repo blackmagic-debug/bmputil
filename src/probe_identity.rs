@@ -313,6 +313,14 @@ impl PartialOrd for VersionNumber
     }
 }
 
+impl VersionParts
+{
+    pub fn from_parts(major: usize, minor: usize, revision: usize, kind: VersionKind, dirty: bool) -> Self
+    {
+        Self { major, minor, revision, kind, dirty }
+    }
+}
+
 impl TryFrom<&str> for VersionParts
 {
     type Error = Report;
@@ -518,6 +526,14 @@ impl PartialOrd for VersionKind
                 }
             }
         }
+    }
+}
+
+impl GitVersion
+{
+    pub fn from_parts(release_candidate: Option<usize>, commits: usize, hash: String) -> Self
+    {
+        Self { release_candidate, commits, hash }
     }
 }
 
