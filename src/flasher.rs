@@ -207,9 +207,7 @@ fn check_programming(port: PortId) -> Result<()>
             e
         })?;
 
-    let version_string = identity.version.to_string();
-
-    println!("Black Magic Probe successfully rebooted into firmware version {}", version_string);
+    println!("Black Magic Probe successfully rebooted into firmware version {}", identity.version);
 
     Ok(())
 }

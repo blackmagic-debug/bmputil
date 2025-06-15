@@ -266,15 +266,15 @@ impl From<String> for VersionNumber
     }
 }
 
-impl ToString for VersionNumber
+impl Display for VersionNumber
 {
-    fn to_string(&self) -> String
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result
     {
-        match self {
-            Self::Unknown => "".into(),
-            Self::Invalid => "<invalid version>".into(),
-            Self::GitHash(git_hash) => git_hash.clone(),
-            Self::FullVersion(version_parts) => version_parts.to_string()
+        match &self {
+            VersionNumber::Unknown => write!(f, "<unknown>"),
+            VersionNumber::Invalid => write!(f, "<invalid version>"),
+            VersionNumber::GitHash(hash) => write!(f, "{}", hash),
+            VersionNumber::FullVersion(version_parts) => write!(f, "{}", version_parts.to_string()),
         }
     }
 }
