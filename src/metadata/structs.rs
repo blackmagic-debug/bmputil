@@ -11,6 +11,8 @@ use reqwest::Url;
 use serde::Deserialize;
 use serde::de::Visitor;
 
+use crate::probe_identity::VersionNumber;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Metadata
@@ -308,5 +310,40 @@ impl<'de> Visitor<'de> for TargetArchVisitor
 	{
 		TargetArch::from_str(value)
 			.map_err(|e| E::custom(e.to_string()))
+	}
+}
+
+impl Metadata
+{
+	pub fn latest(&self) -> Option<(VersionNumber, &Release)>
+	{
+		let mut current_release = None;
+
+		// Loop through the available releases and find the most recent one that's currently the
+		// latest stable release (not pre-release)
+		for (version, release) in &self.releases
+		{
+			// Check if the version is pre-release, and if so.. ignore it
+			if version.contains("-rc") {
+				continue;
+			}
+			// Otherwise, turn it into a version string and compare
+			let version = VersionNumber::from(version);
+			current_release = match &current_release {
+				// If we have no current release picked, we're done - this is the first one we've found
+				None => Some((version, release)),
+				Some((current_version, _)) => {
+					// If the version is more than the one we've got picked as the current release, select
+					// this new version instead
+					if &version > current_version {
+						Some((version, release))
+					} else {
+						current_release
+					}
+				}
+			};
+		}
+		// Having stepped through all possible releases, if we have one picked.. return it
+		current_release
 	}
 }
