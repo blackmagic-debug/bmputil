@@ -27,7 +27,7 @@ pub struct Viewer<'a>
 
 impl<'a> Viewer<'a>
 {
-	pub fn display(title: &'a String, docs: &'a String) -> Result<()>
+	pub fn display(title: &'a str, docs: &'a str) -> Result<()>
 	{
 		// Grab the console, putting it in TUI mode
 		let mut terminal = ratatui::init();
@@ -41,20 +41,20 @@ impl<'a> Viewer<'a>
 		result
 	}
 
-	fn new(title: &'a String, docs: &'a String, viewport_size: Size) -> Self
+	fn new(title: &'a str, docs: &'a str, viewport_size: Size) -> Self
 	{
 		// Convert the documentation to display from Markdown
 		let docs = Paragraph::new(tui_markdown::from_str(docs))
-            // Do not trim indentation for word wrapping
-            .wrap(Wrap { trim: false })
-            .block(
-                // Build a bordered block for presentation
-                Block::bordered()
-                    .title(title.as_str())
-                    .title_alignment(Alignment::Left)
-                    .border_type(BorderType::Rounded)
-                    .padding(Padding::horizontal(1))
-            );
+			// Do not trim indentation for word wrapping
+			.wrap(Wrap { trim: false })
+			.block(
+				// Build a bordered block for presentation
+				Block::bordered()
+					.title(title)
+					.title_alignment(Alignment::Left)
+					.border_type(BorderType::Rounded)
+					.padding(Padding::horizontal(1)),
+			);
 		// Work out how any lines the documentation renders to
 		let line_count = docs.line_count(viewport_size.width);
 
