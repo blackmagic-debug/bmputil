@@ -303,10 +303,10 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
 			let firmware_variant = match latest_firmware.variants.len() {
 				// If there's exactly one variant, call the switcher system to download it then use that
 				// file as the result here
-				1 => latest_firmware.variants.values().nth(0).unwrap(),
+				1 => latest_firmware.variants.values().next().unwrap(),
 				// There's more than one variant? okay, ask the switcher system to have the user tell us
 				// which to use then.
-				_ => match pick_firmware(latest_version.as_str(), &latest_firmware)? {
+				_ => match pick_firmware(latest_version.as_str(), latest_firmware)? {
 					Some(variant) => variant,
 					None => {
 						println!("firmware variant selection cancelled, stopping operation");
@@ -315,8 +315,7 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
 				},
 			};
 
-			let elf_file = download_firmware(firmware_variant, paths.cache_dir())?;
-			elf_file
+			download_firmware(firmware_variant, paths.cache_dir())?
 		},
 	};
 
