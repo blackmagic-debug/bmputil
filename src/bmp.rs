@@ -844,10 +844,10 @@ impl BmpMatcher
 			};
 
 			// Consider the index to match if it equals that of the device or if one was not specified at all.
-			let index_matches = self.index.map_or(true, |needle| needle == index);
+			let index_matches = self.index.is_none_or(|needle| needle == index);
 
 			// Consider the port to match if it equals that of the device or if one was not specified at all.
-			let port_matches = self.port.as_ref().map_or(true, |p| {
+			let port_matches = self.port.as_ref().is_none_or(|p| {
 				let port = PortId::new(&device_info);
 
 				p == &port
