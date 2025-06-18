@@ -70,7 +70,7 @@ fn handle_v1_metadata(metadata: Metadata) -> Result<Metadata>
 {
 	info!("Validating v1 metadata with {} releases present", metadata.releases.len());
 	// Run through the releases in this metadata index
-	for (_, release) in &metadata.releases {
+	for release in metadata.releases.values() {
 		// If they say they include BMDA but they don't, error
 		if release.includes_bmda && release.bmda.is_none() {
 			return Err(ErrorKind::ReleaseMetadataInvalid.error().into());
