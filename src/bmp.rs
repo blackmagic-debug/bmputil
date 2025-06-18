@@ -470,12 +470,8 @@ impl BmpDevice
 			0,
 		)?;
 
-		match dfu_dev.protocol() {
-			DfuProtocol::Dfuse {
-				address: _,
-				memory_layout: _,
-			} => println!("Erasing flash..."),
-			_ => {},
+		if let DfuProtocol::Dfuse { .. } = dfu_dev.protocol() {
+			println!("Erasing flash...");
 		}
 
 		let mut dfu_iface = dfu_dev.into_sync_dfu();
