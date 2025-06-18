@@ -157,7 +157,7 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(
     Ok(Some((items[selection].as_str(), &metadata.releases[items[selection].as_str()].firmware[&variant])))
 }
 
-fn pick_firmware<'a>(release: &'a str, firmware: &'a Firmware) -> Result<Option<&'a FirmwareDownload>>
+pub fn pick_firmware<'a>(release: &'a str, firmware: &'a Firmware) -> Result<Option<&'a FirmwareDownload>>
 {
     match firmware.variants.len() {
         // If there are now firmware variants for this release, that's an error
@@ -180,7 +180,7 @@ fn pick_firmware<'a>(release: &'a str, firmware: &'a Firmware) -> Result<Option<
     }
 }
 
-fn download_firmware(variant: &FirmwareDownload, cache_path: &Path) -> Result<PathBuf>
+pub fn download_firmware(variant: &FirmwareDownload, cache_path: &Path) -> Result<PathBuf>
 {
     // Ensure the cache directory exists
     fs::create_dir_all(cache_path)?;
