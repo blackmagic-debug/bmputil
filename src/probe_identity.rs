@@ -103,7 +103,7 @@ fn parse_name_from_identity_string(input: &str) -> Result<&str, ParseNameError>
 	let closing_paren = input.find(')');
 
 	match (opening_paren, closing_paren) {
-		(None, None) => Ok(BMP_NATIVE.into()),
+		(None, None) => Ok(BMP_NATIVE),
 		(Some(opening_paren), Some(closing_paren)) => {
 			if opening_paren > closing_paren {
 				Err(ParseNameError::OpeningParenthesisAfterClosingParenthesis)
@@ -118,9 +118,7 @@ fn parse_name_from_identity_string(input: &str) -> Result<&str, ParseNameError>
 
 fn parse_version_from_identity_string(input: &str) -> Result<&str, ParseVersionError>
 {
-	let start_index = input
-		.rfind(' ')
-		.ok_or_else(|| ParseVersionError::FormattingPatternError)?;
+	let start_index = input.rfind(' ').ok_or(ParseVersionError::FormattingPatternError)?;
 	let version = &input[start_index + 1..];
 
 	if version.trim().is_empty() {
@@ -159,11 +157,11 @@ impl TryFrom<&str> for ProbeIdentity
 		// Removes the first length from the identity, because we know it starts with the 'Black Magic Probe'
 		let parse_slice = &identity[BMP_PRODUCT_STRING_LENGTH..];
 		let probe_result = parse_name_from_identity_string(parse_slice);
-		let probe_string = probe_result.or_else(|error| Err(eyre!("Error while parsing probe string: {}", error)))?;
+		let probe_string = probe_result.map_err(|error| eyre!("Error while parsing probe string: {}", error))?;
 		let probe = probe_string.to_lowercase().try_into()?;
 
 		let version_result = parse_version_from_identity_string(parse_slice);
-		let version = version_result.or_else(|error| Err(eyre!("Error while parsing version string: {}", error)))?;
+		let version = version_result.map_err(|error| eyre!("Error while parsing version string: {}", error))?;
 		Ok(ProbeIdentity {
 			probe,
 			version: version.into(),
@@ -344,7 +342,7 @@ impl TryFrom<&str> for VersionParts
 		// The caller already chopped the leading `v` off, so..
 		// Start by extracting each of the components, one dot at a time.
 		// Look for the first '.' and extract the major version number
-		let major_end = value.find('.').unwrap_or_else(|| value.len());
+		let major_end = value.find('.').unwrap_or(value.len());
 		let major = value[..major_end].parse::<usize>()?;
 
 		let mut value = if major_end == value.len() {
@@ -354,7 +352,7 @@ impl TryFrom<&str> for VersionParts
 		};
 
 		// Next, find another dot if possible and extract the minor
-		let minor_end = value.find('.').unwrap_or_else(|| value.len());
+		let minor_end = value.find('.').unwrap_or(value.len());
 		let minor = value[..minor_end].parse::<usize>()?;
 
 		value = if minor_end == value.len() {
@@ -364,7 +362,7 @@ impl TryFrom<&str> for VersionParts
 		};
 
 		// And one more time - this time for the revision number, and look for a '-'
-		let revision_end = value.find('-').unwrap_or_else(|| value.len());
+		let revision_end = value.find('-').unwrap_or(value.len());
 		let revision = value[..revision_end].parse::<usize>()?;
 
 		value = if revision_end == value.len() {
@@ -391,7 +389,7 @@ impl TryFrom<&str> for VersionParts
 		} else {
 			// More to come? okay.. let's see if this is a release candidate next then
 			let candidate = if value.starts_with("rc") {
-				let rc_end = value.find('-').unwrap_or_else(|| value.len());
+				let rc_end = value.find('-').unwrap_or(value.len());
 				let rc_number = value[2..rc_end].parse::<usize>()?;
 
 				value = if rc_end == value.len() {
@@ -420,9 +418,7 @@ impl TryFrom<&str> for VersionParts
 					release_candidate: candidate,
 				})
 			} else {
-				candidate
-					.map(|rc_number| VersionKind::ReleaseCandidate(rc_number))
-					.unwrap()
+				candidate.map(VersionKind::ReleaseCandidate).unwrap()
 			}
 		};
 
