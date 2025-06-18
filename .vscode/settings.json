@@ -1,0 +1,8 @@
+{
+	"editor.insertSpaces": true,
+	"files.eol": "\n",
+	"files.insertFinalNewline": true,
+	"rust-analyzer.imports.granularity.group": "preserve",
+	"rust-analyzer.checkOnSave": true,
+	"rust-analyzer.check.command": "clippy",
+}
