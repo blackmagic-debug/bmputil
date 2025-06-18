@@ -56,10 +56,7 @@ impl<'a> FirmwareMultichoice<'a>
 	/// Returns true if the FSM is finished and there are no further state transitions to go
 	pub fn complete(&self) -> bool
 	{
-		match self.state {
-			State::FlashFirmware(_) | State::Cancel => true,
-			_ => false,
-		}
+		matches!(self.state, State::FlashFirmware(_) | State::Cancel)
 	}
 
 	/// Step the FSM and perform the actions associated with that step
