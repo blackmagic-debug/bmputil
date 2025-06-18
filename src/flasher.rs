@@ -47,7 +47,7 @@ impl Firmware
 	fn determine_firmware_type<Params>(
 		params: &Params,
 		device: &BmpDevice,
-		firmware_data: &Vec<u8>,
+		firmware_data: &[u8],
 	) -> Result<FirmwareType>
 	where
 		Params: BmpParams + FlashParams,
@@ -197,13 +197,13 @@ fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>>
 
 fn check_programming(port: PortId) -> Result<()>
 {
-	let dev = bmp::wait_for_probe_reboot(port, Duration::from_secs(5), "flash").inspect_err(|e| {
+	let dev = bmp::wait_for_probe_reboot(port, Duration::from_secs(5), "flash").inspect_err(|_| {
 		error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
 	})?;
 
 	// Now the device has come back, we need to see if the firmware programming cycle succeeded.
 	// This starts by extracting the firmware identity string to check
-	let identity = dev.firmware_identity().inspect_err(|e| {
+	let identity = dev.firmware_identity().inspect_err(|_| {
 		error!("Error reading firmware version after flash! Invalid firmware?");
 	})?;
 
