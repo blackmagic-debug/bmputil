@@ -34,7 +34,7 @@ enum ParseVersionError
 	EmptyOrWhitespaceVersion,
 }
 
-#[derive(Debug, PartialEq, Eq, Ord)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum VersionNumber
 {
 	Unknown,
@@ -43,7 +43,7 @@ pub enum VersionNumber
 	FullVersion(VersionParts),
 }
 
-#[derive(Debug, PartialEq, Eq, Ord)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct VersionParts
 {
 	major: usize,
@@ -53,7 +53,7 @@ pub struct VersionParts
 	dirty: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, Ord)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum VersionKind
 {
 	Release,
@@ -61,7 +61,7 @@ pub enum VersionKind
 	Development(GitVersion),
 }
 
-#[derive(Debug, PartialEq, Eq, Ord)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GitVersion
 {
 	release_candidate: Option<usize>,
@@ -432,6 +432,7 @@ impl TryFrom<&str> for VersionParts
 	}
 }
 
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for VersionParts
 {
 	fn to_string(&self) -> String
@@ -452,48 +453,57 @@ impl PartialOrd for VersionParts
 {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering>
 	{
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for VersionParts
+{
+	fn cmp(&self, other: &Self) -> Ordering
+	{
 		// First, check to see if the major is larger or smaller than the other
 		if self.major < other.major {
-			return Some(Ordering::Less);
+			return Ordering::Less;
 		} else if self.major > other.major {
-			return Some(Ordering::Greater);
+			return Ordering::Greater;
 		}
 
 		// Next check the minor in the same way
 		if self.minor < other.minor {
-			return Some(Ordering::Less);
+			return Ordering::Less;
 		} else if self.minor > other.minor {
-			return Some(Ordering::Greater);
+			return Ordering::Greater;
 		}
 
 		// Now check the revision number
 		if self.revision < other.revision {
-			return Some(Ordering::Less);
+			return Ordering::Less;
 		} else if self.revision > other.revision {
-			return Some(Ordering::Greater);
+			return Ordering::Greater;
 		}
 
 		// If we got here, the major, minor, and revision numbers all match.. so,
 		// we can properly check the ordering on the kind as we're comparing all the same base numbers
 		if self.kind < other.kind {
-			return Some(Ordering::Less);
+			return Ordering::Less;
 		} else if self.kind > other.kind {
-			return Some(Ordering::Greater);
+			return Ordering::Greater;
 		}
 
 		// If the version given is `-dirty`, but other is not, we are a higher version number
 		// (and likewise the other way around - other is the higher then). If they're equal,
 		// then the version numbers are equivilent.
 		if self.dirty && !other.dirty {
-			Some(Ordering::Greater)
+			Ordering::Greater
 		} else if !self.dirty && other.dirty {
-			Some(Ordering::Less)
+			Ordering::Less
 		} else {
-			Some(Ordering::Equal)
+			Ordering::Equal
 		}
 	}
 }
 
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for VersionKind
 {
 	fn to_string(&self) -> String
@@ -512,29 +522,37 @@ impl PartialOrd for VersionKind
 	/// a release candidate comes before a release, but development builds come after that release(candidate).
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering>
 	{
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for VersionKind
+{
+	fn cmp(&self, other: &Self) -> Ordering
+	{
 		match self {
 			Self::Release => {
 				// A release comes after a release candidate but before its development builds
 				match other {
-					Self::Release => Some(Ordering::Equal),
-					Self::ReleaseCandidate(_) => Some(Ordering::Greater),
-					Self::Development(_) => Some(Ordering::Less),
+					Self::Release => Ordering::Equal,
+					Self::ReleaseCandidate(_) => Ordering::Greater,
+					Self::Development(_) => Ordering::Less,
 				}
 			},
 			Self::ReleaseCandidate(lhs) => {
 				// A release candidate comes before a release and its development builds, but candidates
 				// a strongly ordered relative to each other for a given release
 				match other {
-					Self::Release => Some(Ordering::Less),
-					Self::ReleaseCandidate(rhs) => lhs.partial_cmp(rhs),
-					Self::Development(_) => Some(Ordering::Less),
+					Self::Release => Ordering::Less,
+					Self::ReleaseCandidate(rhs) => lhs.cmp(rhs),
+					Self::Development(_) => Ordering::Less,
 				}
 			},
 			Self::Development(lhs) => {
 				// Development builds come after everything else, but are strongly ordered relative to each other
 				match other {
-					Self::Development(rhs) => lhs.partial_cmp(rhs),
-					_ => Some(Ordering::Greater),
+					Self::Development(rhs) => lhs.partial_cmp(rhs).unwrap(),
+					_ => Ordering::Greater,
 				}
 			},
 		}
@@ -553,6 +571,7 @@ impl GitVersion
 	}
 }
 
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for GitVersion
 {
 	fn to_string(&self) -> String
@@ -588,13 +607,12 @@ impl PartialOrd for GitVersion
 				}
 			},
 			None => {
-				// It isi not a release candidate, so check the other to see what that is
-				match other.release_candidate {
+				// It is not a release candidate, so check the other to see what that is
+				if other.release_candidate.is_some() {
 					// If thee other is a release candidate, we're done - RC's come before releases
-					Some(_) => return Some(Ordering::Greater),
-					// Otherwise both represent the same base release, continue
-					None => {},
+					return Some(Ordering::Greater);
 				}
+				// Otherwise both represent the same base release, continue
 			},
 		}
 
