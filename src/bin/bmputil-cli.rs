@@ -13,7 +13,7 @@ use clap::builder::styling::Styles;
 use clap_complete::{generate, Shell};
 use color_eyre::eyre::{Context, OptionExt, Result};
 use directories::ProjectDirs;
-use log::{error, info, warn};
+use log::{error, info};
 
 use bmputil::{AllowDangerous, BmpParams, FlashParams};
 use bmputil::bmp::{BmpDevice, BmpMatcher, FirmwareType};
@@ -246,6 +246,8 @@ fn reboot_command(cli_args: &CliArguments, reboot_args: &RebootArguments) -> Res
 
 fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &ProjectDirs) -> Result<()>
 {
+    use bmputil::switcher::{download_firmware, pick_firmware};
+
     // Try to find the Black Magic Probe device based on the filter arguments.
     let matcher = BmpMatcher::from_params(cli_args);
     let mut results = matcher.find_matching_probes();
@@ -256,7 +258,7 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
     // Figure out what file should be written to the probe - if there's something on the command line that takes
     // precedence, otherwise we use the metadata to pick the most recent full release
     let file_name = match &flash_args.firmware_binary {
-        Some(file_path) => file_path,
+        Some(file_path) => file_path.into(),
         None => {
             // Grab the probe's identity for its version string
             let identity = &probe.firmware_identity()?;
@@ -264,24 +266,53 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
             let cache = paths.cache_dir();
             let metadata = download_metadata(cache)?;
             // Extract the most recent release from the metadata
-            let current_release = metadata
+            let (latest_version, latest_release) = metadata
                 .latest()
                 .ok_or_eyre("Could not determine the latest release of the firmware")?;
+            // XXX: Need to check that the probe has firmware available in the release, and error out cleanly
+            // if it does not here.
 
             // Check whether the release is newer than the firmware on the probe, and if it is, pick that as the file.
             // If it is not, print a message and exit successfully.
-            if identity.version >= current_release.0 {
+            if identity.version >= latest_version {
                 info!("Latest release {} is not newer than firmware version {}, not updating",
-                    current_release.0, identity.version);
+                    latest_version, identity.version);
                 return Ok(());
             }
-            warn!("Considering upgrade of {} to {}", identity.version, current_release.0);
+            // Convert the version number to a string for display and use with the switcher
+            let latest_version = latest_version.to_string();
+            info!("Upgrading probe firmware from {} to {}", identity.version, latest_version);
+            let latest_firmware = &latest_release.firmware[&identity.variant()];
 
-            return Ok(());
+            // If there's more than one variant in this release, defer to the switcher engine to pick the
+            // variant that will be used. Otherwise, jump below to the flasher system with the file
+            // name for that firmware version, having downloaded it
+            let firmware_variant = match latest_firmware.variants.len() {
+                // If there's exactly one variant, call the switcher system to download it then use that
+                // file as the result here
+                1 => latest_firmware.variants.values().nth(0).unwrap(),
+                // There's more than one variant? okay, ask the switcher system to have the user tell us
+                // which to use then.
+                _ => {
+                    match pick_firmware(
+                        latest_version.as_str(),
+                        &latest_firmware
+                    )? {
+                        Some(variant) => variant,
+                        None => {
+                            println!("firmware variant selection cancelled, stopping operation");
+                            return Ok(())
+                        },
+                    }
+                },
+            };
+
+            let elf_file = download_firmware(firmware_variant, paths.cache_dir())?;
+            elf_file
         },
     };
 
-    bmputil::flasher::flash_probe(cli_args, probe, file_name.into())
+    bmputil::flasher::flash_probe(cli_args, probe, file_name)
 }
 
 fn display_releases(paths: &ProjectDirs) -> Result<()>
