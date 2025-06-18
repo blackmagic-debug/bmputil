@@ -130,7 +130,7 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(
 		.iter()
 		.filter(|&(version, release)| {
 			!(firmware_version.as_str() == version && release.firmware[variant].variants.len() == 1) &&
-				release.firmware.contains_key(&variant)
+				release.firmware.contains_key(variant)
 		})
 		.collect();
 
@@ -148,7 +148,7 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(
 	};
 	Ok(Some((
 		items[selection].as_str(),
-		&metadata.releases[items[selection].as_str()].firmware[&variant],
+		&metadata.releases[items[selection].as_str()].firmware[variant],
 	)))
 }
 
@@ -159,7 +159,7 @@ pub fn pick_firmware<'a>(release: &'a str, firmware: &'a Firmware) -> Result<Opt
 		0 => Ok(None),
 		// If there is only one variant, then that's what the user gets.. display and return
 		1 => {
-			let (_, firmware) = firmware.variants.iter().nth(0).unwrap();
+			let (_, firmware) = firmware.variants.iter().next().unwrap();
 			println!("Using firmware {}", firmware.friendly_name);
 			Ok(Some(firmware))
 		},
