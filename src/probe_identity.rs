@@ -239,11 +239,11 @@ impl From<&str> for VersionNumber
 	{
 		// Check what the version string starts with - if it starts with a 'g', it's a GitHash, 'v' is a version,
 		// anything else is invalid and unknown.
-		if value.starts_with("g") {
-			VersionNumber::GitHash(value[1..].to_string())
-		} else if value.starts_with("v") {
+		if let Some(value) = value.strip_prefix("g") {
+			VersionNumber::GitHash(value.to_string())
+		} else if let Some(value) = value.strip_prefix("v") {
 			// Try to convert the version number into parts
-			let version_parts = VersionParts::try_from(&value[1..]);
+			let version_parts = VersionParts::try_from(value);
 			match version_parts {
 				// If that succeeds return a fully versioned object
 				Ok(version_parts) => VersionNumber::FullVersion(version_parts),
