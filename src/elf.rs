@@ -77,8 +77,7 @@ pub fn extract_binary(elf_data: &[u8]) -> Result<Vec<u8>>
 	// Allow .ARM.exidx to not exist.
 	let arm_exidx = elf
 		.get_section_by_name(".ARM.exidx")
-		.map(|v| v.get_data(elf_data).ok())
-		.flatten();
+		.and_then(|v| v.get_data(elf_data).ok());
 	let arm_exidx_len = arm_exidx.map(|sect| sect.len()).unwrap_or(0);
 
 	let data = elf
