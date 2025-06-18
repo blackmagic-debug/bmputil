@@ -146,6 +146,7 @@ impl FromStr for Probe
 }
 
 // Map from a Probe value to a string
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for Probe
 {
 	fn to_string(&self) -> String
@@ -219,6 +220,7 @@ impl FromStr for TargetOS
 }
 
 // Map from a ToString value to a string
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for TargetOS
 {
 	fn to_string(&self) -> String
@@ -281,6 +283,7 @@ impl FromStr for TargetArch
 }
 
 // Map from a ToString value to a string
+#[allow(clippy::to_string_trait_impl)]
 impl ToString for TargetArch
 {
 	fn to_string(&self) -> String
