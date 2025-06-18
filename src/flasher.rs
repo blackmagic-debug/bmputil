@@ -56,7 +56,7 @@ impl Firmware
 		// Using the platform to determine the link address.
 		let platform = device.platform();
 		let firmware_type =
-			FirmwareType::detect_from_firmware(platform, &firmware_data).wrap_err("detecting firmware type")?;
+			FirmwareType::detect_from_firmware(platform, firmware_data).wrap_err("detecting firmware type")?;
 
 		debug!("Firmware file was detected as {}", firmware_type);
 
@@ -197,16 +197,14 @@ fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>>
 
 fn check_programming(port: PortId) -> Result<()>
 {
-	let dev = bmp::wait_for_probe_reboot(port, Duration::from_secs(5), "flash").map_err(|e| {
+	let dev = bmp::wait_for_probe_reboot(port, Duration::from_secs(5), "flash").inspect_err(|e| {
 		error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
-		e
 	})?;
 
 	// Now the device has come back, we need to see if the firmware programming cycle succeeded.
 	// This starts by extracting the firmware identity string to check
-	let identity = dev.firmware_identity().map_err(|e| {
+	let identity = dev.firmware_identity().inspect_err(|e| {
 		error!("Error reading firmware version after flash! Invalid firmware?");
-		e
 	})?;
 
 	println!(
