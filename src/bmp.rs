@@ -143,24 +143,10 @@ impl BmpDevice
 			.expect("Unreachable: self.device_info is None")
 	}
 
-	/// Violate struct invariants if you want. I'm not the boss of you.
-	pub unsafe fn device_info_mut(&mut self) -> &mut DeviceInfo
-	{
-		self.device_info
-			.as_mut()
-			.expect("Unreachable: self.device_info is None")
-	}
-
 	/// Get the [`nusb::Device`] associated with the connected Black Magic Probe.
 	pub fn device(&self) -> &Device
 	{
 		self.device.as_ref().expect("Unreachable: self.device is None")
-	}
-
-	/// Violate struct invariants if you want. I'm not the boss of you.
-	pub unsafe fn device_mut(&mut self) -> &mut Device
-	{
-		self.device.as_mut().expect("Unreachable: self.device is None")
 	}
 
 	pub fn operating_mode(&self) -> DfuOperatingMode
