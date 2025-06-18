@@ -456,7 +456,10 @@ impl BmpDevice
 			0,
 		)?;
 
-		if let DfuProtocol::Dfuse { .. } = dfu_dev.protocol() {
+		if let DfuProtocol::Dfuse {
+			..
+		} = dfu_dev.protocol()
+		{
 			println!("Erasing flash...");
 		}
 
