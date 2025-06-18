@@ -194,6 +194,6 @@ impl Widget for &mut Viewer<'_>
 		// Render the key bindings help
 		Text::from(" ⋏⋎: scroll, ⊼⊻: scroll page, q: quit to menu ")
 			.centered()
-			.render(area.rows().last().unwrap(), buf);
+			.render(area.rows().next_back().unwrap(), buf);
 	}
 }
