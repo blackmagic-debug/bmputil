@@ -13,7 +13,7 @@ use clap::builder::styling::Styles;
 use clap_complete::{generate, Shell};
 use color_eyre::eyre::{Context, OptionExt, Result};
 use directories::ProjectDirs;
-use log::{error, info};
+use log::{error, info, warn};
 
 use bmputil::{AllowDangerous, BmpParams, FlashParams};
 use bmputil::bmp::{BmpDevice, BmpMatcher, FirmwareType};
@@ -49,6 +49,12 @@ enum ToplevelCommmands
 {
     /// Actions to be performed against a probe
     Probe(ProbeArguments),
+    /// Actions to be performed against a target connected to a probe
+    Target,
+    /// Actions that run the tool as a debug/tracing server
+    Server,
+    /// Actions that run debugging commands against a target connected to a probe
+    Debug,
     /// Generate completions data for the shell
     Complete(CompletionArguments),
 }
@@ -469,6 +475,18 @@ fn main() -> Result<()>
                 Ok(())
             },
         },
+        ToplevelCommmands::Target => {
+            warn!("Command space reserved for future tool version");
+            Ok(())
+        }
+        ToplevelCommmands::Server => {
+            warn!("Command space reserved for future tool version");
+            Ok(())
+        }
+        ToplevelCommmands::Debug => {
+            warn!("Command space reserved for future tool version");
+            Ok(())
+        }
         ToplevelCommmands::Complete(comp_args) => {
             let mut cmd = CliArguments::command();
             generate(
