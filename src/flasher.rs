@@ -13,7 +13,7 @@ use color_eyre::eyre::{eyre, Context, Result};
 use color_eyre::owo_colors::OwoColorize;
 use dfu_nusb::Error as DfuNusbError;
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use nusb::transfer::TransferError;
 
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
@@ -115,6 +115,7 @@ impl Firmware
         );
         progress_bar.finish();
         let dfu_iface = result?;
+        info!("Flash complete!");
 
         if progress_bar.position() == (self.length as u64) {
             match device.reboot(dfu_iface) {

@@ -489,7 +489,6 @@ impl BmpDevice
             .override_address(load_address);
 
         debug!("Load address: 0x{:08x}", load_address);
-        info!("Performing flash...");
 
         match self.try_download(firmware, length, &mut dfu_iface) {
             Err(error) => if let Some(DfuNusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))) =
@@ -518,8 +517,6 @@ impl BmpDevice
             },
             result => result,
         }?;
-
-        info!("Flash complete!");
 
         Ok(dfu_iface)
     }
