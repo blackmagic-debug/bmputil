@@ -269,8 +269,15 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
             let (latest_version, latest_release) = metadata
                 .latest()
                 .ok_or_eyre("Could not determine the latest release of the firmware")?;
-            // XXX: Need to check that the probe has firmware available in the release, and error out cleanly
-            // if it does not here.
+            // Extract the matching firmware for the probe
+            let latest_firmware = latest_release.firmware.get(&identity.variant());
+            let latest_firmware = if let Some(firmware) = latest_firmware {
+                firmware
+            } else {
+                // Otherwise, if we didn't find a suitable firmware version, error out
+                error!("Cannot find suitable firmware for your probe from the pre-built releases");
+                return Ok(());
+            };
 
             // Check whether the release is newer than the firmware on the probe, and if it is, pick that as the file.
             // If it is not, print a message and exit successfully.
@@ -282,7 +289,6 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
             // Convert the version number to a string for display and use with the switcher
             let latest_version = latest_version.to_string();
             info!("Upgrading probe firmware from {} to {}", identity.version, latest_version);
-            let latest_firmware = &latest_release.firmware[&identity.variant()];
 
             // If there's more than one variant in this release, defer to the switcher engine to pick the
             // variant that will be used. Otherwise, jump below to the flasher system with the file
