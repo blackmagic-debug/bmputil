@@ -4,3 +4,4 @@
 
 mod bmd_rsp;
 mod gdb_rsp;
+pub mod interface;
