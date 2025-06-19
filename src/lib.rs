@@ -17,6 +17,7 @@ pub mod firmware_selector;
 pub mod flasher;
 pub mod metadata;
 pub mod probe_identity;
+pub mod serial;
 pub mod switcher;
 pub mod usb;
 #[cfg(windows)]
