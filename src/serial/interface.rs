@@ -105,6 +105,51 @@ impl ProbeInterface
 	}
 }
 
+#[cfg(target_os = "windows")]
+impl ProbeInterface
+{
+	const PRODUCT_ID_BMP: u16 = 0x6018;
+	const VENDOR_ID_BMP: u16 = 0x1d50;
+
+	/// Locate the GDB serial interface associated with the probe of the given serial number
+	fn probe_interface(&self) -> Result<PathBuf>
+	{
+		// Try to locate the probe's instance ID from the registry
+		let serial_path = format!("\\{}", self.serial_number);
+		let prefix = Self::read_key_from_path(&serial_path, "ParentIdPrefix")?;
+		// Having grabbed the instance ID, read out the device path that matches up
+		// for interface 0, giving us a `\\.\COMn` name to use with the file APIs
+		let parameter_path = format!("&MI_00\\{}&0000\\Device Parameters", prefix);
+		let port_name = Self::read_key_from_path(&parameter_path, "PortName")?;
+		// Return by converting the string to a PathBuf
+		if port_name.starts_with("\\\\.\\") {
+			Ok(port_name.into())
+		} else {
+			Ok(format!("\\\\.\\{}", port_name).into())
+		}
+	}
+
+	fn read_key_from_path(subpath: &str, key_name: &str) -> Result<String>
+	{
+		use log::debug;
+		use windows_registry::LOCAL_MACHINE;
+
+		// Try to open the registry subkey that contains the probe's enumeration data
+		let key_path = format!(
+			"SYSTEM\\CurrentControlSet\\Enum\\USB\\VID_{:04X}&PID_{:04X}{}",
+			Self::VENDOR_ID_BMP,
+			Self::PRODUCT_ID_BMP,
+			subpath,
+		);
+		debug!("Trying to open registry key {} to get value {}", key_path, key_name);
+		let key_handle = LOCAL_MACHINE.open(&key_path)?;
+
+		// Now extract the data for the associated key we're interested in here -
+		// with that value read, we're done and can return
+		Ok(key_handle.get_string(key_name)?)
+	}
+}
+
 #[cfg(target_os = "macos")]
 impl ProbeInterface
 {
