@@ -17,7 +17,7 @@ pub struct ProbeInterface
 
 impl ProbeInterface
 {
-	pub fn from_device(probe: BmpDevice) -> Result<Self>
+	pub fn from_device(probe: &BmpDevice) -> Result<Self>
 	{
 		Ok(Self {
 			serial_number: probe.serial_number()?.to_string(),

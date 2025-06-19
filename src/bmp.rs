@@ -25,6 +25,9 @@ use nusb::{Device, DeviceInfo, Interface, list_devices};
 use crate::BmpParams;
 use crate::error::ErrorKind;
 use crate::probe_identity::ProbeIdentity;
+use crate::serial::bmd_rsp::BmdRspInterface;
+use crate::serial::gdb_rsp::GdbRspInterface;
+use crate::serial::interface::ProbeInterface;
 use crate::usb::{
 	DfuFunctionalDescriptor, DfuOperatingMode, DfuRequest, GenericDescriptorRef, InterfaceClass, InterfaceSubClass,
 	Pid, PortId, Vid,
@@ -512,6 +515,20 @@ impl BmpDevice
 			self.device.expect("Unreachable: self.device is None"),
 			self.mode,
 		)
+	}
+
+	/// Locate and return the GDB remote serial interface of the probe for probe debug communciations
+	pub fn gdb_serial_interface(&self) -> Result<GdbRspInterface>
+	{
+		let serial_interface = ProbeInterface::from_device(self)?;
+		serial_interface.gdb_interface()
+	}
+
+	/// Locate and return the BMD remote serial interface of the probe for probe debug communciations
+	pub fn bmd_serial_interface(&self) -> Result<BmdRspInterface>
+	{
+		let serial_interface = ProbeInterface::from_device(self)?;
+		serial_interface.bmd_interface()
 	}
 }
 
