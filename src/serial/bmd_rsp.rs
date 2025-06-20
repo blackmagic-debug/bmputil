@@ -15,7 +15,6 @@ pub struct BmdRspInterface
 }
 
 const REMOTE_START: &[u8] = b"+#!GA#";
-pub const REMOTE_MAX_MSG_SIZE: usize = 1024;
 
 impl BmdRspInterface
 {

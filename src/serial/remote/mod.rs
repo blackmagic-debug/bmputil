@@ -2,6 +2,10 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+/// This is the max possible size of a remote protocol packet which a hard limitation of the
+/// firmware on the probe - 1KiB is all the buffer that could be spared.
+pub const REMOTE_MAX_MSG_SIZE: usize = 1024;
+
 /// Types implementing this trait implement the common portion of the BMD remote protocol
 /// (this includes things like comms initialisation, and clock frequency control)
 pub trait BmdRemoteProtocol
