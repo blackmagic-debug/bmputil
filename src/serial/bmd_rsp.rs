@@ -9,10 +9,16 @@ use std::path::Path;
 use color_eyre::eyre::Result;
 use log::debug;
 
+use crate::serial::remote::{REMOTE_EOM, REMOTE_MAX_MSG_SIZE, REMOTE_RESP};
+
 pub struct BmdRspInterface
 {
 	handle: File,
 	protocol_version: u64,
+
+	read_buffer: [u8; REMOTE_MAX_MSG_SIZE],
+	read_buffer_fullness: usize,
+	read_buffer_offset: usize,
 }
 
 const REMOTE_START: &str = "+#!GA#";
@@ -30,6 +36,14 @@ impl BmdRspInterface
 			handle,
 			// Provide a dummy protocol version for the moment
 			protocol_version: u64::MAX,
+
+			// Initialise an empty read buffer to use for more efficiently reading
+			// probe responses, being mindful that there's no good way to find out
+			// how much data is waiting for us from the probe, so it's this or use
+			// a read call a byte, which is extremely expensive!
+			read_buffer: [0; REMOTE_MAX_MSG_SIZE],
+			read_buffer_fullness: 0,
+			read_buffer_offset: 0,
 		};
 
 		// Call the OS-specific handle configuration function to ready
@@ -38,16 +52,68 @@ impl BmdRspInterface
 
 		// Start remote protocol communications with the probe
 		result.buffer_write(REMOTE_START)?;
-		// let buffer = result.buffer_read(REMOTE_MAX_MSG_SIZE);
+		let buffer = result.buffer_read()?;
 
 		// Now the object is ready to go, return it to the caller
 		Ok(result)
 	}
 
-	fn buffer_write(&mut self, message: &str) -> Result<()>
+	pub(crate) fn buffer_write(&mut self, message: &str) -> Result<()>
 	{
 		debug!("BMD RSP write: {}", message);
 		Ok(self.handle.write_all(message.as_bytes())?)
+	}
+
+	pub(crate) fn buffer_read(&mut self) -> Result<String>
+	{
+		// First drain the buffer till we see a start-of-response byte
+		let mut response = 0;
+		while response != REMOTE_RESP {
+			if self.read_buffer_offset == self.read_buffer_fullness {
+				self.read_more_data()?;
+			}
+			response = self.read_buffer[self.read_buffer_offset];
+			self.read_buffer_offset += 1;
+		}
+
+		// Now collect the response
+		let mut buffer = [0u8; REMOTE_MAX_MSG_SIZE];
+		let mut offset = 0;
+		while offset < buffer.len() {
+			// Check if we need more data or should use what's in the buffer already
+			if self.read_buffer_offset == self.read_buffer_fullness {
+				self.read_more_data()?;
+			}
+			// Look for an end of packet marker
+			let mut response_length = 0;
+			while self.read_buffer_offset + response_length < self.read_buffer_fullness &&
+				offset + response_length < buffer.len()
+			{
+				if self.read_buffer[self.read_buffer_offset + response_length] == REMOTE_EOM {
+					response_length += 1;
+					break;
+				}
+				response_length += 1;
+			}
+			// We now either have a REMOTE_EOM or need all the data from the buffer
+			let read_buffer_offset = self.read_buffer_offset;
+			buffer[offset..offset + response_length]
+				.copy_from_slice(&self.read_buffer[read_buffer_offset..read_buffer_offset + response_length]);
+			self.read_buffer_offset += response_length;
+			offset += response_length - 1;
+			// If this was because of REMOTE_EOM, return
+			if buffer[offset] == REMOTE_EOM {
+				buffer[offset] = 0;
+				let result = unsafe { String::from_utf8_unchecked(buffer[..offset].to_vec()) };
+				debug!("BMD RSP read: {}", result);
+				return Ok(result);
+			}
+			offset += 1;
+		}
+		// If we fell out here, we got what we could so return that..
+		let result = unsafe { String::from_utf8_unchecked(buffer.to_vec()) };
+		debug!("BMD RSP read: {}", result);
+		Ok(result)
 	}
 }
 
@@ -86,6 +152,47 @@ impl BmdRspInterface
 
 		// Let the caller know that we successfully got done
 		Ok(())
+	}
+
+	fn read_more_data(&mut self) -> Result<()>
+	{
+		use std::io::Read;
+		use std::mem::MaybeUninit;
+		use std::os::fd::AsRawFd;
+		use std::ptr::null_mut;
+
+		use color_eyre::eyre::eyre;
+		use libc::{FD_SET, FD_SETSIZE, FD_ZERO, c_int, fd_set, select, timeval};
+
+		// Set up a FD set that describes our handle's FD
+		let mut select_set = MaybeUninit::<fd_set>::uninit();
+		unsafe {
+			FD_ZERO(select_set.as_mut_ptr());
+			FD_SET(self.handle.as_raw_fd(), select_set.as_mut_ptr());
+		}
+		let mut select_set = unsafe { select_set.assume_init() };
+
+		// Wait for more data from the probe for up to 2 seconds
+		let mut timeout = timeval {
+			tv_sec: 2,
+			tv_usec: 0,
+		};
+		let result = unsafe { select(FD_SETSIZE as c_int, &mut select_set, null_mut(), null_mut(), &mut timeout) };
+
+		if result < 0 {
+			// If the select call failed, bail
+			Err(eyre!("Failed on select"))
+		} else if result == 0 {
+			// If we timed out then bail differently
+			Err(eyre!("Timeout while waiting for BMD remote protocol response"))
+		} else {
+			// Otherwise we now know there's data, so try to fill the read buffer
+			let bytes_received = self.handle.read(&mut self.read_buffer)?;
+			// Now we have more data, so update the read buffer counters
+			self.read_buffer_fullness = bytes_received;
+			self.read_buffer_offset = 0;
+			Ok(())
+		}
 	}
 }
 

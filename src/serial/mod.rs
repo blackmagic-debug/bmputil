@@ -5,4 +5,4 @@
 pub mod bmd_rsp;
 pub mod gdb_rsp;
 pub mod interface;
-mod remote;
+pub mod remote;

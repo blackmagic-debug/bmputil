@@ -6,6 +6,10 @@
 /// firmware on the probe - 1KiB is all the buffer that could be spared.
 pub const REMOTE_MAX_MSG_SIZE: usize = 1024;
 
+pub const REMOTE_SOM: u8 = b'!';
+pub const REMOTE_EOM: u8 = b'#';
+pub const REMOTE_RESP: u8 = b'&';
+
 /// Types implementing this trait implement the common portion of the BMD remote protocol
 /// (this includes things like comms initialisation, and clock frequency control)
 pub trait BmdRemoteProtocol
