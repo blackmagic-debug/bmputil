@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::Path;
 
 use color_eyre::eyre::Result;
+use log::debug;
 
 pub struct BmdRspInterface
 {
@@ -14,13 +15,14 @@ pub struct BmdRspInterface
 	protocol_version: u64,
 }
 
-const REMOTE_START: &[u8] = b"+#!GA#";
+const REMOTE_START: &str = "+#!GA#";
 
 impl BmdRspInterface
 {
 	pub fn from_path(serial_port: &Path) -> Result<Self>
 	{
 		// Get the serial interface to the probe open
+		debug!("Opening probe interface at {:?}", serial_port);
 		let handle = File::options().read(true).write(true).open(serial_port)?;
 
 		// Construct an interface object
@@ -42,9 +44,10 @@ impl BmdRspInterface
 		Ok(result)
 	}
 
-	fn buffer_write(&mut self, message: &[u8]) -> Result<()>
+	fn buffer_write(&mut self, message: &str) -> Result<()>
 	{
-		Ok(self.handle.write_all(message)?)
+		debug!("BMD RSP write: {}", message);
+		Ok(self.handle.write_all(message.as_bytes())?)
 	}
 }
 
