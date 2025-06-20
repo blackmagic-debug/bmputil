@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Result, eyre};
 use log::debug;
 
 use crate::serial::remote::*;
@@ -22,6 +22,7 @@ pub struct BmdRspInterface
 }
 
 const REMOTE_START: &str = "+#!GA#";
+const REMOTE_HL_CHECK: &str = "!HC#";
 
 impl BmdRspInterface
 {
@@ -53,6 +54,47 @@ impl BmdRspInterface
 		// Start remote protocol communications with the probe
 		result.buffer_write(REMOTE_START)?;
 		let buffer = result.buffer_read()?;
+		// Check if that failed for any reason
+		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+			let message = if buffer.len() > 1 {
+				&buffer[1..]
+			} else {
+				"unknown"
+			};
+			return Err(eyre!("Remote protocol startup failed, error {}", message));
+		}
+		// It did not, grand - we now have the firmware version string, so log it
+		debug!("Remote is {}", &buffer[1..]);
+
+		// Next, ask the probe for its protocol version number.
+		// For historical reasons this is part of the "high level" protocol set, but is
+		// actually a general request.
+		result.buffer_write(REMOTE_HL_CHECK)?;
+		let buffer = result.buffer_read()?;
+		// Check for communication failures
+		if buffer.is_empty() {
+			return Err(eyre!("Probe failed to respond at all to protocol version request"));
+		} else if buffer.as_bytes()[0] != REMOTE_RESP_OK && buffer.as_bytes()[0] != REMOTE_RESP_NOTSUP {
+			// If the probe responded with anything other than OK or not supported, we're done
+			return Err(eyre!("Probe responded improperly to protocol version request with {}", buffer));
+		}
+		// If the request failed by way of a not implemented response, we're on a v0 protocol probe
+		if buffer.as_bytes()[0] == REMOTE_RESP_NOTSUP {
+			result.protocol_version = ProtocolVersion::V0;
+		} else {
+			// Parse out the version number from the response
+			let version = decode_response(&buffer[1..], 8);
+			// Then decode/translate that to a protocol version enum value
+			result.protocol_version = match version {
+				// Protocol version number 0 coresponds to an enchanced v0 probe protocol ("v0+")
+				0 => ProtocolVersion::V0Plus,
+				1 => ProtocolVersion::V1,
+				2 => ProtocolVersion::V2,
+				3 => ProtocolVersion::V3,
+				4 => ProtocolVersion::V4,
+				_ => return Err(eyre!("Unknown remote protocol version {}", version)),
+			};
+		}
 
 		// Now the object is ready to go, return it to the caller
 		Ok(result)
