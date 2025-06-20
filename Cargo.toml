@@ -35,6 +35,9 @@ tui-markdown = "0.3.3"
 ratatui = { version = "0.29.0", features = ["unstable-rendered-line-info"] }
 clap_complete = "4.5.52"
 
+[target.'cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))'.dependencies]
+termios = "0.3.3"
+
 [target.'cfg(windows)'.dependencies]
 wdi = "0.1.0"
 deelevate = "0.2.0"
