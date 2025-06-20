@@ -6,9 +6,21 @@
 /// firmware on the probe - 1KiB is all the buffer that could be spared.
 pub const REMOTE_MAX_MSG_SIZE: usize = 1024;
 
+/// Start of message marker for the protocol
 pub const REMOTE_SOM: u8 = b'!';
+/// End of message marker for the protocol
 pub const REMOTE_EOM: u8 = b'#';
+/// Response marker for the protocol
 pub const REMOTE_RESP: u8 = b'&';
+
+/// Probe response was okay and the data returned is valid
+pub const REMOTE_RESP_OK: u8 = b'K';
+/// Probe found an error with a request parameter
+pub const REMOTE_RESP_PARERR: u8 = b'P';
+/// Probe encountered an error executing the request
+pub const REMOTE_RESP_ERR: u8 = b'E';
+/// Probe does not support the request made
+pub const REMOTE_RESP_NOTSUP: u8 = b'N';
 
 /// Types implementing this trait implement the common portion of the BMD remote protocol
 /// (this includes things like comms initialisation, and clock frequency control)
