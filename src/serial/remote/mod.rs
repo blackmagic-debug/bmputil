@@ -55,3 +55,22 @@ pub struct JtagDev
 	ir_prescan: u8,
 	ir_postscan: u8,
 }
+
+pub fn decode_response(response: &str, digits: usize) -> u64
+{
+	// Clamp the number of digits to the number actually available
+	let digits = if digits > response.len() {
+		response.len()
+	} else {
+		digits
+	};
+
+	let mut value = 0;
+	// For each byte in the response that we care about, un-hexify the byte
+	for byte in response[..digits].chars() {
+		value <<= 4;
+		value |= byte.to_digit(16).unwrap() as u64;
+	}
+
+	value
+}
