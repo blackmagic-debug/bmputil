@@ -9,12 +9,12 @@ use std::path::Path;
 use color_eyre::eyre::Result;
 use log::debug;
 
-use crate::serial::remote::{REMOTE_EOM, REMOTE_MAX_MSG_SIZE, REMOTE_RESP};
+use crate::serial::remote::*;
 
 pub struct BmdRspInterface
 {
 	handle: File,
-	protocol_version: u64,
+	protocol_version: ProtocolVersion,
 
 	read_buffer: [u8; REMOTE_MAX_MSG_SIZE],
 	read_buffer_fullness: usize,
@@ -34,8 +34,8 @@ impl BmdRspInterface
 		// Construct an interface object
 		let mut result = Self {
 			handle,
-			// Provide a dummy protocol version for the moment
-			protocol_version: u64::MAX,
+			// We start out by not knowing what version of protocol the probe talks
+			protocol_version: ProtocolVersion::Unknown,
 
 			// Initialise an empty read buffer to use for more efficiently reading
 			// probe responses, being mindful that there's no good way to find out

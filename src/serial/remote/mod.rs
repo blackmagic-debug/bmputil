@@ -56,6 +56,17 @@ pub struct JtagDev
 	ir_postscan: u8,
 }
 
+pub enum ProtocolVersion
+{
+	Unknown,
+	V0,
+	V0Plus,
+	V1,
+	V2,
+	V3,
+	V4,
+}
+
 pub fn decode_response(response: &str, digits: usize) -> u64
 {
 	// Clamp the number of digits to the number actually available
