@@ -2,19 +2,26 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use color_eyre::eyre::{Result, eyre};
-use log::warn;
+use log::{debug, warn};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
-use crate::serial::remote::{BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev};
+use crate::serial::remote::{BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR};
 
 pub struct RemoteV0
+{
+	interface: Arc<Mutex<BmdRspInterface>>,
+}
+
+pub struct RemoteV0JTAG
 {
 	#[allow(unused)]
 	interface: Arc<Mutex<BmdRspInterface>>,
 }
+
+const REMOTE_JTAG_INIT: &str = "!JS#";
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0
 {
@@ -36,13 +43,38 @@ impl RemoteV0
 			interface,
 		}
 	}
+
+	fn interface(&self) -> MutexGuard<'_, BmdRspInterface>
+	{
+		self.interface.lock().unwrap()
+	}
+
+	pub(crate) fn clone_interface(&self) -> Arc<Mutex<BmdRspInterface>>
+	{
+		self.interface.clone()
+	}
 }
 
 impl BmdRemoteProtocol for RemoteV0
 {
 	fn jtag_init(&self) -> Result<Box<dyn BmdJtagProtocol>>
 	{
-		Err(eyre!(""))
+		// Try to have the probe initialise JTAG comms to any connected targets
+		debug!("Remote JTAG init");
+		self.interface().buffer_write(REMOTE_JTAG_INIT)?;
+		let buffer = self.interface().buffer_read()?;
+		// If that failed for some reason, report it and abort
+		if buffer.is_empty() || buffer.as_bytes()[0] == REMOTE_RESP_ERR {
+			let message = if buffer.len() > 1 {
+				&buffer[1..]
+			} else {
+				"unknown"
+			};
+			Err(eyre!("Remote JTAG init failed, error {}", message))
+		} else {
+			// Otherwise, return the v0 JTAG protocol implementation
+			Ok(Box::new(RemoteV0JTAG::from(self.clone_interface())))
+		}
 	}
 
 	fn swd_init(&self) -> Result<Box<dyn BmdSwdProtocol>>
@@ -78,6 +110,55 @@ impl BmdRemoteProtocol for RemoteV0
 	}
 
 	fn target_clk_output_enable(&self, _enable: bool)
+	{
+		//
+	}
+}
+
+impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0JTAG
+{
+	fn from(interface: Arc<Mutex<BmdRspInterface>>) -> Self
+	{
+		Self {
+			interface,
+		}
+	}
+}
+
+impl BmdJtagProtocol for RemoteV0JTAG
+{
+	fn tap_reset(&self)
+	{
+		//
+	}
+
+	fn tap_next(&self, _tms: bool, _tdi: bool) -> bool
+	{
+		false
+	}
+
+	fn tap_tms_seq(&self, _tms_states: u32, _clock_cycles: usize)
+	{
+		//
+	}
+
+	fn tap_tdi_tdo_seq(
+		&self,
+		_data_out: Option<&mut [u8]>,
+		_final_tms: bool,
+		_data_in: Option<&[u8]>,
+		_clock_cycles: usize,
+	)
+	{
+		//
+	}
+
+	fn tap_tdi_seq(&self, _final_tms: bool, _data_in: &[u8], _clock_cycles: usize)
+	{
+		//
+	}
+
+	fn tap_cycle(&self, _tms: bool, _tdi: bool, _clock_cycles: usize)
 	{
 		//
 	}
