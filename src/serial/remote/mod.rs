@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+use color_eyre::eyre::Result;
+
 /// This is the max possible size of a remote protocol packet which a hard limitation of the
 /// firmware on the probe - 1KiB is all the buffer that could be spared.
 pub const REMOTE_MAX_MSG_SIZE: usize = 1024;
@@ -27,7 +29,7 @@ pub const REMOTE_RESP_NOTSUP: u8 = b'N';
 pub trait BmdRemoteProtocol
 {
 	// Comms protocol initialisation functions
-	fn swd_init(&self) -> bool;
+	fn swd_init(&self) -> Result<Box<dyn BmdSwdProtocol>>;
 	fn jtag_init(&self) -> bool;
 	// Higher level protocol initialisation functions
 	fn adiv5_init(&self) -> bool;
@@ -39,6 +41,15 @@ pub trait BmdRemoteProtocol
 	fn get_comms_frequency(&self) -> u32;
 	fn set_comms_frequency(&self, freq: u32) -> bool;
 	fn target_clk_output_enable(&self, enable: bool);
+}
+
+/// Types implementing this trait provide raw SWD access to targets over the BMD remote protocol
+pub trait BmdSwdProtocol
+{
+	fn seq_in(&self, clock_cycles: usize) -> u32;
+	fn seq_in_parity(&self, clock_cycles: usize) -> Option<u32>;
+	fn seq_out(&self, value: u32, clock_cycles: usize);
+	fn seq_out_parity(&self, value: u32, clock_cycles: usize);
 }
 
 /// Structure representing a device on the JTAG scan chain
