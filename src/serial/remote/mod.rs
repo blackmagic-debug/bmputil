@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use color_eyre::eyre::Result;
 
 use crate::serial::bmd_rsp::BmdRspInterface;
-use crate::serial::remote::protocol_v0::RemoteV0;
+use crate::serial::remote::protocol_v0::{RemoteV0, RemoteV0Plus};
 
 mod protocol_v0;
 
@@ -148,6 +148,7 @@ impl ProtocolVersion
 	{
 		match self {
 			Self::V0 => Box::new(RemoteV0::from(interface)),
+			Self::V0Plus => Box::new(RemoteV0Plus::from(interface)),
 			_ => todo!(),
 		}
 	}

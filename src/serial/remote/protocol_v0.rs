@@ -15,6 +15,8 @@ pub struct RemoteV0
 	interface: Arc<Mutex<BmdRspInterface>>,
 }
 
+pub struct RemoteV0Plus(RemoteV0);
+
 pub struct RemoteV0JTAG
 {
 	#[allow(unused)]
@@ -133,6 +135,67 @@ impl BmdRemoteProtocol for RemoteV0
 	fn target_clk_output_enable(&self, _enable: bool)
 	{
 		//
+	}
+}
+
+impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0Plus
+{
+	fn from(interface: Arc<Mutex<BmdRspInterface>>) -> Self
+	{
+		warn!(
+			"Probe firmware does not support the newer JTAG commands, ADIv6 acceleration or RISC-V JTAG acceleration, \
+			 please update it"
+		);
+		Self(RemoteV0::new(interface))
+	}
+}
+
+impl BmdRemoteProtocol for RemoteV0Plus
+{
+	fn jtag_init(&self) -> Result<Box<dyn BmdJtagProtocol>>
+	{
+		self.0.jtag_init()
+	}
+
+	fn swd_init(&self) -> Result<Box<dyn BmdSwdProtocol>>
+	{
+		self.0.swd_init()
+	}
+
+	fn adiv5_init(&self) -> bool
+	{
+		warn!("Please update your probe's firmware for improved error handling");
+		false
+	}
+
+	fn adiv6_init(&self) -> bool
+	{
+		self.0.adiv6_init()
+	}
+
+	fn riscv_jtag_init(&self) -> bool
+	{
+		self.0.riscv_jtag_init()
+	}
+
+	fn add_jtag_dev(&self, dev_index: u32, jtag_dev: &JtagDev)
+	{
+		self.0.add_jtag_dev(dev_index, jtag_dev);
+	}
+
+	fn get_comms_frequency(&self) -> u32
+	{
+		self.0.get_comms_frequency()
+	}
+
+	fn set_comms_frequency(&self, freq: u32) -> bool
+	{
+		self.0.set_comms_frequency(freq)
+	}
+
+	fn target_clk_output_enable(&self, enable: bool)
+	{
+		self.0.target_clk_output_enable(enable);
 	}
 }
 
