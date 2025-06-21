@@ -107,16 +107,22 @@ impl BmdRemoteProtocol for RemoteV0
 
 	fn adiv5_init(&self) -> bool
 	{
+		warn!("Falling back to non-accelerated probe interface");
+		warn!("Please update your probe's firmware for a substantial speed increase");
 		false
 	}
 
 	fn adiv6_init(&self) -> bool
 	{
+		warn!("Falling back to non-accelerated probe interface");
+		warn!("Please update your probe's firmware for a substantial speed increase");
 		false
 	}
 
 	fn riscv_jtag_init(&self) -> bool
 	{
+		warn!("Falling back to non-accelerated probe interface");
+		warn!("Please update your probe's firmware for a substantial speed increase");
 		false
 	}
 
