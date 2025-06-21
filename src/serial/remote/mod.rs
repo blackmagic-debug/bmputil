@@ -111,7 +111,7 @@ pub struct JtagDev
 	ir_postscan: u8,
 }
 
-pub enum ProtocolVersion
+pub(crate) enum ProtocolVersion
 {
 	Unknown,
 	V0,
