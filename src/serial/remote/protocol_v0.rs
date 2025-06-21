@@ -21,6 +21,13 @@ pub struct RemoteV0JTAG
 	interface: Arc<Mutex<BmdRspInterface>>,
 }
 
+pub struct RemoteV0SWD
+{
+	#[allow(unused)]
+	interface: Arc<Mutex<BmdRspInterface>>,
+}
+
+const REMOTE_SWD_INIT: &str = "!SS#";
 const REMOTE_JTAG_INIT: &str = "!JS#";
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0
@@ -79,7 +86,21 @@ impl BmdRemoteProtocol for RemoteV0
 
 	fn swd_init(&self) -> Result<Box<dyn BmdSwdProtocol>>
 	{
-		Err(eyre!(""))
+		debug!("Remote SWD init");
+		self.interface().buffer_write(REMOTE_SWD_INIT)?;
+		let buffer = self.interface().buffer_read()?;
+		// If that failed for some reason, report it and abort
+		if buffer.is_empty() || buffer.as_bytes()[0] == REMOTE_RESP_ERR {
+			let message = if buffer.len() > 1 {
+				&buffer[1..]
+			} else {
+				"unknown"
+			};
+			Err(eyre!("Remote SWD init failed, error {}", message))
+		} else {
+			// Otherwise, return the v0 JTAG protocol implementation
+			Ok(Box::new(RemoteV0SWD::from(self.clone_interface())))
+		}
 	}
 
 	fn adiv5_init(&self) -> bool
@@ -159,6 +180,39 @@ impl BmdJtagProtocol for RemoteV0JTAG
 	}
 
 	fn tap_cycle(&self, _tms: bool, _tdi: bool, _clock_cycles: usize)
+	{
+		//
+	}
+}
+
+impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0SWD
+{
+	fn from(interface: Arc<Mutex<BmdRspInterface>>) -> Self
+	{
+		Self {
+			interface,
+		}
+	}
+}
+
+impl BmdSwdProtocol for RemoteV0SWD
+{
+	fn seq_in(&self, _clock_cycles: usize) -> u32
+	{
+		0
+	}
+
+	fn seq_in_parity(&self, _clock_cycles: usize) -> Option<u32>
+	{
+		None
+	}
+
+	fn seq_out(&self, _value: u32, _clock_cycles: usize)
+	{
+		//
+	}
+
+	fn seq_out_parity(&self, _value: u32, _clock_cycles: usize)
 	{
 		//
 	}
