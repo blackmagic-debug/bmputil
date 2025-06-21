@@ -30,7 +30,7 @@ pub trait BmdRemoteProtocol
 {
 	// Comms protocol initialisation functions
 	fn swd_init(&self) -> Result<Box<dyn BmdSwdProtocol>>;
-	fn jtag_init(&self) -> bool;
+	fn jtag_init(&self) -> Result<Box<dyn BmdJtagProtocol>>;
 	// Higher level protocol initialisation functions
 	fn adiv5_init(&self) -> bool;
 	fn adiv6_init(&self) -> bool;
@@ -50,6 +50,43 @@ pub trait BmdSwdProtocol
 	fn seq_in_parity(&self, clock_cycles: usize) -> Option<u32>;
 	fn seq_out(&self, value: u32, clock_cycles: usize);
 	fn seq_out_parity(&self, value: u32, clock_cycles: usize);
+}
+
+/// Types implementing this trait provide raw JTAG access to targets over the BMD remote protocol
+pub trait BmdJtagProtocol
+{
+	// Note: signal names are as for the device under test.
+
+	/// Executes a state machine reset to ensure a clean, known TAP state
+	fn tap_reset(&self);
+	/// Executes one state transition in the JTAG TAP state machine:
+	/// - Ensure TCK is low
+	/// - Assert the values of TMS and TDI
+	/// - Assert TCK (TMS and TDO are latched on rising edge)
+	/// - Capture the value of TDO
+	/// - Release TCK
+	fn tap_next(&self, tms: bool, tdi: bool) -> bool;
+	/// Performs a sequence of cycles with the provided bitstring of TMS states
+	fn tap_tms_seq(&self, tms_states: u32, clock_cycles: usize);
+	/// Shift out a sequence on TDI, capture data from TDO. Holds TMS low till the final cycle,
+	/// then uses the value of final_tms to determine what state to put TMS into.
+	/// - This is not endian safe: The first byte will always be shifted out first.
+	/// - The TDO buffer may be given as None to ignore captured data.
+	/// - The TDI buffer may be given as None to only capture result data (if no data is given, dummy data will be
+	///   synthesised for the request cycle)
+	fn tap_tdi_tdo_seq(
+		&self,
+		data_out: Option<&mut [u8]>,
+		final_tms: bool,
+		data_in: Option<&[u8]>,
+		clock_cycles: usize,
+	);
+	/// Shift out a sequence on TDI. Holds TMS low till the final cycle, then uses the value
+	/// of final_tms to determine what state to put tMS into.
+	/// - This is not endian safe: The first byte will always be shifted out first.
+	fn tap_tdi_seq(&self, final_tms: bool, data_in: &[u8], clock_cycles: usize);
+	/// Perform a series of cycles on the state machine with TMS and TDI held in a set state
+	fn tap_cycle(&self, tms: bool, tdi: bool, clock_cycles: usize);
 }
 
 /// Structure representing a device on the JTAG scan chain
