@@ -4,6 +4,8 @@
 
 use color_eyre::eyre::Result;
 
+mod protocol_v0;
+
 /// This is the max possible size of a remote protocol packet which a hard limitation of the
 /// firmware on the probe - 1KiB is all the buffer that could be spared.
 pub const REMOTE_MAX_MSG_SIZE: usize = 1024;
