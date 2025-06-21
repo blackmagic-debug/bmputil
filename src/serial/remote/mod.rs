@@ -2,7 +2,12 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+use std::sync::{Arc, Mutex};
+
 use color_eyre::eyre::Result;
+
+use crate::serial::bmd_rsp::BmdRspInterface;
+use crate::serial::remote::protocol_v0::RemoteV0;
 
 mod protocol_v0;
 
@@ -134,4 +139,16 @@ pub fn decode_response(response: &str, digits: usize) -> u64
 	}
 
 	value
+}
+
+impl ProtocolVersion
+{
+	/// Extract an instance of the BMD remote protocol communication object for this version of the protocol
+	pub fn protocol_impl(&self, interface: Arc<Mutex<BmdRspInterface>>) -> Box<dyn BmdRemoteProtocol>
+	{
+		match self {
+			Self::V0 => Box::new(RemoteV0::from(interface)),
+			_ => todo!(),
+		}
+	}
 }

@@ -5,6 +5,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::{Result, eyre};
 use log::debug;
@@ -98,6 +99,14 @@ impl BmdRspInterface
 
 		// Now the object is ready to go, return it to the caller
 		Ok(result)
+	}
+
+	/// Extract the remote protocol object to use to talk with this probe
+	pub fn remote(self) -> Box<dyn BmdRemoteProtocol>
+	{
+		let interface = Arc::new(Mutex::new(self));
+		let iface = interface.lock().unwrap();
+		iface.protocol_version.protocol_impl(interface.clone())
 	}
 
 	pub(crate) fn buffer_write(&mut self, message: &str) -> Result<()>
