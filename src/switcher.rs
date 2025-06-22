@@ -4,26 +4,22 @@
 
 use std::fs;
 use std::fs::File;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use color_eyre::eyre::Result;
-use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
+use dialoguer::theme::ColorfulTheme;
 use directories::ProjectDirs;
 use indicatif::ProgressBar;
 use log::warn;
 
-use crate::BmpParams;
-use crate::bmp::BmpDevice;
-use crate::bmp::BmpMatcher;
+use crate::bmp::{BmpDevice, BmpMatcher};
 use crate::firmware_selector::FirmwareMultichoice;
-use crate::flasher;
 use crate::metadata::download_metadata;
 use crate::metadata::structs::{Firmware, FirmwareDownload, Metadata};
 use crate::probe_identity::{ProbeIdentity, VersionNumber};
-use crate::FlashParams;
+use crate::{BmpParams, FlashParams, flasher};
 
 pub fn switch_firmware<Params>(params: &Params, paths: &ProjectDirs) -> Result<()>
 where
@@ -35,7 +31,7 @@ where
         None => {
             println!("Black Magic Debug probe selection cancelled, stopping operation");
             return Ok(());
-        }
+        },
     };
 
     // Now extract the probe's identification, and check it's valid
@@ -51,8 +47,8 @@ where
         Some(firmware) => firmware,
         None => {
             println!("firmware release selection cancelled, stopping operation");
-            return Ok(())
-        }
+            return Ok(());
+        },
     };
 
     // Now see which variant of the firmware the user wants to use
@@ -60,8 +56,8 @@ where
         Some(variant) => variant,
         None => {
             println!("firmware variant selection cancelled, stopping operation");
-            return Ok(())
-        }
+            return Ok(());
+        },
     };
 
     // Download the firmware (or extract it from the cache)
@@ -91,11 +87,9 @@ where
             // Map the device list to create selection items
             let items: Vec<_> = devices
                 .iter()
-                .flat_map(
-                    |device| -> Result<String> {
-                        Ok(format!("{} ({})", device.firmware_identity()?, device.serial_number()?))
-                    }
-                )
+                .flat_map(|device| -> Result<String> {
+                    Ok(format!("{} ({})", device.firmware_identity()?, device.serial_number()?))
+                })
                 .collect();
 
             // Figure out which one the user wishes to use
@@ -126,35 +120,36 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(
             warn!("Firmware is of an unknown version");
             "".into()
         },
-        VersionNumber::FullVersion(parts) => parts.to_string()
+        VersionNumber::FullVersion(parts) => parts.to_string(),
     };
 
     // Filter out releases that don't support this probe, and filter out the one the probe is currently running
     // if there is only a single variant in the release (multi-variant releases still need to be shown)
-    let releases: Vec<_> = metadata.releases
+    let releases: Vec<_> = metadata
+        .releases
         .iter()
-        .filter(
-            |&(version, release)|
-                !(firmware_version.as_str() == version && release.firmware[variant].variants.len() == 1) &&
-                    release.firmware.contains_key(&variant)
-        )
+        .filter(|&(version, release)| {
+            !(firmware_version.as_str() == version && release.firmware[variant].variants.len() == 1) &&
+                release.firmware.contains_key(&variant)
+        })
         .collect();
 
-    let mut items: Vec<_> = releases
-        .iter()
-        .map(|&(version, _)| version)
-        .collect();
+    let mut items: Vec<_> = releases.iter().map(|&(version, _)| version).collect();
     items.sort_by(|a, b| a.cmp(b).reverse());
 
     // Ask the user to choose a release, sorting the releases newest-to-oldest
     let selection = match Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Which release would you like to run on your probe?")
         .items(items.as_slice())
-        .interact_opt()? {
+        .interact_opt()?
+    {
         Some(release) => release,
         None => return Ok(None),
     };
-    Ok(Some((items[selection].as_str(), &metadata.releases[items[selection].as_str()].firmware[&variant])))
+    Ok(Some((
+        items[selection].as_str(),
+        &metadata.releases[items[selection].as_str()].firmware[&variant],
+    )))
 }
 
 pub fn pick_firmware<'a>(release: &'a str, firmware: &'a Firmware) -> Result<Option<&'a FirmwareDownload>>
@@ -167,7 +162,7 @@ pub fn pick_firmware<'a>(release: &'a str, firmware: &'a Firmware) -> Result<Opt
             let (_, firmware) = firmware.variants.iter().nth(0).unwrap();
             println!("Using firmware {}", firmware.friendly_name);
             Ok(Some(firmware))
-        }
+        },
         // Otherwise, if there's more than one we have to ask the user to make a choice
         _ => {
             // Enter the selection FSM to either extract a selection from the user, or cancellation
@@ -176,7 +171,7 @@ pub fn pick_firmware<'a>(release: &'a str, firmware: &'a Firmware) -> Result<Opt
                 chooser.step()?;
             }
             Ok(chooser.selection())
-        }
+        },
     }
 }
 
@@ -193,8 +188,7 @@ pub fn download_firmware(variant: &FirmwareDownload, cache_path: &Path) -> Resul
     }
 
     // Set up a progress ticker so the user knows something is happening
-    let progress = ProgressBar::new_spinner()
-        .with_message("Downloading requested firmware");
+    let progress = ProgressBar::new_spinner().with_message("Downloading requested firmware");
     // Tick the spinner once every 100ms so we get a smooth showing of progress
     progress.enable_steady_tick(Duration::from_millis(100));
 

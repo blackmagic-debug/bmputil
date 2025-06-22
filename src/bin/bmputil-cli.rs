@@ -7,22 +7,27 @@ use std::ffi::OsStr;
 use std::io::stdout;
 use std::str::FromStr;
 
-use clap::builder::TypedValueParser;
-use clap::{Arg, ArgAction, Args, Command, CommandFactory, Parser, Subcommand};
-use clap::builder::styling::Styles;
-use clap_complete::{generate, Shell};
-use color_eyre::eyre::{Context, OptionExt, Result};
-use directories::ProjectDirs;
-use log::{error, info, warn};
-
-use bmputil::{AllowDangerous, BmpParams, FlashParams};
 use bmputil::bmp::{BmpDevice, BmpMatcher, FirmwareType};
 use bmputil::metadata::download_metadata;
 #[cfg(windows)]
 use bmputil::windows;
+use bmputil::{AllowDangerous, BmpParams, FlashParams};
+use clap::builder::TypedValueParser;
+use clap::builder::styling::Styles;
+use clap::{Arg, ArgAction, Args, Command, CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
+use color_eyre::eyre::{Context, OptionExt, Result};
+use directories::ProjectDirs;
+use log::{error, info, warn};
 
 #[derive(Parser)]
-#[command(version, about, styles(style()), disable_colored_help(false), arg_required_else_help(true))]
+#[command(
+    version,
+    about,
+    styles(style()),
+    disable_colored_help(false),
+    arg_required_else_help(true)
+)]
 struct CliArguments
 {
     #[arg(global = true, short = 's', long = "serial", alias = "serial-number")]
@@ -109,14 +114,14 @@ struct UpdateArguments
     force_override_flash: bool,
 
     #[command(subcommand)]
-    subcommand: Option<UpdateCommands>
+    subcommand: Option<UpdateCommands>,
 }
 
 #[derive(Subcommand)]
 enum UpdateCommands
 {
     /// List available releases and firmware that can be downloaded
-    List
+    List,
 }
 
 #[derive(Args)]
@@ -186,7 +191,7 @@ impl FlashParams for CliArguments
                 ProbeCommmands::Update(flash_args) => flash_args.override_firmware_type,
                 ProbeCommmands::Switch(switch_args) => switch_args.override_firmware_type,
                 _ => None,
-            }
+            },
             _ => None,
         }
     }
@@ -199,13 +204,11 @@ impl TypedValueParser for ConfirmedBoolParser
 {
     type Value = bool;
 
-    fn parse_ref(
-        &self, cmd: &Command, _arg: Option<&Arg>, value: &OsStr,
-    ) -> Result<Self::Value, clap::Error>
+    fn parse_ref(&self, cmd: &Command, _arg: Option<&Arg>, value: &OsStr) -> Result<Self::Value, clap::Error>
     {
-        let value = value.to_str().ok_or_else(|| {
-            clap::Error::new(clap::error::ErrorKind::InvalidUtf8).with_cmd(cmd)
-        })?;
+        let value = value
+            .to_str()
+            .ok_or_else(|| clap::Error::new(clap::error::ErrorKind::InvalidUtf8).with_cmd(cmd))?;
         Ok(value == "really")
     }
 }
@@ -214,9 +217,7 @@ fn reboot_command(cli_args: &CliArguments, reboot_args: &RebootArguments) -> Res
 {
     let matcher = BmpMatcher::from_params(cli_args);
     let mut results = matcher.find_matching_probes();
-    let mut dev = results
-        .pop_single("detach")
-        .map_err(|kind| kind.error())?;
+    let mut dev = results.pop_single("detach").map_err(|kind| kind.error())?;
 
     use bmputil::usb::DfuOperatingMode::*;
 
@@ -243,8 +244,8 @@ fn reboot_command(cli_args: &CliArguments, reboot_args: &RebootArguments) -> Res
             // This'll take us from the firmware into the bootloader
             dev.detach_and_enumerate().wrap_err("detaching device")?;
             // Now take us back in the post-match step
-        }
-        FirmwareUpgrade => println!("Rebooting probe into firmware...")
+        },
+        FirmwareUpgrade => println!("Rebooting probe into firmware..."),
     }
 
     dev.detach_and_destroy().wrap_err("detaching device")
@@ -257,9 +258,7 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
     // Try to find the Black Magic Probe device based on the filter arguments.
     let matcher = BmpMatcher::from_params(cli_args);
     let mut results = matcher.find_matching_probes();
-    let probe = results
-        .pop_single("flash")
-        .map_err(|kind| kind.error())?;
+    let probe = results.pop_single("flash").map_err(|kind| kind.error())?;
 
     // Figure out what file should be written to the probe - if there's something on the command line that takes
     // precedence, otherwise we use the metadata to pick the most recent full release
@@ -288,8 +287,10 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
             // Check whether the release is newer than the firmware on the probe, and if it is, pick that as the file.
             // If it is not, print a message and exit successfully.
             if identity.version >= latest_version {
-                info!("Latest release {} is not newer than firmware version {}, not updating",
-                    latest_version, identity.version);
+                info!(
+                    "Latest release {} is not newer than firmware version {}, not updating",
+                    latest_version, identity.version
+                );
                 return Ok(());
             }
             // Convert the version number to a string for display and use with the switcher
@@ -305,17 +306,12 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
                 1 => latest_firmware.variants.values().nth(0).unwrap(),
                 // There's more than one variant? okay, ask the switcher system to have the user tell us
                 // which to use then.
-                _ => {
-                    match pick_firmware(
-                        latest_version.as_str(),
-                        &latest_firmware
-                    )? {
-                        Some(variant) => variant,
-                        None => {
-                            println!("firmware variant selection cancelled, stopping operation");
-                            return Ok(())
-                        },
-                    }
+                _ => match pick_firmware(latest_version.as_str(), &latest_firmware)? {
+                    Some(variant) => variant,
+                    None => {
+                        println!("firmware variant selection cancelled, stopping operation");
+                        return Ok(());
+                    },
                 },
             };
 
@@ -337,19 +333,39 @@ fn display_releases(paths: &ProjectDirs) -> Result<()>
     for (version, release) in metadata.releases {
         info!("Details of release {}:", version);
         info!("-> Release includes BMDA builds? {}", release.includes_bmda);
-        info!("-> Release done for probes: {}", release.firmware.keys().map(|p| p.to_string()).collect::<Vec<_>>().join(", "));
+        info!(
+            "-> Release done for probes: {}",
+            release
+                .firmware
+                .keys()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         for (probe, firmware) in release.firmware {
-            info!("-> probe {} has {} firmware variants", probe.to_string(), firmware.variants.len());
+            info!(
+                "-> probe {} has {} firmware variants",
+                probe.to_string(),
+                firmware.variants.len()
+            );
             for (variant, download) in firmware.variants {
                 info!("  -> Firmware variant {}", variant);
-                info!("    -> {} will be downloaded as {}", download.friendly_name, download.file_name.display());
+                info!(
+                    "    -> {} will be downloaded as {}",
+                    download.friendly_name,
+                    download.file_name.display()
+                );
                 info!("    -> Variant will be downloaded from {}", download.uri);
             }
         }
         if let Some(bmda) = release.bmda {
             info!("-> Release contains BMDA for {} OSes", bmda.len());
             for (os, bmda_arch) in bmda {
-                info!("  -> {} release is for {} architectures", os.to_string(), bmda_arch.binaries.len());
+                info!(
+                    "  -> {} release is for {} architectures",
+                    os.to_string(),
+                    bmda_arch.binaries.len()
+                );
                 for (arch, binary) in bmda_arch.binaries {
                     info!("    -> BMDA binary for {}", arch.to_string());
                     info!("    -> Name of executable in archive: {}", binary.file_name.display());
@@ -374,11 +390,7 @@ fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()
 
     // If we were invoked to list the targets supported by a specific probe, dispatch to the function for that
     if info_args.list_targets {
-        return list_targets(
-            results
-                .pop_single("list targets")
-                .map_err(|kind| kind.error())?
-        )
+        return list_targets(results.pop_single("list targets").map_err(|kind| kind.error())?);
     }
 
     // Otherwise, turn the result set into a list and go through them displaying them
@@ -400,7 +412,8 @@ fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()
 
 /// Clap v3 style (approximate)
 /// See https://stackoverflow.com/a/75343828
-fn style() -> clap::builder::Styles {
+fn style() -> clap::builder::Styles
+{
     Styles::styled()
         .usage(
             anstyle::Style::new()
@@ -412,9 +425,7 @@ fn style() -> clap::builder::Styles {
                 .bold()
                 .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Yellow))),
         )
-        .literal(
-            anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green))),
-        )
+        .literal(anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green))))
 }
 
 fn main() -> Result<()>
@@ -431,7 +442,10 @@ fn main() -> Result<()>
     // actually have sufficient permissions here to do what is needed
     #[cfg(windows)]
     match cli_args.subcommand {
-        ToplevelCommmands::Probe(ProbeArguments { subcommand: ProbeCommmands::InstallDrivers(_), .. }) => (),
+        ToplevelCommmands::Probe(ProbeArguments {
+            subcommand: ProbeCommmands::InstallDrivers(_),
+            ..
+        }) => (),
         // Potentially install drivers, but still do whatever else the user wanted.
         _ => {
             windows::ensure_access(
@@ -439,7 +453,7 @@ fn main() -> Result<()>
                 false, // explicitly_requested
                 false, // force
             );
-        }
+        },
     }
 
     // Try to get the application paths available
@@ -448,7 +462,7 @@ fn main() -> Result<()>
         None => {
             error!("Failed to get program working paths");
             std::process::exit(2);
-        }
+        },
     };
 
     match &cli_args.subcommand {
@@ -462,7 +476,7 @@ fn main() -> Result<()>
                 } else {
                     update_probe(&cli_args, update_args, &paths)
                 }
-            }
+            },
             ProbeCommmands::Switch(_) => bmputil::switcher::switch_firmware(&cli_args, &paths),
             ProbeCommmands::Reboot(reboot_args) => reboot_command(&cli_args, reboot_args),
             #[cfg(windows)]
@@ -478,23 +492,18 @@ fn main() -> Result<()>
         ToplevelCommmands::Target => {
             warn!("Command space reserved for future tool version");
             Ok(())
-        }
+        },
         ToplevelCommmands::Server => {
             warn!("Command space reserved for future tool version");
             Ok(())
-        }
+        },
         ToplevelCommmands::Debug => {
             warn!("Command space reserved for future tool version");
             Ok(())
-        }
+        },
         ToplevelCommmands::Complete(comp_args) => {
             let mut cmd = CliArguments::command();
-            generate(
-                comp_args.shell,
-                &mut cmd,
-                "bmputil-cli",
-                &mut stdout()
-            );
+            generate(comp_args.shell, &mut cmd, "bmputil-cli", &mut stdout());
             Ok(())
         },
     }

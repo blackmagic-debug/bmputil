@@ -28,7 +28,7 @@ impl InterfaceClass
     ///
     /// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
     /// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
-    pub const APPLICATION_SPECIFIC: Self = Self(0xFE);
+    pub const APPLICATION_SPECIFIC: Self = Self(0xfe);
 }
 
 /// Simple newtype struct for some clarity in function arguments and whatnot.
@@ -43,27 +43,24 @@ impl InterfaceSubClass
     pub const DFU: Self = Self(0x01);
 }
 
-
 /// Simple newtype struct for some clarity in function arguments and whatnot.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct InterfaceProtocol(pub u8);
 impl InterfaceProtocol
 {
-    /// bInterfaceProtocol field in DFU-class interface descriptors while in runtime mode.
-    ///
-    /// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
-    /// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
-    #[allow(dead_code)] // XXX
-    pub const DFU_RUNTIME_MODE: Self = Self(0x01);
-
     /// bInterfaceProtocol field in DFU-class interface descriptors while in DFU mode.
     ///
     /// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
     /// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
     #[allow(dead_code)] // XXX
     pub const DFU_DFU_MODE: Self = Self(0x02);
+    /// bInterfaceProtocol field in DFU-class interface descriptors while in runtime mode.
+    ///
+    /// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
+    /// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
+    #[allow(dead_code)] // XXX
+    pub const DFU_RUNTIME_MODE: Self = Self(0x01);
 }
-
 
 /// Enum of request numbers for DFU class requests.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -78,7 +75,6 @@ pub enum DfuRequest
     GetState = 5,
     Abort = 6,
 }
-
 
 /// Enum representing the two "modes" a DFU-class device can be in.
 ///
@@ -156,31 +152,27 @@ impl<'a> GenericDescriptorRef<'a>
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Error)]
 pub enum DescriptorConvertError
 {
     #[error(
-        "bLength field ({provided_length}) in provided data does not match the correct value\
-        ({correct_length}) for this descriptor type"
+        "bLength field ({provided_length}) in provided data does not match the correct value({correct_length}) for \
+         this descriptor type"
     )]
     LengthFieldMismatch
     {
-        provided_length: u8,
-        correct_length: u8,
+        provided_length: u8, correct_length: u8
     },
 
     #[error(
-        "bDescriptorType field ({provided_type}) in provided data does not match the correct\
-        value ({correct_type}) for this descriptor type"
+        "bDescriptorType field ({provided_type}) in provided data does not match the correctvalue ({correct_type}) \
+         for this descriptor type"
     )]
     DescriptorTypeMismatch
     {
-        provided_type: u8,
-        correct_type: u8,
+        provided_type: u8, correct_type: u8
     },
 }
-
 
 /// Structure of the DFU-class functional descriptor.
 ///
@@ -192,7 +184,7 @@ pub enum DescriptorConvertError
 #[repr(C)]
 pub struct DfuFunctionalDescriptor
 {
-    pub bLength: u8, // Should be 0x09.
+    pub bLength: u8,         // Should be 0x09.
     pub bDescriptorType: u8, // Should be 0x21.
     pub bmAttributes: u8,
     pub wDetachTimeOut: u16,
@@ -267,22 +259,19 @@ impl PartialEq for PortId
     #[cfg(any(target_os = "linux", target_os = "android"))]
     fn eq(&self, other: &Self) -> bool
     {
-        return self.bus_number == other.bus_number &&
-            self.path == other.path
+        return self.bus_number == other.bus_number && self.path == other.path;
     }
 
     #[cfg(target_os = "windows")]
     fn eq(&self, other: &Self) -> bool
     {
-        return self.bus_number == other.bus_number &&
-            self.port_number == other.port_number
+        return self.bus_number == other.bus_number && self.port_number == other.port_number;
     }
 
     #[cfg(target_os = "macos")]
     fn eq(&self, other: &Self) -> bool
     {
-        return self.bus_number == other.bus_number &&
-            self.location == other.location
+        return self.bus_number == other.bus_number && self.location == other.location;
     }
 }
 
@@ -291,15 +280,14 @@ impl Display for PortId
     #[cfg(any(target_os = "linux", target_os = "android"))]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let port = self.path.file_name()
-            .map_or_else(
-                || Ok("Invalid PortId (bad path)".into()),
-                |name| name.to_os_string().into_string()
-            );
+        let port = self.path.file_name().map_or_else(
+            || Ok("Invalid PortId (bad path)".into()),
+            |name| name.to_os_string().into_string(),
+        );
 
         match port {
             Ok(port) => write!(f, "{}", port),
-            Err(_) => Err(fmt::Error)
+            Err(_) => Err(fmt::Error),
         }
     }
 

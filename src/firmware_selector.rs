@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use color_eyre::eyre::{eyre, Result};
-use dialoguer::theme::ColorfulTheme;
+use color_eyre::eyre::{Result, eyre};
 use dialoguer::Select;
+use dialoguer::theme::ColorfulTheme;
 use reqwest::StatusCode;
 use url::Url;
 
@@ -49,7 +49,7 @@ impl<'a> FirmwareMultichoice<'a>
             state: State::default(),
             release,
             variants: variants.values().collect(),
-            friendly_names
+            friendly_names,
         }
     }
 
@@ -68,8 +68,7 @@ impl<'a> FirmwareMultichoice<'a>
         self.state = match self.state {
             State::PickFirmware => self.firmware_selection()?,
             State::PickAction(index) => self.action_selection(index)?,
-            State::ShowDocs(name_index, variant_index) =>
-                self.show_documentation(name_index, variant_index)?,
+            State::ShowDocs(name_index, variant_index) => self.show_documentation(name_index, variant_index)?,
             // FlashFirmware and Cancel are both terminal actions whereby the FSM is done,
             // so maintain homeostatis for them here.
             State::FlashFirmware(index) => State::FlashFirmware(index),
@@ -106,7 +105,8 @@ impl<'a> FirmwareMultichoice<'a>
     {
         // Convert from a friendly name index into the matching variant download
         let friendly_name = self.friendly_names[name_index];
-        let (variant_index, _) = self.variants
+        let (variant_index, _) = self
+            .variants
             .iter()
             .enumerate()
             .find(|(_, variant)| variant.friendly_name == friendly_name)
@@ -124,7 +124,7 @@ impl<'a> FirmwareMultichoice<'a>
                 0 => State::FlashFirmware(variant_index),
                 1 => State::ShowDocs(name_index, variant_index),
                 2 => State::PickFirmware,
-                _ => Err(eyre!("Impossible selection for action"))?
+                _ => Err(eyre!("Impossible selection for action"))?,
             },
             None => State::Cancel,
         })
@@ -160,8 +160,9 @@ impl<'a> FirmwareMultichoice<'a>
         // Convert back into a URI
         let mut docs_uri = variant.uri.clone();
         docs_uri.set_path(
-            docs_path.to_str()
-                .expect("Something went terribly wrong building the documentation URI")
+            docs_path
+                .to_str()
+                .expect("Something went terribly wrong building the documentation URI"),
         );
 
         // Now try and download this documentation file
@@ -175,11 +176,14 @@ impl<'a> FirmwareMultichoice<'a>
         match response.status() {
             // XXX: Need to compute the release URI from the download URI and release name string
             StatusCode::NOT_FOUND => println!(
-                "No documentation found, please go to {} to find out more", self.compute_release_uri(variant)
+                "No documentation found, please go to {} to find out more",
+                self.compute_release_uri(variant)
             ),
             StatusCode::OK => Viewer::display(&variant.friendly_name, &response.text()?)?,
-            status =>
-                Err(eyre!("Something went terribly wrong while grabbing the documentation to display: {}", status))?
+            status => Err(eyre!(
+                "Something went terribly wrong while grabbing the documentation to display: {}",
+                status
+            ))?,
         };
 
         Ok(State::PickAction(name_index))

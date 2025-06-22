@@ -4,9 +4,9 @@
 // SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::cmp::Ordering;
-
 use std::fmt::{Display, Formatter};
-use color_eyre::eyre::{eyre, Report, Result};
+
+use color_eyre::eyre::{Report, Result, eyre};
 
 use crate::metadata::structs::Probe;
 
@@ -24,7 +24,7 @@ pub struct ProbeIdentity
 enum ParseNameError
 {
     OpeningParenthesisAfterClosingParenthesis,
-    FoundNotMatchedParenthesis
+    FoundNotMatchedParenthesis,
 }
 
 #[derive(Debug)]
@@ -74,7 +74,9 @@ impl Display for ParseNameError
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result
     {
         match self {
-            ParseNameError::OpeningParenthesisAfterClosingParenthesis => write!(f, "A '(' parenthesis is found after a ')'."),
+            ParseNameError::OpeningParenthesisAfterClosingParenthesis => {
+                write!(f, "A '(' parenthesis is found after a ')'.")
+            },
             ParseNameError::FoundNotMatchedParenthesis => write!(f, "Not a matching pair of parenthesis found."),
         }
     }
@@ -85,7 +87,11 @@ impl Display for ParseVersionError
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result
     {
         match self {
-            ParseVersionError::FormattingPatternError => write!(f, "The version failed to match the pattern of '{} (<version number>)'.", BMP_PRODUCT_STRING),
+            ParseVersionError::FormattingPatternError => write!(
+                f,
+                "The version failed to match the pattern of '{} (<version number>)'.",
+                BMP_PRODUCT_STRING
+            ),
             ParseVersionError::EmptyOrWhitespaceVersion => write!(f, "The extracted version is empty or whitespace"),
         }
     }
@@ -102,9 +108,9 @@ fn parse_name_from_identity_string(input: &str) -> Result<&str, ParseNameError>
             if opening_paren > closing_paren {
                 Err(ParseNameError::OpeningParenthesisAfterClosingParenthesis)
             } else {
-                Ok(&input[opening_paren+1..closing_paren])
+                Ok(&input[opening_paren + 1..closing_paren])
             }
-        }
+        },
         (Some(_), None) => Err(ParseNameError::FoundNotMatchedParenthesis),
         (None, Some(_)) => Err(ParseNameError::FoundNotMatchedParenthesis),
     }
@@ -112,7 +118,9 @@ fn parse_name_from_identity_string(input: &str) -> Result<&str, ParseNameError>
 
 fn parse_version_from_identity_string(input: &str) -> Result<&str, ParseVersionError>
 {
-    let start_index = input.rfind(' ').ok_or_else(|| ParseVersionError::FormattingPatternError)?;
+    let start_index = input
+        .rfind(' ')
+        .ok_or_else(|| ParseVersionError::FormattingPatternError)?;
     let version = &input[start_index + 1..];
 
     if version.trim().is_empty() {
@@ -145,10 +153,10 @@ impl TryFrom<&str> for ProbeIdentity
             return Ok(ProbeIdentity {
                 probe: Probe::Native,
                 version: VersionNumber::Unknown,
-            })
+            });
         }
 
-        //Removes the first length from the identity, because we know it starts with the 'Black Magic Probe'
+        // Removes the first length from the identity, because we know it starts with the 'Black Magic Probe'
         let parse_slice = &identity[BMP_PRODUCT_STRING_LENGTH..];
         let probe_result = parse_name_from_identity_string(parse_slice);
         let probe_string = probe_result.or_else(|error| Err(eyre!("Error while parsing probe string: {}", error)))?;
@@ -158,7 +166,7 @@ impl TryFrom<&str> for ProbeIdentity
         let version = version_result.or_else(|error| Err(eyre!("Error while parsing version string: {}", error)))?;
         Ok(ProbeIdentity {
             probe,
-            version: version.into()
+            version: version.into(),
         })
     }
 }
@@ -297,7 +305,7 @@ impl PartialOrd for VersionNumber
                         } else {
                             None
                         }
-                    }
+                    },
                     _ => None,
                 }
             },
@@ -308,7 +316,7 @@ impl PartialOrd for VersionNumber
                     Self::Unknown | Self::Invalid | Self::GitHash(_) => None,
                     Self::FullVersion(rhs) => lhs.partial_cmp(rhs),
                 }
-            }
+            },
         }
     }
 }
@@ -317,7 +325,13 @@ impl VersionParts
 {
     pub fn from_parts(major: usize, minor: usize, revision: usize, kind: VersionKind, dirty: bool) -> Self
     {
-        Self { major, minor, revision, kind, dirty }
+        Self {
+            major,
+            minor,
+            revision,
+            kind,
+            dirty,
+        }
     }
 }
 
@@ -360,10 +374,7 @@ impl TryFrom<&str> for VersionParts
         };
 
         // Now look from the end for another '-', this time to see if the dirty marker is set
-        let dirty_begin = value
-            .rfind('-')
-            .map(|value| value + 1)
-            .unwrap_or(0);
+        let dirty_begin = value.rfind('-').map(|value| value + 1).unwrap_or(0);
         let dirty = &value[dirty_begin..] == "dirty";
         // If the marker was present, remove it from the string
         if dirty {
@@ -403,14 +414,19 @@ impl TryFrom<&str> for VersionParts
                 let commits = value[..commits_end].parse::<usize>()?;
                 // Now take everything after the '-' as a hash
                 let hash = value[commits_end + 1..].to_string();
-                VersionKind::Development(GitVersion { commits, hash, release_candidate: candidate })
+                VersionKind::Development(GitVersion {
+                    commits,
+                    hash,
+                    release_candidate: candidate,
+                })
             } else {
-                candidate.map(|rc_number| VersionKind::ReleaseCandidate(rc_number)).unwrap()
+                candidate
+                    .map(|rc_number| VersionKind::ReleaseCandidate(rc_number))
+                    .unwrap()
             }
         };
 
-        Ok(Self
-        {
+        Ok(Self {
             major,
             minor,
             revision,
@@ -464,9 +480,9 @@ impl PartialOrd for VersionParts
         // If we got here, the major, minor, and revision numbers all match.. so,
         // we can properly check the ordering on the kind as we're comparing all the same base numbers
         if self.kind < other.kind {
-            return Some(Ordering::Less)
+            return Some(Ordering::Less);
         } else if self.kind > other.kind {
-            return Some(Ordering::Greater)
+            return Some(Ordering::Greater);
         }
 
         // If the version given is `-dirty`, but other is not, we are a higher version number
@@ -524,7 +540,7 @@ impl PartialOrd for VersionKind
                     Self::Development(rhs) => lhs.partial_cmp(rhs),
                     _ => Some(Ordering::Greater),
                 }
-            }
+            },
         }
     }
 }
@@ -533,7 +549,11 @@ impl GitVersion
 {
     pub fn from_parts(release_candidate: Option<usize>, commits: usize, hash: String) -> Self
     {
-        Self { release_candidate, commits, hash }
+        Self {
+            release_candidate,
+            commits,
+            hash,
+        }
     }
 }
 
@@ -570,7 +590,7 @@ impl PartialOrd for GitVersion
                     // release candidates come before releases
                     None => return Some(Ordering::Less),
                 }
-            }
+            },
             None => {
                 // It isi not a release candidate, so check the other to see what that is
                 match other.release_candidate {
@@ -579,7 +599,7 @@ impl PartialOrd for GitVersion
                     // Otherwise both represent the same base release, continue
                     None => {},
                 }
-            }
+            },
         }
 
         // If the release candidate logic all passed then we should check how many commits different

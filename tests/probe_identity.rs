@@ -6,9 +6,9 @@
 #[cfg(test)]
 mod tests
 {
-    use color_eyre::eyre::Result;
     use bmputil::metadata::structs::Probe;
     use bmputil::probe_identity::{GitVersion, ProbeIdentity, VersionKind, VersionNumber, VersionParts};
+    use color_eyre::eyre::Result;
 
     #[test]
     fn extract_native() -> Result<()>
@@ -16,9 +16,10 @@ mod tests
         let result: ProbeIdentity = "Black Magic Probe v2.0.0-rc2".try_into()?;
 
         assert_eq!(result.variant(), Probe::Native);
-        assert_eq!(result.version, VersionNumber::FullVersion(
-            VersionParts::from_parts(2, 0, 0, VersionKind::ReleaseCandidate(2), false)
-        ));
+        assert_eq!(
+            result.version,
+            VersionNumber::FullVersion(VersionParts::from_parts(2, 0, 0, VersionKind::ReleaseCandidate(2), false))
+        );
         Ok(())
     }
 
@@ -38,13 +39,16 @@ mod tests
         let result: ProbeIdentity = "Black Magic Probe v2.0.0-rc2-65-g221c3031f".try_into()?;
 
         assert_eq!(result.variant(), Probe::Native);
-        assert_eq!(result.version, VersionNumber::FullVersion(
-            VersionParts::from_parts(
-                2, 0, 0, VersionKind::Development(
-                    GitVersion::from_parts(Some(2), 65, "g221c3031f".into())
-                ), false
-            )
-        ));
+        assert_eq!(
+            result.version,
+            VersionNumber::FullVersion(VersionParts::from_parts(
+                2,
+                0,
+                0,
+                VersionKind::Development(GitVersion::from_parts(Some(2), 65, "g221c3031f".into())),
+                false
+            ))
+        );
         Ok(())
     }
 
@@ -64,13 +68,16 @@ mod tests
         let result: ProbeIdentity = "Black Magic Probe (ST-Link/v2) v1.10.0-1273-g2b1ce9aee".try_into()?;
 
         assert_eq!(result.variant(), Probe::Stlink);
-        assert_eq!(result.version, VersionNumber::FullVersion(
-            VersionParts::from_parts(
-                1, 10, 0, VersionKind::Development(
-                    GitVersion::from_parts(None, 1273, "g2b1ce9aee".into())
-                ), false
-            )
-        ));
+        assert_eq!(
+            result.version,
+            VersionNumber::FullVersion(VersionParts::from_parts(
+                1,
+                10,
+                0,
+                VersionKind::Development(GitVersion::from_parts(None, 1273, "g2b1ce9aee".into())),
+                false
+            ))
+        );
         Ok(())
     }
 
@@ -81,7 +88,10 @@ mod tests
 
         assert!(result.is_err());
         if let Err(err) = result {
-            assert_eq!(err.to_string(), "Error while parsing probe string: Not a matching pair of parenthesis found.");
+            assert_eq!(
+                err.to_string(),
+                "Error while parsing probe string: Not a matching pair of parenthesis found."
+            );
         }
     }
 

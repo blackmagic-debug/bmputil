@@ -9,11 +9,10 @@ use ratatui::layout::{Alignment, Margin, Rect, Size};
 use ratatui::symbols::scrollbar;
 use ratatui::text::Text;
 use ratatui::widgets::{
-    Block, BorderType, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
-    Widget, Wrap
+    Block, BorderType, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget,
+    Wrap,
 };
-use ratatui::DefaultTerminal;
-use ratatui::Frame;
+use ratatui::{DefaultTerminal, Frame};
 
 pub struct Viewer<'a>
 {
@@ -86,10 +85,8 @@ impl<'a> Viewer<'a>
 
     fn handle_events(&mut self) -> Result<()>
     {
-        match event::read()?
-        {
-            Event::Key(key) =>
-            {
+        match event::read()? {
+            Event::Key(key) => {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char('q' | 'Q') => self.quit(),
@@ -170,16 +167,16 @@ impl Widget for &mut Viewer<'_>
 {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
-        Self: Sized
+        Self: Sized,
     {
         // Render the contents of the block (the docs text), then the block itself
-        self.docs.clone()
+        self.docs
+            .clone()
             .scroll((self.scroll_position as u16, 0))
             .render(area, buf);
 
         // Build the scrollbar state
-        let mut scroll_state = ScrollbarState::new(self.max_scroll)
-            .position(self.scroll_position);
+        let mut scroll_state = ScrollbarState::new(self.max_scroll).position(self.scroll_position);
         // Build and render the scrollbar to track the content
         StatefulWidget::render(
             // Put the scrollbar on the right side, running down the text, and don't display
@@ -191,7 +188,7 @@ impl Widget for &mut Viewer<'_>
             // Scrollbar should be displayed inside the side of the block, not overwriting the corners
             area.inner(Margin::new(0, 1)),
             buf,
-            &mut scroll_state
+            &mut scroll_state,
         );
 
         // Render the key bindings help

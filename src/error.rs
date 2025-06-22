@@ -4,8 +4,8 @@
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 //! Module for error handling code.
 
-use std::fmt::{Display, Formatter};
 use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
 
 use thiserror::Error;
 
@@ -31,7 +31,10 @@ pub enum ErrorKind
     ///
     /// This generally shouldn't be possible, but could happen if the cable is bad, the OS is
     /// messing with things, or the firmware on the device is corrupted.
-    DeviceSeemsInvalid(/** invalid thing **/ String),
+    DeviceSeemsInvalid(
+        /// invalid thing *
+        String,
+    ),
 
     /// Black Magic Debug release metadata was invalid in some way
     ReleaseMetadataInvalid,
@@ -84,14 +87,17 @@ impl Display for ErrorKind
     {
         use ErrorKind::*;
         match self {
-            TooManyDevices => write!(f, "current operation only supports one Black Magic Probe device but more than one device was found")?,
+            TooManyDevices => write!(
+                f,
+                "current operation only supports one Black Magic Probe device but more than one device was found"
+            )?,
             DeviceNotFound => write!(f, "Black Magic Probe device not found (check connection?)")?,
             DeviceDisconnectDuringOperation => write!(f, "Black Magic Probe device found disconnected")?,
             DeviceSeemsInvalid(thing) => {
                 write!(
                     f,
-                    "\nBlack Magic Probe device returned bad data ({}) during configuration.\n\
-                    This generally shouldn't be possible. Maybe cable is bad, or OS is messing with things?",
+                    "\nBlack Magic Probe device returned bad data ({}) during configuration.\nThis generally \
+                     shouldn't be possible. Maybe cable is bad, or OS is messing with things?",
                     thing,
                 )?;
             },
@@ -137,7 +143,7 @@ impl Error
         Self {
             kind,
             source,
-            context: None
+            context: None,
         }
     }
 }
@@ -175,25 +181,17 @@ impl From<dfu_nusb::Error> for Error
         use ErrorKind::*;
         use dfu_nusb::Error as Source;
         match other {
-            Source::Nusb(source) => {
-                External(ErrorSource::Nusb(source)).error()
-            },
+            Source::Nusb(source) => External(ErrorSource::Nusb(source)).error(),
             Source::AltSettingNotFound => {
-                DeviceSeemsInvalid("DFU interface (alt mode) not found".into())
-                    .error_from(other)
+                DeviceSeemsInvalid("DFU interface (alt mode) not found".into()).error_from(other)
             },
             Source::FunctionalDescriptorNotFound => {
-                DeviceSeemsInvalid("DFU functional descriptor not found".into())
-                    .error_from(other)
+                DeviceSeemsInvalid("DFU functional descriptor not found".into()).error_from(other)
             },
             Source::FunctionalDescriptor(source) => {
-                DeviceSeemsInvalid("DFU functional interface descriptor".into())
-                    .error_from(source)
+                DeviceSeemsInvalid("DFU functional interface descriptor".into()).error_from(source)
             },
-            anything_else => {
-                External(ErrorSource::DfuNusb(anything_else))
-                    .error()
-            },
+            anything_else => External(ErrorSource::DfuNusb(anything_else)).error(),
         }
     }
 }
@@ -206,21 +204,13 @@ impl From<dfu_core::Error> for Error
         use dfu_core::Error as Source;
         match other {
             Source::MemoryLayout(source) => {
-                DeviceSeemsInvalid(String::from("DFU interface memory layout string"))
-                    .error_from(source)
+                DeviceSeemsInvalid(String::from("DFU interface memory layout string")).error_from(source)
             },
-            Source::InvalidAddress => {
-                DeviceSeemsInvalid("DFU interface memory layout string".into())
-                    .error_from(other)
-            },
+            Source::InvalidAddress => DeviceSeemsInvalid("DFU interface memory layout string".into()).error_from(other),
             Source::InvalidInterfaceString => {
-                DeviceSeemsInvalid("DFU interface memory layout string".into())
-                    .error_from(other)
+                DeviceSeemsInvalid("DFU interface memory layout string".into()).error_from(other)
             },
-            anything_else => {
-                External(ErrorSource::DfuCore(anything_else))
-                    .error()
-            },
+            anything_else => External(ErrorSource::DfuCore(anything_else)).error(),
         }
     }
 }

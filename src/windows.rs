@@ -26,31 +26,25 @@
 //! [SetupAPI](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/setupapi) functions to actually move
 //! the INF to the right directory and create the right Registry keys.
 
-use std::ffi::c_void;
-use std::ptr;
-use std::mem;
-use std::env;
-use std::iter;
-use std::thread;
+use std::ffi::{CString, OsStr, OsString, c_void};
+use std::io::Error as IoError;
+use std::os::windows::ffi::OsStrExt;
 use std::str::FromStr;
 use std::time::Duration;
-use std::io::Error as IoError;
-use std::ffi::{OsStr, OsString, CString};
-use std::os::windows::ffi::OsStrExt;
+use std::{env, iter, mem, ptr, thread};
 
-use color_eyre::eyre::Result;
-use libc::{intptr_t, c_int, c_uint, c_long, c_char, FILE};
-use log::{trace, debug, info, warn, error};
 use bstr::ByteSlice;
+use color_eyre::eyre::Result;
+use deelevate::{PrivilegeLevel, Token};
 use lazy_static::lazy_static;
-use winreg::enums::*;
-use winreg::RegKey;
-
-use winapi::um::wincon::{FreeConsole, AttachConsole};
-#[allow(unused_imports)]
-use winapi::um::winbase::{STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
+use libc::{FILE, c_char, c_int, c_long, c_uint, intptr_t};
+use log::{debug, error, info, trace, warn};
 use winapi::um::consoleapi::AllocConsole;
-use deelevate::{Token, PrivilegeLevel};
+#[allow(unused_imports)]
+use winapi::um::winbase::{STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
+use winapi::um::wincon::{AttachConsole, FreeConsole};
+use winreg::RegKey;
+use winreg::enums::*;
 
 /// From fnctl.h
 /// ```c
@@ -65,9 +59,7 @@ const STDOUT_FILENO: c_int = 1;
 #[allow(dead_code)]
 const STDERR_FILENO: c_int = 2;
 
-
-unsafe extern "C"
-{
+unsafe extern "C" {
     /// https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/open-osfhandle?view=msvc-170
     pub fn _open_osfhandle(osfhandle: intptr_t, flags: c_int) -> c_int;
 
@@ -100,36 +92,34 @@ pub fn stderrf() -> *mut FILE
     unsafe { __acrt_iob_func(2) }
 }
 
-
 /// Macro for calling winapi functions that return a BOOL to indicate success.
 /// Transforms the return value into a Rust-y Result.
 ///
 /// In this case, a return value of 0 is considered an error.
 #[allow(unused_macros)]
-macro_rules! winapi_bool
-{
+macro_rules! winapi_bool {
     ($e:expr) => {
         match $e {
             0 => Err::<(), _>(IoError::last_os_error()),
             _ => Ok(()),
         }
-    }
+    };
 }
-
 
 /// Macro for calling winapi functions that return a HANDLE.
 /// Transforms the return value into a Rust-y Result.
 ///
 /// In this case, a return value of INVALID_HANDLE_VALUE is considered an error.
 #[allow(unused_macros)]
-macro_rules! winapi_handle
-{
+macro_rules! winapi_handle {
     ($e:expr) => {
         match $e {
-            winapi::um::handleapi::INVALID_HANDLE_VALUE => Err::<winapi::um::winnt::HANDLE, _>(IoError::last_os_error()),
+            winapi::um::handleapi::INVALID_HANDLE_VALUE => {
+                Err::<winapi::um::winnt::HANDLE, _>(IoError::last_os_error())
+            },
             handle => Ok(handle),
         }
-    }
+    };
 }
 
 /// Macro for calling winapi functions that return `-1` to indicate failure.
@@ -137,16 +127,14 @@ macro_rules! winapi_handle
 ///
 /// In this case, a return value of -1 is considered an error.
 #[allow(unused_macros)]
-macro_rules! winapi_neg
-{
+macro_rules! winapi_neg {
     ($e:expr) => {
         match $e {
             -1 => Err(IoError::last_os_error()),
             other => Ok(other),
         }
-    }
+    };
 }
-
 
 /// Internal struct for FILE* on Windows. See [restore_cstdio]'s implementation for details.
 #[derive(Debug, Clone, Copy)]
@@ -165,8 +153,6 @@ pub struct UcrtStdioStreamData
     _lock: *mut c_void,
 }
 
-
-
 /// When our admin process is created, it does not inherit stdin, stdout, and stderr from the parent process.
 /// AttachConsole(parent_pid) easily connects the admin process to the parent console, but, surprisingly
 /// enough, that only restores stdio for *Rust*, and not C. How could this possibly be the case?
@@ -176,7 +162,6 @@ pub struct UcrtStdioStreamData
 /// Microsoft C Runtime's stdio global state with the Windows console subsystem state.
 pub fn restore_cstdio(parent_pid: u32) -> Result<()>
 {
-
     // First, free whatever console Windows gave us by default, and attach to the parent's console.
     unsafe {
         FreeConsole();
@@ -194,14 +179,12 @@ pub fn restore_cstdio(parent_pid: u32) -> Result<()>
 
     let res = unsafe { libc::freopen(b"CONIN$\0".as_ptr() as *const i8, b"w\0".as_ptr() as *const i8, stdinf()) };
     if res.is_null() {
-        Err::<(), _>(IoError::last_os_error())
-            .expect("Failed to resynchronize stdin");
+        Err::<(), _>(IoError::last_os_error()).expect("Failed to resynchronize stdin");
     }
 
     let res = unsafe { libc::freopen(b"CONOUT$\0".as_ptr() as *const i8, b"wt\0".as_ptr() as *const i8, stdoutf()) };
     if res.is_null() {
-        Err::<(), _>(IoError::last_os_error())
-            .expect("Failed to resynchronize stdout");
+        Err::<(), _>(IoError::last_os_error()).expect("Failed to resynchronize stdout");
     }
 
     // HACK: on some¹ systems, using the same technique for stderr seems to break both stderr and stdout, for some
@@ -218,12 +201,10 @@ pub fn restore_cstdio(parent_pid: u32) -> Result<()>
     Ok(())
 }
 
-
 fn os_str_to_null_terminated_vec(s: &OsStr) -> Vec<u16>
 {
     s.encode_wide().chain(iter::once(0)).collect()
 }
-
 
 /// Install drivers for each libwdi [wdi::DeviceInfo] in `devices`. Must be called from admin.
 fn admin_install_drivers(devices: &mut [wdi::DeviceInfo])
@@ -236,8 +217,8 @@ fn admin_install_drivers(devices: &mut [wdi::DeviceInfo])
     // intermediate files libwdi creates for this.
 
     for dev in devices.into_iter() {
-
-        let hwid_str = dev.hardware_id
+        let hwid_str = dev
+            .hardware_id
             .as_ref()
             .expect("BMP WDI DeviceInfo always have hardware_id set")
             .to_str_lossy()
@@ -249,8 +230,7 @@ fn admin_install_drivers(devices: &mut [wdi::DeviceInfo])
 
         println!("Preparing driver for installation...");
 
-        wdi::prepare_driver(dev, "usb_driver", "usb_device.inf", &mut Default::default())
-            .unwrap();
+        wdi::prepare_driver(dev, "usb_driver", "usb_device.inf", &mut Default::default()).unwrap();
 
         println!("Driver prepared.");
         println!("About to install driver. This may take multiple minutes and there will be NO PROGRESS REPORTING!");
@@ -258,13 +238,11 @@ fn admin_install_drivers(devices: &mut [wdi::DeviceInfo])
 
         thread::sleep(Duration::from_secs(1));
 
-        wdi::install_driver(dev, "usb_driver", "usb_device.inf", &mut Default::default())
-            .unwrap();
+        wdi::install_driver(dev, "usb_driver", "usb_device.inf", &mut Default::default()).unwrap();
 
         println!("Driver successfully installed for {}", &hwid_str);
     }
 }
-
 
 lazy_static! {
     pub static ref APP_MODE_WDI_INFO: wdi::DeviceInfo = wdi::DeviceInfo {
@@ -297,9 +275,8 @@ lazy_static! {
     };
 }
 
-
-/// Checks what drivers a device with a given [enumerator] and [HardwareId] is bound to, if any, via the Windows registry.
-/// Returns the INF names of any bound drivers.
+/// Checks what drivers a device with a given [enumerator] and [HardwareId] is bound to, if any, via the Windows
+/// registry. Returns the INF names of any bound drivers.
 ///
 /// `hardware_id` should *not* include the enumerator name. e.g. no leading `USB\`.
 ///
@@ -310,14 +287,16 @@ lazy_static! {
 /// [HardwareId]: (https://learn.microsoft.com/en-us/windows-hardware/drivers/install/hardware-ids)
 pub fn hwid_bound_to_driver(hardware_id: &str, enumerator: &str) -> Result<Vec<String>>
 {
-    debug!("Checking what drivers device {} under enumerator {} is bound to", hardware_id, enumerator);
+    debug!(
+        "Checking what drivers device {} under enumerator {} is bound to",
+        hardware_id, enumerator
+    );
 
     let mut driver_names: Vec<String> = Vec::new();
 
     let hwid_lower = hardware_id.to_lowercase();
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-
 
     // Open the driver database for the given enumerator.
 
@@ -327,62 +306,54 @@ pub fn hwid_bound_to_driver(hardware_id: &str, enumerator: &str) -> Result<Vec<S
     driver_db_subkey_name.push_str(enumerator);
 
     trace!(r"Opening HKLM:\{}", &driver_db_subkey_name);
-    let driver_db_for_enum = hklm.open_subkey(&driver_db_subkey_name)
-        .map_err(|e| {
-            error!("Error opening USB driver database in registry: {}", &e);
-            e
-        })?;
-
+    let driver_db_for_enum = hklm.open_subkey(&driver_db_subkey_name).map_err(|e| {
+        error!("Error opening USB driver database in registry: {}", &e);
+        e
+    })?;
 
     // Subkey of the driver DB are Windows HardwareId strings, without the leading enumerator name.
 
     for dev_key_name in driver_db_for_enum.enum_keys() {
-        let dev_key_name: String = dev_key_name
-            .map_err(|e| {
-                warn!("Error enumerating registry subkeys of {:?}: {}", &driver_db_for_enum, &e);
-                e
-            })?;
+        let dev_key_name: String = dev_key_name.map_err(|e| {
+            warn!("Error enumerating registry subkeys of {:?}: {}", &driver_db_for_enum, &e);
+            e
+        })?;
 
         let dev_key_lower = dev_key_name.to_lowercase();
 
         // If this subkey has the same name as the hardware ID we're looking for...
         if dev_key_lower == hwid_lower {
-
             // Then check if it has any drivers listed, or if it's empty.
             // Usually, however, unbound devices will not have a subkey of their enumerator at all.
 
             trace!(r"Opening HKLM:\{}\{}", &driver_db_subkey_name, &dev_key_name);
-            let dev_key = driver_db_for_enum.open_subkey(&dev_key_name)
-                .map_err(|e| {
-                    warn!("Error opening know-to-exist subkey {:?} when checking bound drivers: {}", &dev_key_name, &e);
-                    e
-                })?;
+            let dev_key = driver_db_for_enum.open_subkey(&dev_key_name).map_err(|e| {
+                warn!(
+                    "Error opening know-to-exist subkey {:?} when checking bound drivers: {}",
+                    &dev_key_name, &e
+                );
+                e
+            })?;
 
             for driver_regval in dev_key.enum_values() {
-
-                let (driver_name, _driver_value) = driver_regval
-                    .map_err(|e| {
-                        warn!(
-                            "Error enumerating values of key {:?} when checking bound drivers: {}",
-                            &dev_key,
-                            &e,
-                        );
-                        e
-                    })?;
+                let (driver_name, _driver_value) = driver_regval.map_err(|e| {
+                    warn!(
+                        "Error enumerating values of key {:?} when checking bound drivers: {}",
+                        &dev_key, &e,
+                    );
+                    e
+                })?;
 
                 // Values of `HKLM:\SYSTEM\DriverDatabase\DeviceIds\{enumerator}\{hwid}` are of type
                 // REG_BINARY, but I have no idea what the format is. The name, however, is the name of
                 // the INF file bound to the device, e.g. `oem15.inf`, and that's what we want.
                 driver_names.push(driver_name);
-
             }
-
         }
     }
 
     Ok(driver_names)
 }
-
 
 /// This function ensures that all connected Black Magic Probe devices have the necessary drivers installed, via libwdi.
 /// If `explicitly_requested` is true, then this will print if there is nothing to do.
@@ -401,18 +372,17 @@ pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool, force:
         devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
         devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
     } else {
-
         match hwid_bound_to_driver("VID_1D50&PID_6018&MI_04", "USB") {
             Ok(driver_names) if driver_names.len() == 0 => {
                 devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
                 info!("Scheduling WinUSB driver installation for app mode BMP device...");
-            }
+            },
 
             // If an error occurred checking, then install the driver just in case.
             Err(_e) => {
                 devices_needing_driver.push(APP_MODE_WDI_INFO.clone());
                 info!("Scheduling WinUSB driver installation for app mode BMP device...");
-            }
+            },
 
             Ok(driver_names) => {
                 trace!("App mode BMP bound to drivers: {:?}", driver_names);
@@ -423,19 +393,18 @@ pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool, force:
             Ok(driver_names) if driver_names.len() == 0 => {
                 devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
                 info!("Scheduling WinUSB driver installation for DFU mode BMP device...");
-            }
+            },
 
             // If an error occurred checking, then install the driver just in case.
             Err(_e) => {
                 devices_needing_driver.push(DFU_MODE_WDI_INFO.clone());
                 info!("Scheduling WinUSB driver installation for DFU mode BMP device...");
-            }
+            },
 
             Ok(driver_names) => {
                 trace!("DFU mode BMP bound to drivers: {:?}", driver_names);
             },
         }
-
     }
 
     // If both drivers are installed already, there's nothing to do.
@@ -446,41 +415,40 @@ pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool, force:
         return;
     }
 
-
     println!("The WinUSB driver needs to be installed for the Black Magic Probe device before continuing. Standby...");
     thread::sleep(Duration::from_secs(1));
 
     // If we're here, that means we're installing drivers.
     // So we need admin.
-    let token = Token::with_current_process()
-        .expect("Unable to determine the current process's privilege level");
-    let level = token.privilege_level()
+    let token = Token::with_current_process().expect("Unable to determine the current process's privilege level");
+    let level = token
+        .privilege_level()
         .expect("Unable to determine the current process's privilege level");
 
     let need_to_elevate = match level {
         PrivilegeLevel::NotPrivileged | PrivilegeLevel::HighIntegrityAdmin => true,
-        _ => {
-            false
-        },
+        _ => false,
     };
 
     if !need_to_elevate {
-
         if let Some(pid) = parent_pid {
             match restore_cstdio(pid) {
                 Ok(_) => (),
                 Err(_e) => {
                     // FIXME:
                     todo!("Create a log file!");
-                }
+                },
             }
         }
 
         admin_install_drivers(&mut devices_needing_driver);
-        println!("Successfully installed drivers for {} USB interfaces.", devices_needing_driver.len());
+        println!(
+            "Successfully installed drivers for {} USB interfaces.",
+            devices_needing_driver.len()
+        );
 
-        // TODO: use the Windows SetupAPI to get the device instance ID of the BMP so we can restart it and re-enumerate it, if necessary.
-        // https://docs.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinstanceida
+        // TODO: use the Windows SetupAPI to get the device instance ID of the BMP so we can restart it and re-enumerate
+        // it, if necessary. https://docs.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinstanceida
 
         // Now that we're done, nothing more to do in the admin process.
         std::process::exit(0);
@@ -494,12 +462,8 @@ pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool, force:
     args.extend(env::args_os().map(|s| s.to_owned()));
     args.push(OsString::from_str("--windows-wdi-install-mode").unwrap());
 
-    use winapi::um::winbase;
-    use winapi::um::winuser;
-    use winapi::um::shellapi;
-    use winapi::um::shellapi::SHELLEXECUTEINFOW;
-    use winapi::um::shellapi::ShellExecuteExW;
-    use winapi::um::synchapi;
+    use winapi::um::shellapi::{SHELLEXECUTEINFOW, ShellExecuteExW};
+    use winapi::um::{shellapi, synchapi, winbase, winuser};
 
     let verb: Vec<u16> = OsStr::new("runas").encode_wide().chain(iter::once(0)).collect();
 
@@ -508,14 +472,13 @@ pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool, force:
     let _ = args.remove(0);
     args.push(OsStr::new(&format!("--windows-wdi-install-mode={}", std::process::id())).to_owned());
     let file = os_str_to_null_terminated_vec(env::current_exe().unwrap().as_os_str());
-    let parameters: OsString = args
-        .join(OsStr::new(" "));
+    let parameters: OsString = args.join(OsStr::new(" "));
     let parameters = os_str_to_null_terminated_vec(&parameters);
 
     let cwd = os_str_to_null_terminated_vec(
         env::current_dir()
             .expect("Unable to get current working directory")
-            .as_os_str()
+            .as_os_str(),
     );
 
     let mut info = SHELLEXECUTEINFOW {
@@ -538,33 +501,33 @@ pub fn ensure_access(parent_pid: Option<u32>, explicitly_requested: bool, force:
 
     let res = unsafe { ShellExecuteExW(&mut info) };
     if res == winapi::shared::minwindef::FALSE {
-        Err::<(), _>(IoError::last_os_error())
-            .expect("Error calling ShellExecuteExW()");
+        Err::<(), _>(IoError::last_os_error()).expect("Error calling ShellExecuteExW()");
     }
 
     let hproc = info.hProcess;
     let ret = unsafe { synchapi::WaitForSingleObject(hproc, winbase::INFINITE) };
     if ret == winbase::WAIT_FAILED {
-        Err::<(), _>(IoError::last_os_error())
-            .expect("Error calling WaitForSingleObject()");
+        Err::<(), _>(IoError::last_os_error()).expect("Error calling WaitForSingleObject()");
     }
     std::thread::sleep(std::time::Duration::from_secs(5));
 
     let mut exit_code = 0;
     if unsafe { winapi::um::processthreadsapi::GetExitCodeProcess(hproc, &mut exit_code) } != 0 {
         if exit_code != 0 {
-            error!("Elevated process exited with {}; driver installation probably failed", exit_code);
+            error!(
+                "Elevated process exited with {}; driver installation probably failed",
+                exit_code
+            );
             std::process::exit(exit_code as i32);
         } else {
             info!("Exiting parent process. Elevated process exited successfully.");
         }
     } else {
-        Err::<(), _>(IoError::last_os_error())
-            .expect("Error calling GetExitCodeProcess()");
+        Err::<(), _>(IoError::last_os_error()).expect("Error calling GetExitCodeProcess()");
     }
 
     println!(
-        "Driver installation should be complete. \
-        You may need to unplug the device and plug it back in before things work."
+        "Driver installation should be complete. You may need to unplug the device and plug it back in before things \
+         work."
     );
 }

@@ -4,15 +4,15 @@
 // SPDX-FileContributor: Written by Piotr Esden-Tempski <piotr@esden.net>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
-use clap::builder::PossibleValue;
 use clap::ValueEnum;
+use clap::builder::PossibleValue;
 
 use crate::bmp::FirmwareType;
 
 pub mod bmp;
 pub mod docs_viewer;
-pub mod error;
 pub mod elf;
+pub mod error;
 pub mod firmware_selector;
 pub mod flasher;
 pub mod metadata;
@@ -38,7 +38,7 @@ pub trait FlashParams
 pub enum AllowDangerous
 {
     Never,
-    Really
+    Really,
 }
 
 impl ValueEnum for AllowDangerous

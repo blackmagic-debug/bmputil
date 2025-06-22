@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
 
-use color_eyre::eyre::{eyre, Context, Result};
+use color_eyre::eyre::{Context, Result, eyre};
 use color_eyre::owo_colors::OwoColorize;
 use dfu_nusb::Error as DfuNusbError;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -17,8 +17,8 @@ use log::{debug, error, info, warn};
 use nusb::transfer::TransferError;
 
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
-use crate::{elf, AllowDangerous, BmpParams, FlashParams};
 use crate::usb::PortId;
+use crate::{AllowDangerous, BmpParams, FlashParams, elf};
 
 pub struct Firmware
 {
@@ -31,7 +31,7 @@ impl Firmware
 {
     pub fn new<Params>(params: &Params, device: &BmpDevice, firmware_data: Vec<u8>) -> Result<Self>
     where
-        Params: BmpParams + FlashParams
+        Params: BmpParams + FlashParams,
     {
         let firmware_length = firmware_data.len();
         let firmware_length = u32::try_from(firmware_length)
@@ -45,16 +45,18 @@ impl Firmware
     }
 
     fn determine_firmware_type<Params>(
-        params: &Params, device: &BmpDevice, firmware_data: &Vec<u8>
+        params: &Params,
+        device: &BmpDevice,
+        firmware_data: &Vec<u8>,
     ) -> Result<FirmwareType>
     where
-        Params: BmpParams + FlashParams
+        Params: BmpParams + FlashParams,
     {
         // Figure out what kind of firmware we're being asked to work with here
         // Using the platform to determine the link address.
         let platform = device.platform();
-        let firmware_type = FirmwareType::detect_from_firmware(platform, &firmware_data)
-            .wrap_err("detecting firmware type")?;
+        let firmware_type =
+            FirmwareType::detect_from_firmware(platform, &firmware_data).wrap_err("detecting firmware type")?;
 
         debug!("Firmware file was detected as {}", firmware_type);
 
@@ -62,20 +64,23 @@ impl Firmware
         let firmware_type = match params.override_firmware_type() {
             Some(override_firmware_type) => {
                 match params.allow_dangerous_options() {
-                    AllowDangerous::Really =>
-                        warn!("Overriding firmware-type detection and flashing to user-specified location ({}) instead!", override_firmware_type),
+                    AllowDangerous::Really => warn!(
+                        "Overriding firmware-type detection and flashing to user-specified location ({}) instead!",
+                        override_firmware_type
+                    ),
                     AllowDangerous::Never => {
                         eprintln!(
-                            "{} --override-firmware-type is used to override the firmware type detection and flash \
-                            a firmware binary to a location other than the one that it seems to be designed for.\n\
-                            This is a potentially destructive operation and can result in an unbootable device! \
-                            (can require a second, external JTAG debugger and manual wiring to fix!)\n\
-                            \nDo not use this option unless you are a firmware developer and really know what you are doing!\n\
-                            \nIf you are sure this is really what you want to do, run again with --allow-dangerous-options=really",
+                            "{} --override-firmware-type is used to override the firmware type detection and flash a \
+                             firmware binary to a location other than the one that it seems to be designed for.\nThis \
+                             is a potentially destructive operation and can result in an unbootable device! (can \
+                             require a second, external JTAG debugger and manual wiring to fix!)\n\nDo not use this \
+                             option unless you are a firmware developer and really know what you are doing!\n\nIf you \
+                             are sure this is really what you want to do, run again with \
+                             --allow-dangerous-options=really",
                             "WARNING:".red()
                         );
                         std::process::exit(1);
-                    }
+                    },
                 }
                 override_firmware_type
             },
@@ -91,28 +96,27 @@ impl Firmware
         // so it must be moved into the closure. However, since we need to call .finish() here,
         // it must be owned by both. Hence: Rc<T>.
         // Default template: `{wide_bar} {pos}/{len}`.
-        let progress_bar = ProgressBar::new(self.length as u64)
-            .with_style(ProgressStyle::default_bar()
-                .template(" {percent:>3}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]").unwrap()
-            );
+        let progress_bar = ProgressBar::new(self.length as u64).with_style(
+            ProgressStyle::default_bar()
+                .template(" {percent:>3}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]")
+                .unwrap(),
+        );
         let progress_bar = Rc::new(progress_bar);
         let enclosed = Rc::clone(&progress_bar);
         // Extract the firmware type as a value so it can be captured and moved (copied) by the progress lambda
         let firmware_type = self.firmware_type;
 
-        let result = device.download(&*self.data, self.length, firmware_type,
-            move |flash_pos_delta| {
-                // Don't actually print flashing until the erasing has finished.
-                if enclosed.position() == 0 {
-                    if firmware_type == FirmwareType::Application {
-                        enclosed.println("Flashing...");
-                    } else {
-                        enclosed.println("Flashing bootloader...");
-                    }
+        let result = device.download(&*self.data, self.length, firmware_type, move |flash_pos_delta| {
+            // Don't actually print flashing until the erasing has finished.
+            if enclosed.position() == 0 {
+                if firmware_type == FirmwareType::Application {
+                    enclosed.println("Flashing...");
+                } else {
+                    enclosed.println("Flashing bootloader...");
                 }
-                enclosed.inc(flash_pos_delta as u64);
             }
-        );
+            enclosed.inc(flash_pos_delta as u64);
+        });
         progress_bar.finish();
         let dfu_iface = result?;
         info!("Flash complete!");
@@ -138,12 +142,12 @@ impl Firmware
                             _ => {
                                 warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
                                 Err(err.into())
-                            }
+                            },
                         },
                         _ => {
                             warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
                             Err(err.into())
-                        }
+                        },
                     }
                 },
                 result => result,
@@ -157,9 +161,9 @@ impl Firmware
 fn intel_hex_error() -> !
 {
     eprintln!(
-        "{} The specified firmware file appears to be an Intel HEX file, but Intel HEX files are not \
-        currently supported. Please use a binary file (e.g. blackmagic.bin), \
-        or an ELF (e.g. blackmagic.elf) to flash.", "Error:".red()
+        "{} The specified firmware file appears to be an Intel HEX file, but Intel HEX files are not currently \
+         supported. Please use a binary file (e.g. blackmagic.bin), or an ELF (e.g. blackmagic.elf) to flash.",
+        "Error:".red()
     );
     std::process::exit(1);
 }
@@ -193,29 +197,29 @@ fn read_firmware(file_name: PathBuf) -> Result<Vec<u8>>
 
 fn check_programming(port: PortId) -> Result<()>
 {
-    let dev = bmp::wait_for_probe_reboot(port, Duration::from_secs(5), "flash")
-        .map_err(|e| {
-            error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
-            e
-        })?;
+    let dev = bmp::wait_for_probe_reboot(port, Duration::from_secs(5), "flash").map_err(|e| {
+        error!("Black Magic Probe did not re-enumerate after flashing! Invalid firmware?");
+        e
+    })?;
 
     // Now the device has come back, we need to see if the firmware programming cycle succeeded.
     // This starts by extracting the firmware identity string to check
-    let identity = dev
-        .firmware_identity()
-        .map_err(|e| {
-            error!("Error reading firmware version after flash! Invalid firmware?");
-            e
-        })?;
+    let identity = dev.firmware_identity().map_err(|e| {
+        error!("Error reading firmware version after flash! Invalid firmware?");
+        e
+    })?;
 
-    println!("Black Magic Probe successfully rebooted into firmware version {}", identity.version);
+    println!(
+        "Black Magic Probe successfully rebooted into firmware version {}",
+        identity.version
+    );
 
     Ok(())
 }
 
 pub fn flash_probe<Params>(params: &Params, mut device: BmpDevice, file_name: PathBuf) -> Result<()>
 where
-    Params: BmpParams + FlashParams
+    Params: BmpParams + FlashParams,
 {
     let firmware_data = read_firmware(file_name)?;
 
@@ -227,10 +231,12 @@ where
     // If we can't get the string descriptors, try to go ahead with flashing anyway.
     // It's unlikely that other control requests will succeed, but the OS might be messing with
     // the string descriptor stuff.
-    let _ = writeln!(std::io::stdout(), "Found: {}", device)
-        .map_err(|e| {
-            error!("Failed to read string data from Black Magic Probe: {}\nTrying to continue anyway...", e);
-        });
+    let _ = writeln!(std::io::stdout(), "Found: {}", device).map_err(|e| {
+        error!(
+            "Failed to read string data from Black Magic Probe: {}\nTrying to continue anyway...",
+            e
+        );
+    });
 
     firmware.program_firmware(&mut device)?;
 

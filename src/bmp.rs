@@ -3,35 +3,32 @@
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 
-use std::fmt::Debug;
-use std::mem;
-use std::thread;
-use std::io::Read;
-use std::cell::{RefCell, Ref};
-use std::time::{Duration, Instant};
-use std::fmt::{self, Display, Formatter};
 use std::array::TryFromSliceError;
+use std::cell::{Ref, RefCell};
+use std::fmt::{self, Debug, Display, Formatter};
+use std::io::Read;
+use std::time::{Duration, Instant};
+use std::{mem, thread};
 
-use clap::builder::PossibleValue;
 use clap::ValueEnum;
-use color_eyre::eyre::{eyre, Context, Error, Report, Result};
-use dfu_core::DfuIo;
-use dfu_core::DfuProtocol;
-use dfu_nusb::DfuSync;
-use log::{trace, debug, info, warn, error};
+use clap::builder::PossibleValue;
+use color_eyre::eyre::{Context, Error, Report, Result, eyre};
+use dfu_core::{DfuIo, DfuProtocol, Error as DfuCoreError, State as DfuState};
+use dfu_nusb::{DfuNusb, DfuSync, Error as DfuNusbError};
+use log::{debug, error, info, trace, warn};
+use nusb::descriptors::Descriptor;
 #[cfg(target_os = "macos")]
 use nusb::transfer::TransferError;
-use nusb::{list_devices, Device, DeviceInfo, Interface};
 use nusb::transfer::{Control, ControlType, Recipient};
-use nusb::descriptors::Descriptor;
-use dfu_nusb::{DfuNusb, Error as DfuNusbError};
-use dfu_core::{State as DfuState, Error as DfuCoreError};
+use nusb::{Device, DeviceInfo, Interface, list_devices};
 
-use crate::probe_identity::ProbeIdentity;
 use crate::BmpParams;
 use crate::error::ErrorKind;
-use crate::usb::{DfuFunctionalDescriptor, InterfaceClass, InterfaceSubClass, GenericDescriptorRef, DfuRequest, PortId};
-use crate::usb::{Vid, Pid, DfuOperatingMode};
+use crate::probe_identity::ProbeIdentity;
+use crate::usb::{
+    DfuFunctionalDescriptor, DfuOperatingMode, DfuRequest, GenericDescriptorRef, InterfaceClass, InterfaceSubClass,
+    Pid, PortId, Vid,
+};
 
 /// Semantically represents a Black Magic Probe USB device.
 pub struct BmpDevice
@@ -79,25 +76,28 @@ impl BmpDevice
             1, // Device descriptor
             0,
             0,
-            Duration::from_secs(2)
+            Duration::from_secs(2),
         )?;
         let device_desc = match Descriptor::new(device_desc.as_slice()) {
-            None => return Err(
-                ErrorKind::DeviceSeemsInvalid("no usable device descriptor".into()).error().into()
-            ),
+            None => {
+                return Err(ErrorKind::DeviceSeemsInvalid("no usable device descriptor".into())
+                    .error()
+                    .into());
+            },
             Some(descriptor) => descriptor,
         };
 
         // Now see what languages are supported
-        let mut languages =
-            device.get_string_descriptor_supported_languages(Duration::from_secs(2))?;
+        let mut languages = device.get_string_descriptor_supported_languages(Duration::from_secs(2))?;
 
         // Try to get the first one
         let language = match languages.nth(0) {
             Some(language) => language,
-            None => return Err(
-                ErrorKind::DeviceSeemsInvalid("no string descriptor languages".into()).error().into()
-            )
+            None => {
+                return Err(ErrorKind::DeviceSeemsInvalid("no string descriptor languages".into())
+                    .error()
+                    .into());
+            },
         };
 
         // Loop through the interfaces in this configuraiton and try to find the DFU interface
@@ -131,20 +131,24 @@ impl BmpDevice
             mode,
             platform,
             serial: RefCell::new(None),
-            port: port,
+            port,
         })
     }
 
     /// Get the [`nusb::DeviceInfo`] associated with the connected Black Magic Probe.
     pub fn device_info(&self) -> &DeviceInfo
     {
-        self.device_info.as_ref().expect("Unreachable: self.device_info is None")
+        self.device_info
+            .as_ref()
+            .expect("Unreachable: self.device_info is None")
     }
 
     /// Violate struct invariants if you want. I'm not the boss of you.
     pub unsafe fn device_info_mut(&mut self) -> &mut DeviceInfo
     {
-        self.device_info.as_mut().expect("Unreachable: self.device_info is None")
+        self.device_info
+            .as_mut()
+            .expect("Unreachable: self.device_info is None")
     }
 
     /// Get the [`nusb::Device`] associated with the connected Black Magic Probe.
@@ -185,13 +189,9 @@ impl BmpDevice
         drop(serial);
 
         // Read out the serial string descriptor
-        let serial = self
-            .device()
-            .get_string_descriptor(
-                self.serial_string_idx,
-                self.language,
-                Duration::from_secs(2)
-            )?;
+        let serial =
+            self.device()
+                .get_string_descriptor(self.serial_string_idx, self.language, Duration::from_secs(2))?;
 
         // Finally, now that we have the serial number, cache it...
         *self.serial.borrow_mut() = Some(serial);
@@ -206,17 +206,13 @@ impl BmpDevice
     /// which kind of BMD-running thing we have and what version it runs
     pub fn firmware_identity(&self) -> Result<ProbeIdentity>
     {
-        self
-            .device()
-            .get_string_descriptor(
-                self.product_string_idx,
-                self.language,
-                Duration::from_secs(2),
-            )
-            .map_err(
-                |e| ErrorKind::DeviceSeemsInvalid("no product string descriptor".into())
-                    .error_from(e).into()
-            )
+        self.device()
+            .get_string_descriptor(self.product_string_idx, self.language, Duration::from_secs(2))
+            .map_err(|e| {
+                ErrorKind::DeviceSeemsInvalid("no product string descriptor".into())
+                    .error_from(e)
+                    .into()
+            })
             .and_then(|identity| identity.try_into())
     }
 
@@ -241,7 +237,8 @@ impl BmpDevice
         Ok(format!("{}\n  Serial: {}\n  Port:  {}", identity, serial, self.port()))
     }
 
-    /// Find and return the DFU functional descriptor and its interface number for the connected Black Magic Probe device.
+    /// Find and return the DFU functional descriptor and its interface number for the connected Black Magic Probe
+    /// device.
     ///
     /// Unfortunately this only returns the DFU interface's *number* and not the interface or
     /// descriptor itself, as there are ownership issues with that and rusb does not yet
@@ -268,13 +265,13 @@ impl BmpDevice
         .ok_or_else(|| ErrorKind::DeviceSeemsInvalid("could not find DFU interface".into()).error())?;
         // Extract the first alt-mode for its extra descriptors
         let dfu_interface_descriptor = interface
-            .alt_settings().nth(0)
+            .alt_settings()
+            .nth(0)
             .ok_or_else(|| ErrorKind::DeviceSeemsInvalid("no DFU interfaces".into()).error())?;
 
         // Get the data for all the "extra" descriptors that follow the interface descriptor.
-        let extra_descriptors: Vec<_> = GenericDescriptorRef::multiple_from_bytes(
-            dfu_interface_descriptor.descriptors().as_bytes()
-        );
+        let extra_descriptors: Vec<_> =
+            GenericDescriptorRef::multiple_from_bytes(dfu_interface_descriptor.descriptors().as_bytes());
 
         // Iterate through all the "extra" descriptors to find the DFU functional descriptor.
         let dfu_func_desc_bytes: &[u8; DfuFunctionalDescriptor::LENGTH as usize] = extra_descriptors
@@ -286,9 +283,7 @@ impl BmpDevice
             .unwrap(); // Unwrap fine as we already set the length two lines above.
 
         let dfu_func_desc = DfuFunctionalDescriptor::copy_from_bytes(dfu_func_desc_bytes)
-            .map_err(|source| {
-                ErrorKind::DeviceSeemsInvalid("DFU functional descriptor".into()).error_from(source)
-            })?;
+            .map_err(|source| ErrorKind::DeviceSeemsInvalid("DFU functional descriptor".into()).error_from(source))?;
 
         Ok((dfu_interface_descriptor.interface_number(), dfu_func_desc))
     }
@@ -307,11 +302,11 @@ impl BmpDevice
             value: 0,
             index: 0,
         };
-        let _response = self.interface.as_ref().unwrap().control_out_blocking(
-            request,
-            &[],
-            Duration::from_secs(2),
-        )?;
+        let _response = self
+            .interface
+            .as_ref()
+            .unwrap()
+            .control_out_blocking(request, &[], Duration::from_secs(2))?;
 
         // Then perform a DFU_GETSTATUS request to complete the leave "request".
         let request = Control {
@@ -322,11 +317,11 @@ impl BmpDevice
             index: iface_number as u16,
         };
         let mut buf: [u8; 6] = [0; 6];
-        let status = self.interface.as_ref().unwrap().control_in_blocking(
-            request,
-            &mut buf,
-            Duration::from_secs(2),
-        )?;
+        let status = self
+            .interface
+            .as_ref()
+            .unwrap()
+            .control_in_blocking(request, &mut buf, Duration::from_secs(2))?;
 
         trace!("Device status after zero-length DNLOAD is 0x{:02x}", status);
         info!("DFU_GETSTATUS request completed. Device should now re-enumerate into runtime mode.");
@@ -351,7 +346,7 @@ impl BmpDevice
 
         let response = self.interface.as_ref().unwrap().control_out_blocking(
             request,
-            &[], // buffer
+            &[],                    // buffer
             Duration::from_secs(1), // timeout for the request
         );
 
@@ -370,7 +365,8 @@ impl BmpDevice
         Ok(())
     }
 
-    /// Requests the Black Magic Probe device to detach, switching from DFU mode to runtime mode or vice versa. You probably want [`detach_and_enumerate`].
+    /// Requests the Black Magic Probe device to detach, switching from DFU mode to runtime mode or vice versa. You
+    /// probably want [`detach_and_enumerate`].
     ///
     /// This function does not re-enumerate the device and re-initialize this structure, and thus after
     /// calling this function, the this [`BmpDevice`] instance will not be in a correct state
@@ -433,20 +429,17 @@ impl BmpDevice
         &'r R: Read,
         R: ?Sized,
     {
-        dfu_iface
-            .download(firmware, length)
-            .map_err(|source|
-                match source {
-                    DfuNusbError::Transfer(nusb::transfer::TransferError::Disconnected) => {
-                        error!("Black Magic Probe device disconnected during the flash process!");
-                        warn!(
-                            "If the device now fails to enumerate, try holding down the button while plugging the device in order to enter the bootloader."
-                        );
-                        ErrorKind::DeviceDisconnectDuringOperation.error_from(source).into()
-                    }
-                    _ => source.into(),
-                }
-            )
+        dfu_iface.download(firmware, length).map_err(|source| match source {
+            DfuNusbError::Transfer(nusb::transfer::TransferError::Disconnected) => {
+                error!("Black Magic Probe device disconnected during the flash process!");
+                warn!(
+                    "If the device now fails to enumerate, try holding down the button while plugging the device in \
+                     order to enter the bootloader."
+                );
+                ErrorKind::DeviceDisconnectDuringOperation.error_from(source).into()
+            },
+            _ => source.into(),
+        })
     }
 
     /// Downloads firmware onto the device, switching into DFU mode automatically if necessary.
@@ -454,7 +447,11 @@ impl BmpDevice
     /// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
     /// the flashing process.
     pub fn download<'r, R, P>(
-        &mut self, firmware: &'r R, length: u32, firmware_type: FirmwareType, progress: P
+        &mut self,
+        firmware: &'r R,
+        length: u32,
+        firmware_type: FirmwareType,
+        progress: P,
     ) -> Result<DfuSync>
     where
         &'r R: Read,
@@ -462,8 +459,7 @@ impl BmpDevice
         P: Fn(usize) + 'static,
     {
         if self.mode == DfuOperatingMode::Runtime {
-            self.detach_and_enumerate()
-                .wrap_err("detaching device for download")?;
+            self.detach_and_enumerate().wrap_err("detaching device for download")?;
         }
 
         let load_address = self.platform.load_address(firmware_type);
@@ -477,43 +473,45 @@ impl BmpDevice
         match dfu_dev.protocol() {
             DfuProtocol::Dfuse {
                 address: _,
-                memory_layout: _
+                memory_layout: _,
             } => println!("Erasing flash..."),
             _ => {},
         }
 
         let mut dfu_iface = dfu_dev.into_sync_dfu();
 
-        dfu_iface
-            .with_progress(progress)
-            .override_address(load_address);
+        dfu_iface.with_progress(progress).override_address(load_address);
 
         debug!("Load address: 0x{:08x}", load_address);
 
         match self.try_download(firmware, length, &mut dfu_iface) {
-            Err(error) => if let Some(DfuNusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))) =
-                error.downcast_ref::<DfuNusbError>() {
-                warn!("Device reported an error when trying to flash; going to clear status and try one more time...");
+            Err(error) => {
+                if let Some(DfuNusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))) =
+                    error.downcast_ref::<DfuNusbError>()
+                {
+                    warn!(
+                        "Device reported an error when trying to flash; going to clear status and try one more time..."
+                    );
 
-                thread::sleep(Duration::from_millis(250));
+                    thread::sleep(Duration::from_millis(250));
 
-                let request = Control {
-                    control_type: ControlType::Class,
-                    recipient: Recipient::Interface,
-                    request: DfuRequest::ClrStatus as u8,
-                    value: 0,
-                    index: 0, // iface number
-                };
+                    let request = Control {
+                        control_type: ControlType::Class,
+                        recipient: Recipient::Interface,
+                        request: DfuRequest::ClrStatus as u8,
+                        value: 0,
+                        index: 0, // iface number
+                    };
 
-                self.interface.as_ref().unwrap().control_out_blocking(
-                    request,
-                    &[],
-                    Duration::from_secs(2),
-                )?;
+                    self.interface
+                        .as_ref()
+                        .unwrap()
+                        .control_out_blocking(request, &[], Duration::from_secs(2))?;
 
-                self.try_download(firmware, length, &mut dfu_iface)
-            } else {
-                Err(error)
+                    self.try_download(firmware, length, &mut dfu_iface)
+                } else {
+                    Err(error)
+                }
             },
             result => result,
         }?;
@@ -521,14 +519,13 @@ impl BmpDevice
         Ok(dfu_iface)
     }
 
-
     /// Consume the structure and retrieve its parts.
     pub fn into_inner_parts(self) -> (DeviceInfo, Device, DfuOperatingMode)
     {
         (
             self.device_info.expect("Unreachable: self.device_info is None"),
             self.device.expect("Unreachable: self.device is None"),
-            self.mode
+            self.mode,
         )
     }
 }
@@ -561,7 +558,7 @@ impl Display for BmpDevice
                 // https://doc.rust-lang.org/stable/std/fmt/index.html#formatting-traits.
                 error!("Error formatting BlackMagicProbeDevice: {}", e);
                 "Unknown Black Magic Probe (error occurred fetching device details)".into()
-            }
+            },
         };
 
         write!(f, "{}", display_str)?;
@@ -581,12 +578,10 @@ impl<'b> Armv7mVectorTable<'b>
     fn word(&self, index: usize) -> Result<u32, TryFromSliceError>
     {
         let start = index * 4;
-        let array: [u8; 4] = self.bytes[(start)..(start + 4)]
-            .try_into()?;
+        let array: [u8; 4] = self.bytes[(start)..(start + 4)].try_into()?;
 
         Ok(u32::from_le_bytes(array))
     }
-
 
     /// Construct a conceptual Armv7m Vector Table from a bytes slice.
     pub fn from_bytes(bytes: &'b [u8]) -> Self
@@ -616,7 +611,6 @@ impl<'b> Armv7mVectorTable<'b>
     }
 }
 
-
 /// Firmware types for the Black Magic Probe.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum FirmwareType
@@ -637,20 +631,19 @@ impl FirmwareType
         let buffer = &firmware[0..(4 * 2)];
 
         let vector_table = Armv7mVectorTable::from_bytes(buffer);
-        let reset_vector = vector_table.reset_vector()
+        let reset_vector = vector_table
+            .reset_vector()
             .wrap_err("Firmware file does not seem valid: vector table too short")?;
 
         debug!("Detected reset vector in firmware file: 0x{:08x}", reset_vector);
 
         // Sanity check.
         if (reset_vector & 0x0800_0000) != 0x0800_0000 {
-            return Err(
-                eyre!(
-                    "Firmware file does not seem valid: reset vector address seems to be \
-                    outside of reasonable bounds - 0x{:08x}",
-                    reset_vector
-                )
-            );
+            return Err(eyre!(
+                "Firmware file does not seem valid: reset vector address seems to be outside of reasonable bounds - \
+                 0x{:08x}",
+                reset_vector
+            ));
         }
 
         let app_start = platform.load_address(Self::Application);
@@ -702,7 +695,6 @@ impl ValueEnum for FirmwareType
     }
 }
 
-
 /// File formats that Black Magic Probe firmware can be in.
 pub enum FirmwareFormat
 {
@@ -718,7 +710,6 @@ pub enum FirmwareFormat
 
 impl FirmwareFormat
 {
-
     /// Detect the kind of firmware from its data.
     ///
     /// Panics if `firmware.len() < 4`.
@@ -770,7 +761,8 @@ impl BmpMatcher
     /// Set the serial number to match against.
     #[must_use]
     pub fn serial<'s, IntoOptStrT>(mut self, serial: IntoOptStrT) -> Self
-        where IntoOptStrT: Into<Option<&'s str>>
+    where
+        IntoOptStrT: Into<Option<&'s str>>,
     {
         self.serial = serial.into().map(|s| s.to_string());
         self
@@ -830,12 +822,11 @@ impl BmpMatcher
         };
 
         // Filter out devices that don't match the Black Magic Probe's vid/pid in the first place.
-        let devices = devices
-            .filter(|dev| {
-                let vid = dev.vendor_id();
-                let pid = dev.product_id();
-                BmpPlatform::from_vid_pid(Vid(vid), Pid(pid)).is_some()
-            });
+        let devices = devices.filter(|dev| {
+            let vid = dev.vendor_id();
+            let pid = dev.product_id();
+            BmpPlatform::from_vid_pid(Vid(vid), Pid(pid)).is_some()
+        });
 
         for (index, device_info) in devices.enumerate() {
             // Note: the control flow in this function is kind of weird, due to the lack of early returns
@@ -849,11 +840,11 @@ impl BmpMatcher
                         // If they match, we're done here - happy days
                         Some(s) => s == serial.as_str(),
                         // Otherwise, mark teh result false
-                        None => false
+                        None => false,
                     }
-                }
+                },
                 // If no serial number was specified, treat as matching.
-                None => true
+                None => true,
             };
 
             // Consider the index to match if it equals that of the device or if one was not specified at all.
@@ -880,7 +871,6 @@ impl BmpMatcher
             }
         }
 
-
         // Now, after all this, return all the devices we found, what devices were filtered out, and any errors that
         // occured along the way.
         results
@@ -901,12 +891,12 @@ impl BmpMatchResults
     pub fn pop_all(&mut self) -> Result<Vec<BmpDevice>>
     {
         if self.found.is_empty() {
-
             // If there was only one, print that one for the user.
             if self.filtered_out.len() == 1 {
                 if let Ok(bmpdev) = BmpDevice::from_usb_device(self.filtered_out.pop().unwrap()) {
                     warn!(
-                        "Matching device not found, but and the following Black Magic Probe device was filtered out: {}",
+                        "Matching device not found, but and the following Black Magic Probe device was filtered out: \
+                         {}",
                         &bmpdev,
                     );
                 } else {
@@ -921,10 +911,12 @@ impl BmpMatchResults
                 warn!("Filter arguments (--serial, --index, --port) may be incorrect.");
             }
 
-
             if !self.errors.is_empty() {
                 warn!("Device not found and errors occurred when searching for devices.");
-                warn!("One of these may be why the Black Magic Probe device was not found: {:?}", self.errors.as_slice());
+                warn!(
+                    "One of these may be why the Black Magic Probe device was not found: {:?}",
+                    self.errors.as_slice()
+                );
             }
             return Err(ErrorKind::DeviceNotFound.error().into());
         }
@@ -943,7 +935,11 @@ impl BmpMatchResults
     {
         if self.found.is_empty() {
             if !self.filtered_out.is_empty() {
-                let (suffix, verb) = if self.filtered_out.len() > 1 { ("s", "were") } else { ("", "was") };
+                let (suffix, verb) = if self.filtered_out.len() > 1 {
+                    ("s", "were")
+                } else {
+                    ("", "was")
+                };
                 warn!(
                     "Matching device not found and {} Black Magic Probe device{} {} filtered out.",
                     self.filtered_out.len(),
@@ -955,7 +951,10 @@ impl BmpMatchResults
 
             if !self.errors.is_empty() {
                 warn!("Device not found and errors occurred when searching for devices.");
-                warn!("One of these may be why the Black Magic Probe device was not found: {:?}", self.errors.as_slice());
+                warn!(
+                    "One of these may be why the Black Magic Probe device was not found: {:?}",
+                    self.errors.as_slice()
+                );
             }
             return Err(ErrorKind::DeviceNotFound);
         }
@@ -1016,20 +1015,18 @@ pub fn wait_for_probe_reboot(port: PortId, timeout: Duration, operation: &str) -
     let mut dev = matcher.find_matching_probes().pop_single_silent();
 
     while let Err(ErrorKind::DeviceNotFound) = dev {
-
-        trace!("Waiting for probe reboot: {} ms", Instant::now().duration_since(start).as_millis());
+        trace!(
+            "Waiting for probe reboot: {} ms",
+            Instant::now().duration_since(start).as_millis()
+        );
 
         // If it's been more than the timeout length, error out.
         if Instant::now().duration_since(start) > timeout {
-            error!(
-                "Timed-out waiting for Black Magic Probe to re-enumerate!"
-            );
-            return dev
-                .map_err(
-                    |kind|
-                    Error::from(kind.error())
-                        .wrap_err("Black Magic Probe device did not come back online (invalid firmware?)")
-                )
+            error!("Timed-out waiting for Black Magic Probe to re-enumerate!");
+            return dev.map_err(|kind| {
+                Error::from(kind.error())
+                    .wrap_err("Black Magic Probe device did not come back online (invalid firmware?)")
+            });
         }
 
         // Wait 200 milliseconds between checks. Hardware is a bottleneck and we
@@ -1064,10 +1061,10 @@ pub enum BmpPlatform
 
 impl BmpPlatform
 {
+    pub const BMD_DFU_VID_PID: (Vid, Pid) = (Vid(0x1d50), Pid(0x6017));
     pub const BMD_RUNTIME_VID_PID: (Vid, Pid) = (Vid(0x1d50), Pid(0x6018));
-    pub const BMD_DFU_VID_PID:     (Vid, Pid) = (Vid(0x1d50), Pid(0x6017));
     pub const DRAGON_BOOT_VID_PID: (Vid, Pid) = (Vid(0x1209), Pid(0xbadb));
-    pub const STM32_DFU_VID_PID:   (Vid, Pid) = (Vid(0x0483), Pid(0xdf11));
+    pub const STM32_DFU_VID_PID: (Vid, Pid) = (Vid(0x0483), Pid(0xdf11));
 
     pub const fn from_vid_pid(vid: Vid, pid: Pid) -> Option<(Self, DfuOperatingMode)>
     {
