@@ -4,10 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::serial::remote::BmdAdiV5Protocol;
-
-type TargetAddr32 = u32;
-type TargetAddr64 = u64;
+use crate::serial::remote::{BmdAdiV5Protocol, TargetAddr64};
 
 /// The ADIv5 debug port associated with a JTAG TAP or a SWD interface drop of an ARM debug based device
 #[allow(unused)]

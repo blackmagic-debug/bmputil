@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use color_eyre::eyre::Result;
 
 use crate::serial::bmd_rsp::BmdRspInterface;
+use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::protocol_v0::{RemoteV0, RemoteV0Plus};
 
 pub mod adi;
@@ -32,6 +33,19 @@ pub const REMOTE_RESP_ERR: u8 = b'E';
 /// Probe does not support the request made
 pub const REMOTE_RESP_NOTSUP: u8 = b'N';
 
+pub type TargetAddr32 = u32;
+pub type TargetAddr64 = u64;
+
+/// Allignments available for use by memory accesses
+#[repr(u8)]
+pub enum Align
+{
+	As8Bit,
+	As16Bit,
+	As32Bit,
+	As64Bit,
+}
+
 /// Types implementing this trait implement the common portion of the BMD remote protocol
 /// (this includes things like comms initialisation, and clock frequency control)
 pub trait BmdRemoteProtocol
@@ -40,7 +54,7 @@ pub trait BmdRemoteProtocol
 	fn swd_init(&self) -> Result<Box<dyn BmdSwdProtocol>>;
 	fn jtag_init(&self) -> Result<Box<dyn BmdJtagProtocol>>;
 	// Higher level protocol initialisation functions
-	fn adiv5_init(&self) -> bool;
+	fn adiv5_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>;
 	fn adiv6_init(&self) -> bool;
 	fn riscv_jtag_init(&self) -> bool;
 
@@ -95,6 +109,24 @@ pub trait BmdJtagProtocol
 	fn tap_tdi_seq(&self, final_tms: bool, data_in: &[u8], clock_cycles: usize);
 	/// Perform a series of cycles on the state machine with TMS and TDI held in a set state
 	fn tap_cycle(&self, tms: bool, tdi: bool, clock_cycles: usize);
+}
+
+/// Types implementing this trait provide accelerated ADIv5 access to targets over the BMD remote protocol
+pub trait BmdAdiV5Protocol
+{
+	/// Perform a raw AP or DP register access against the target, reporting the read result back
+	fn raw_access(&self, dp: AdiV5DebugPort, rnw: u8, addr: u16, value: u32) -> u32;
+	/// Read a DP (or AP*) register from the target
+	fn dp_read(&self, dp: AdiV5DebugPort, addr: u16) -> u32;
+	/// Read an AP register from the target
+	fn ap_read(&self, ap: AdiV5AccessPort, addr: u16) -> u32;
+	/// Write an AP register on the target
+	fn ap_write(&self, ap: AdiV5AccessPort, addr: u16, value: u32);
+	/// Read memory associated with an AP from the target into the buffer passed to dest
+	fn mem_read(&self, ap: AdiV5AccessPort, dest: &mut [u8], src: TargetAddr64);
+	/// Write memory associated with an AP to the target from the buffer passed in src and with the
+	/// access alignment given by align
+	fn mem_write(&self, ap: AdiV5AccessPort, dest: TargetAddr64, src: &[u8], align: Align);
 }
 
 /// Structure representing a device on the JTAG scan chain

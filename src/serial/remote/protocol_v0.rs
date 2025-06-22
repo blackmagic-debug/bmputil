@@ -8,7 +8,9 @@ use color_eyre::eyre::{Result, eyre};
 use log::{debug, warn};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
-use crate::serial::remote::{BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR};
+use crate::serial::remote::{
+	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
+};
 
 pub struct RemoteV0
 {
@@ -105,11 +107,11 @@ impl BmdRemoteProtocol for RemoteV0
 		}
 	}
 
-	fn adiv5_init(&self) -> bool
+	fn adiv5_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
 		warn!("Falling back to non-accelerated probe interface");
 		warn!("Please update your probe's firmware for a substantial speed increase");
-		false
+		None
 	}
 
 	fn adiv6_init(&self) -> bool
@@ -168,10 +170,10 @@ impl BmdRemoteProtocol for RemoteV0Plus
 		self.0.swd_init()
 	}
 
-	fn adiv5_init(&self) -> bool
+	fn adiv5_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
 		warn!("Please update your probe's firmware for improved error handling");
-		false
+		None
 	}
 
 	fn adiv6_init(&self) -> bool
