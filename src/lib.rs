@@ -24,35 +24,35 @@ pub mod windows;
 
 pub trait BmpParams
 {
-    fn index(&self) -> Option<usize>;
-    fn serial_number(&self) -> Option<&str>;
+	fn index(&self) -> Option<usize>;
+	fn serial_number(&self) -> Option<&str>;
 }
 
 pub trait FlashParams
 {
-    fn allow_dangerous_options(&self) -> AllowDangerous;
-    fn override_firmware_type(&self) -> Option<FirmwareType>;
+	fn allow_dangerous_options(&self) -> AllowDangerous;
+	fn override_firmware_type(&self) -> Option<FirmwareType>;
 }
 
 #[derive(Clone, Copy)]
 pub enum AllowDangerous
 {
-    Never,
-    Really,
+	Never,
+	Really,
 }
 
 impl ValueEnum for AllowDangerous
 {
-    fn value_variants<'a>() -> &'a [Self]
-    {
-        &[Self::Never, Self::Really]
-    }
+	fn value_variants<'a>() -> &'a [Self]
+	{
+		&[Self::Never, Self::Really]
+	}
 
-    fn to_possible_value(&self) -> Option<PossibleValue>
-    {
-        match self {
-            Self::Never => Some("never".into()),
-            Self::Really => Some("really".into()),
-        }
-    }
+	fn to_possible_value(&self) -> Option<PossibleValue>
+	{
+		match self {
+			Self::Never => Some("never".into()),
+			Self::Really => Some("really".into()),
+		}
+	}
 }

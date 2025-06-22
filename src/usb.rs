@@ -24,11 +24,11 @@ pub struct Pid(pub u16);
 pub struct InterfaceClass(pub u8);
 impl InterfaceClass
 {
-    /// bInterfaceClass field in DFU-class interface descriptors.
-    ///
-    /// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
-    /// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
-    pub const APPLICATION_SPECIFIC: Self = Self(0xfe);
+	/// bInterfaceClass field in DFU-class interface descriptors.
+	///
+	/// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
+	/// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
+	pub const APPLICATION_SPECIFIC: Self = Self(0xfe);
 }
 
 /// Simple newtype struct for some clarity in function arguments and whatnot.
@@ -36,11 +36,11 @@ impl InterfaceClass
 pub struct InterfaceSubClass(pub u8);
 impl InterfaceSubClass
 {
-    /// bInterfaceSubClass field in DFU-class interface descriptors.
-    ///
-    /// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
-    /// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
-    pub const DFU: Self = Self(0x01);
+	/// bInterfaceSubClass field in DFU-class interface descriptors.
+	///
+	/// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
+	/// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
+	pub const DFU: Self = Self(0x01);
 }
 
 /// Simple newtype struct for some clarity in function arguments and whatnot.
@@ -48,18 +48,18 @@ impl InterfaceSubClass
 pub struct InterfaceProtocol(pub u8);
 impl InterfaceProtocol
 {
-    /// bInterfaceProtocol field in DFU-class interface descriptors while in DFU mode.
-    ///
-    /// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
-    /// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
-    #[allow(dead_code)] // XXX
-    pub const DFU_DFU_MODE: Self = Self(0x02);
-    /// bInterfaceProtocol field in DFU-class interface descriptors while in runtime mode.
-    ///
-    /// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
-    /// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
-    #[allow(dead_code)] // XXX
-    pub const DFU_RUNTIME_MODE: Self = Self(0x01);
+	/// bInterfaceProtocol field in DFU-class interface descriptors while in DFU mode.
+	///
+	/// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
+	/// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
+	#[allow(dead_code)] // XXX
+	pub const DFU_DFU_MODE: Self = Self(0x02);
+	/// bInterfaceProtocol field in DFU-class interface descriptors while in runtime mode.
+	///
+	/// \[[USB DFU Device Class Spec § 4.2.1, Table 4.1](https://usb.org/sites/default/files/DFU_1.1.pdf#page=12)
+	/// and [§ 4.2.3, Table 4.4](https://usb.org/sites/default/files/DFU_1.1.pdf#page=15)\]
+	#[allow(dead_code)] // XXX
+	pub const DFU_RUNTIME_MODE: Self = Self(0x01);
 }
 
 /// Enum of request numbers for DFU class requests.
@@ -67,13 +67,13 @@ impl InterfaceProtocol
 #[allow(dead_code)]
 pub enum DfuRequest
 {
-    Detach = 0,
-    Dnload = 1,
-    Upload = 2,
-    GetStatus = 3,
-    ClrStatus = 4,
-    GetState = 5,
-    Abort = 6,
+	Detach = 0,
+	Dnload = 1,
+	Upload = 2,
+	GetStatus = 3,
+	ClrStatus = 4,
+	GetState = 5,
+	Abort = 6,
 }
 
 /// Enum representing the two "modes" a DFU-class device can be in.
@@ -87,91 +87,91 @@ pub enum DfuRequest
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum DfuOperatingMode
 {
-    Runtime,
-    FirmwareUpgrade,
+	Runtime,
+	FirmwareUpgrade,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GenericDescriptorRef<'a>
 {
-    pub raw: &'a [u8],
+	pub raw: &'a [u8],
 }
 
 impl<'a> GenericDescriptorRef<'a>
 {
-    /// Returns the first descriptor found.
-    ///
-    /// Panics if `bytes.len()` < `bytes[0]`.
-    pub fn single_from_bytes(bytes: &'a [u8]) -> Self
-    {
-        let length = bytes[0] as usize;
+	/// Returns the first descriptor found.
+	///
+	/// Panics if `bytes.len()` < `bytes[0]`.
+	pub fn single_from_bytes(bytes: &'a [u8]) -> Self
+	{
+		let length = bytes[0] as usize;
 
-        Self {
-            raw: &bytes[0..length],
-        }
-    }
+		Self {
+			raw: &bytes[0..length],
+		}
+	}
 
-    /// Panics if any descriptors have an invalid size.
-    pub fn multiple_from_bytes(bytes: &'a [u8]) -> Vec<Self>
-    {
-        let mut v: Vec<Self> = Vec::new();
+	/// Panics if any descriptors have an invalid size.
+	pub fn multiple_from_bytes(bytes: &'a [u8]) -> Vec<Self>
+	{
+		let mut v: Vec<Self> = Vec::new();
 
-        let mut current_bytes = &bytes[0..];
+		let mut current_bytes = &bytes[0..];
 
-        loop {
-            let descriptor = Self::single_from_bytes(current_bytes);
-            let parsed_count = descriptor.length_usize();
-            let remaining = current_bytes.len() - parsed_count;
-            v.push(descriptor);
-            if remaining == 0 {
-                break;
-            } else if remaining > 2 {
-                current_bytes = &current_bytes[parsed_count..];
-            } else {
-                panic!("Descriptor seems to have an invalid size of {}!", remaining);
-            }
-        }
+		loop {
+			let descriptor = Self::single_from_bytes(current_bytes);
+			let parsed_count = descriptor.length_usize();
+			let remaining = current_bytes.len() - parsed_count;
+			v.push(descriptor);
+			if remaining == 0 {
+				break;
+			} else if remaining > 2 {
+				current_bytes = &current_bytes[parsed_count..];
+			} else {
+				panic!("Descriptor seems to have an invalid size of {}!", remaining);
+			}
+		}
 
-        v
-    }
+		v
+	}
 
-    #[allow(dead_code)] // XXX
-    pub fn length(&self) -> u8
-    {
-        self.raw[0]
-    }
+	#[allow(dead_code)] // XXX
+	pub fn length(&self) -> u8
+	{
+		self.raw[0]
+	}
 
-    pub fn length_usize(&self) -> usize
-    {
-        self.raw[0] as usize
-    }
+	pub fn length_usize(&self) -> usize
+	{
+		self.raw[0] as usize
+	}
 
-    pub fn descriptor_type(&self) -> u8
-    {
-        self.raw[1]
-    }
+	pub fn descriptor_type(&self) -> u8
+	{
+		self.raw[1]
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Error)]
 pub enum DescriptorConvertError
 {
-    #[error(
-        "bLength field ({provided_length}) in provided data does not match the correct value({correct_length}) for \
-         this descriptor type"
-    )]
-    LengthFieldMismatch
-    {
-        provided_length: u8, correct_length: u8
-    },
+	#[error(
+		"bLength field ({provided_length}) in provided data does not match the correct value({correct_length}) for \
+		 this descriptor type"
+	)]
+	LengthFieldMismatch
+	{
+		provided_length: u8, correct_length: u8
+	},
 
-    #[error(
-        "bDescriptorType field ({provided_type}) in provided data does not match the correctvalue ({correct_type}) \
-         for this descriptor type"
-    )]
-    DescriptorTypeMismatch
-    {
-        provided_type: u8, correct_type: u8
-    },
+	#[error(
+		"bDescriptorType field ({provided_type}) in provided data does not match the correctvalue ({correct_type}) \
+		 for this descriptor type"
+	)]
+	DescriptorTypeMismatch
+	{
+		provided_type: u8, correct_type: u8
+	},
 }
 
 /// Structure of the DFU-class functional descriptor.
@@ -184,122 +184,122 @@ pub enum DescriptorConvertError
 #[repr(C)]
 pub struct DfuFunctionalDescriptor
 {
-    pub bLength: u8,         // Should be 0x09.
-    pub bDescriptorType: u8, // Should be 0x21.
-    pub bmAttributes: u8,
-    pub wDetachTimeOut: u16,
-    pub wTransferSize: u16,
-    pub bcdDFUVersion: u16,
+	pub bLength: u8,         // Should be 0x09.
+	pub bDescriptorType: u8, // Should be 0x21.
+	pub bmAttributes: u8,
+	pub wDetachTimeOut: u16,
+	pub wTransferSize: u16,
+	pub bcdDFUVersion: u16,
 }
 
 impl DfuFunctionalDescriptor
 {
-    pub const LENGTH: u8 = 0x09;
-    pub const TYPE: u8 = 0x21;
+	pub const LENGTH: u8 = 0x09;
+	pub const TYPE: u8 = 0x21;
 
-    /// Constructs a [DfuFunctionalDescriptor] from a byte slice, via per-field copy.
-    pub fn copy_from_bytes(bytes: &[u8; 0x09]) -> Result<Self, DescriptorConvertError>
-    {
-        if bytes[0] != Self::LENGTH {
-            return Err(DescriptorConvertError::LengthFieldMismatch {
-                provided_length: bytes[0],
-                correct_length: Self::LENGTH,
-            });
-        }
+	/// Constructs a [DfuFunctionalDescriptor] from a byte slice, via per-field copy.
+	pub fn copy_from_bytes(bytes: &[u8; 0x09]) -> Result<Self, DescriptorConvertError>
+	{
+		if bytes[0] != Self::LENGTH {
+			return Err(DescriptorConvertError::LengthFieldMismatch {
+				provided_length: bytes[0],
+				correct_length: Self::LENGTH,
+			});
+		}
 
-        if bytes[1] != Self::TYPE {
-            return Err(DescriptorConvertError::DescriptorTypeMismatch {
-                provided_type: bytes[0],
-                correct_type: Self::TYPE,
-            });
-        }
+		if bytes[1] != Self::TYPE {
+			return Err(DescriptorConvertError::DescriptorTypeMismatch {
+				provided_type: bytes[0],
+				correct_type: Self::TYPE,
+			});
+		}
 
-        Ok(Self {
-            bLength: bytes[0],
-            bDescriptorType: bytes[1],
-            bmAttributes: bytes[2],
-            wDetachTimeOut: u16::from_le_bytes(bytes[3..=4].try_into().unwrap()),
-            wTransferSize: u16::from_le_bytes(bytes[5..=6].try_into().unwrap()),
-            bcdDFUVersion: u16::from_le_bytes(bytes[7..=8].try_into().unwrap()),
-        })
-    }
+		Ok(Self {
+			bLength: bytes[0],
+			bDescriptorType: bytes[1],
+			bmAttributes: bytes[2],
+			wDetachTimeOut: u16::from_le_bytes(bytes[3..=4].try_into().unwrap()),
+			wTransferSize: u16::from_le_bytes(bytes[5..=6].try_into().unwrap()),
+			bcdDFUVersion: u16::from_le_bytes(bytes[7..=8].try_into().unwrap()),
+		})
+	}
 }
 
 // Abstraction of an arbitrary nusb device's location on the host system
 #[derive(Debug, Eq, Clone)]
 pub struct PortId
 {
-    bus_number: u8,
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    path: PathBuf,
-    #[cfg(target_os = "windows")]
-    port_number: u32,
-    #[cfg(target_os = "macos")]
-    location: u32,
+	bus_number: u8,
+	#[cfg(any(target_os = "linux", target_os = "android"))]
+	path: PathBuf,
+	#[cfg(target_os = "windows")]
+	port_number: u32,
+	#[cfg(target_os = "macos")]
+	location: u32,
 }
 
 impl PortId
 {
-    pub fn new(device: &DeviceInfo) -> Self
-    {
-        Self {
-            bus_number: device.bus_number(),
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            path: device.sysfs_path().to_path_buf(),
-            #[cfg(target_os = "windows")]
-            port_number: device.port_number(),
-            #[cfg(target_os = "macos")]
-            location: device.location_id(),
-        }
-    }
+	pub fn new(device: &DeviceInfo) -> Self
+	{
+		Self {
+			bus_number: device.bus_number(),
+			#[cfg(any(target_os = "linux", target_os = "android"))]
+			path: device.sysfs_path().to_path_buf(),
+			#[cfg(target_os = "windows")]
+			port_number: device.port_number(),
+			#[cfg(target_os = "macos")]
+			location: device.location_id(),
+		}
+	}
 }
 
 impl PartialEq for PortId
 {
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    fn eq(&self, other: &Self) -> bool
-    {
-        return self.bus_number == other.bus_number && self.path == other.path;
-    }
+	#[cfg(any(target_os = "linux", target_os = "android"))]
+	fn eq(&self, other: &Self) -> bool
+	{
+		return self.bus_number == other.bus_number && self.path == other.path;
+	}
 
-    #[cfg(target_os = "windows")]
-    fn eq(&self, other: &Self) -> bool
-    {
-        return self.bus_number == other.bus_number && self.port_number == other.port_number;
-    }
+	#[cfg(target_os = "windows")]
+	fn eq(&self, other: &Self) -> bool
+	{
+		return self.bus_number == other.bus_number && self.port_number == other.port_number;
+	}
 
-    #[cfg(target_os = "macos")]
-    fn eq(&self, other: &Self) -> bool
-    {
-        return self.bus_number == other.bus_number && self.location == other.location;
-    }
+	#[cfg(target_os = "macos")]
+	fn eq(&self, other: &Self) -> bool
+	{
+		return self.bus_number == other.bus_number && self.location == other.location;
+	}
 }
 
 impl Display for PortId
 {
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        let port = self.path.file_name().map_or_else(
-            || Ok("Invalid PortId (bad path)".into()),
-            |name| name.to_os_string().into_string(),
-        );
+	#[cfg(any(target_os = "linux", target_os = "android"))]
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+	{
+		let port = self.path.file_name().map_or_else(
+			|| Ok("Invalid PortId (bad path)".into()),
+			|name| name.to_os_string().into_string(),
+		);
 
-        match port {
-            Ok(port) => write!(f, "{}", port),
-            Err(_) => Err(fmt::Error),
-        }
-    }
+		match port {
+			Ok(port) => write!(f, "{}", port),
+			Err(_) => Err(fmt::Error),
+		}
+	}
 
-    #[cfg(target_os = "windows")]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        write!(f, "{}-{}", self.bus_number, self.port_number)
-    }
+	#[cfg(target_os = "windows")]
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+	{
+		write!(f, "{}-{}", self.bus_number, self.port_number)
+	}
 
-    #[cfg(target_os = "macos")]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        write!(f, "{}-{}", self.bus_number, self.location)
-    }
+	#[cfg(target_os = "macos")]
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+	{
+		write!(f, "{}-{}", self.bus_number, self.location)
+	}
 }

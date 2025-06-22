@@ -5,6 +5,6 @@
 
 fn main()
 {
-    // Statically link the Visual C runtime on Windows.
-    static_vcruntime::metabuild();
+	// Statically link the Visual C runtime on Windows.
+	static_vcruntime::metabuild();
 }
