@@ -68,9 +68,18 @@ pub trait BmdRemoteProtocol
 /// Types implementing this trait provide raw SWD access to targets over the BMD remote protocol
 pub trait BmdSwdProtocol
 {
+	/// Executes a read of the SWD bus for `clock_cycles` clock cycles, for up to 32 cycles,
+	/// and returns the result as a 32-bit integer
 	fn seq_in(&self, clock_cycles: usize) -> u32;
+	/// The same as seq_in but then does one additional cycle to read a parity bit, checks
+	/// the parity bit's value, and then only returns the result if the parity check passes -
+	/// returns None otherwise
 	fn seq_in_parity(&self, clock_cycles: usize) -> Option<u32>;
+	/// Executes a write to the SWD bus for `clock_cycles` clock cycles, for up to 32 cycles,
+	/// putting out the value provided to the bus
 	fn seq_out(&self, value: u32, clock_cycles: usize);
+	/// The same as seq_out but then computes the parity bit for the provided value, and
+	/// does one additional cycle to write that parity bit out to thebus
 	fn seq_out_parity(&self, value: u32, clock_cycles: usize);
 }
 

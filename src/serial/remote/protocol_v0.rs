@@ -135,6 +135,8 @@ impl BmdRemoteProtocol for RemoteV0
 		false
 	}
 
+	/// This is intentionally a no-op on this version of the protocol as the probe has no idea what to do
+	/// with the information this would provide. Protocol v1 introduces this machinary
 	fn add_jtag_dev(&self, _dev_index: u32, _jtag_dev: &JtagDev) {}
 
 	fn get_comms_frequency(&self) -> u32
