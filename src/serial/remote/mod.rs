@@ -10,10 +10,12 @@ use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::protocol_v0::{RemoteV0, RemoteV0Plus};
 use crate::serial::remote::protocol_v1::RemoteV1;
+use crate::serial::remote::protocol_v2::RemoteV2;
 
 pub mod adi;
 mod protocol_v0;
 mod protocol_v1;
+mod protocol_v2;
 
 /// This is the max possible size of a remote protocol packet which a hard limitation of the
 /// firmware on the probe - 1KiB is all the buffer that could be spared.
@@ -194,6 +196,7 @@ impl ProtocolVersion
 			Self::V0 => Box::new(RemoteV0::from(interface)),
 			Self::V0Plus => Box::new(RemoteV0Plus::from(interface)),
 			Self::V1 => Box::new(RemoteV1::from(interface)),
+			Self::V2 => Box::new(RemoteV2::from(interface)),
 			_ => todo!(),
 		}
 	}

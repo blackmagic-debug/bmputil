@@ -62,7 +62,7 @@ impl RemoteV0
 		}
 	}
 
-	fn interface(&self) -> MutexGuard<'_, BmdRspInterface>
+	pub(crate) fn interface(&self) -> MutexGuard<'_, BmdRspInterface>
 	{
 		self.interface.lock().unwrap()
 	}

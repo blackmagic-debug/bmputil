@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use color_eyre::eyre::Result;
 use log::warn;
@@ -39,6 +39,11 @@ impl RemoteV1
 	pub(crate) fn new(interface: Arc<Mutex<BmdRspInterface>>) -> Self
 	{
 		Self(RemoteV0::new(interface))
+	}
+
+	pub(crate) fn interface(&self) -> MutexGuard<BmdRspInterface>
+	{
+		self.0.interface()
 	}
 
 	pub(crate) fn clone_interface(&self) -> Arc<Mutex<BmdRspInterface>>
