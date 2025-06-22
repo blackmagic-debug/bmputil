@@ -9,6 +9,7 @@ use color_eyre::eyre::Result;
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::protocol_v0::{RemoteV0, RemoteV0Plus};
 
+pub mod adi;
 mod protocol_v0;
 
 /// This is the max possible size of a remote protocol packet which a hard limitation of the
