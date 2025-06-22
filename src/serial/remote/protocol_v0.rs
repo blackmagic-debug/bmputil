@@ -8,8 +8,9 @@ use color_eyre::eyre::{Result, eyre};
 use log::{debug, warn};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
+use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::{
-	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
+	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR, TargetAddr64,
 };
 
 pub struct RemoteV0
@@ -26,6 +27,12 @@ pub struct RemoteV0JTAG
 }
 
 pub struct RemoteV0SWD
+{
+	#[allow(unused)]
+	interface: Arc<Mutex<BmdRspInterface>>,
+}
+
+pub struct RemoteV0ADIv5
 {
 	#[allow(unused)]
 	interface: Arc<Mutex<BmdRspInterface>>,
@@ -158,6 +165,14 @@ impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0Plus
 	}
 }
 
+impl RemoteV0Plus
+{
+	pub(crate) fn clone_interface(&self) -> Arc<Mutex<BmdRspInterface>>
+	{
+		self.0.clone_interface()
+	}
+}
+
 impl BmdRemoteProtocol for RemoteV0Plus
 {
 	fn jtag_init(&self) -> Result<Box<dyn BmdJtagProtocol>>
@@ -173,7 +188,7 @@ impl BmdRemoteProtocol for RemoteV0Plus
 	fn adiv5_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
 		warn!("Please update your probe's firmware for improved error handling");
-		None
+		Some(Arc::new(RemoteV0ADIv5::from(self.clone_interface())))
 	}
 
 	fn adiv6_init(&self) -> bool
@@ -284,6 +299,46 @@ impl BmdSwdProtocol for RemoteV0SWD
 	}
 
 	fn seq_out_parity(&self, _value: u32, _clock_cycles: usize)
+	{
+		//
+	}
+}
+
+impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0ADIv5
+{
+	fn from(interface: Arc<Mutex<BmdRspInterface>>) -> Self
+	{
+		Self {
+			interface,
+		}
+	}
+}
+
+impl BmdAdiV5Protocol for RemoteV0ADIv5
+{
+	fn raw_access(&self, _dp: AdiV5DebugPort, _rnw: u8, _addr: u16, _value: u32) -> u32
+	{
+		0
+	}
+
+	fn dp_read(&self, _dp: AdiV5DebugPort, _addr: u16) -> u32
+	{
+		0
+	}
+
+	fn ap_read(&self, _ap: AdiV5AccessPort, _addr: u16) -> u32
+	{
+		0
+	}
+
+	fn ap_write(&self, _ap: AdiV5AccessPort, _addr: u16, _value: u32) {}
+
+	fn mem_read(&self, _ap: AdiV5AccessPort, _dest: &mut [u8], _src: TargetAddr64)
+	{
+		//
+	}
+
+	fn mem_write(&self, _ap: AdiV5AccessPort, _dest: TargetAddr64, _src: &[u8], _align: Align)
 	{
 		//
 	}
