@@ -10,7 +10,8 @@ use log::{debug, warn};
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::{
-	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR, TargetAddr64,
+	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
+	REMOTE_RESP_ERR, TargetAddr64,
 };
 
 pub struct RemoteV0
@@ -128,11 +129,11 @@ impl BmdRemoteProtocol for RemoteV0
 		None
 	}
 
-	fn riscv_jtag_init(&self) -> bool
+	fn riscv_jtag_init(&self) -> Option<Arc<dyn BmdRiscvProtocol>>
 	{
 		warn!("Falling back to non-accelerated probe interface");
 		warn!("Please update your probe's firmware for a substantial speed increase");
-		false
+		None
 	}
 
 	/// This is intentionally a no-op on this version of the protocol as the probe has no idea what to do
@@ -198,7 +199,7 @@ impl BmdRemoteProtocol for RemoteV0Plus
 		self.0.adiv6_init()
 	}
 
-	fn riscv_jtag_init(&self) -> bool
+	fn riscv_jtag_init(&self) -> Option<Arc<dyn BmdRiscvProtocol>>
 	{
 		self.0.riscv_jtag_init()
 	}

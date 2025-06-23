@@ -11,7 +11,7 @@ use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::protocol_v0::RemoteV0JTAG;
 use crate::serial::remote::protocol_v1::RemoteV1;
 use crate::serial::remote::{
-	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
+	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
 };
 
 pub struct RemoteV2(RemoteV1);
@@ -84,7 +84,7 @@ impl BmdRemoteProtocol for RemoteV2
 		self.0.adiv6_init()
 	}
 
-	fn riscv_jtag_init(&self) -> bool
+	fn riscv_jtag_init(&self) -> Option<Arc<dyn BmdRiscvProtocol>>
 	{
 		self.0.riscv_jtag_init()
 	}
