@@ -5,4 +5,12 @@
 	"rust-analyzer.imports.granularity.group": "preserve",
 	"rust-analyzer.checkOnSave": true,
 	"rust-analyzer.check.command": "clippy",
+	"rust-analyzer.rustfmt.overrideCommand": [
+		"rustfmt",
+		"+nightly",
+	],
+	"[rust]":
+	{
+		"editor.formatOnSave": true,
+	},
 }
