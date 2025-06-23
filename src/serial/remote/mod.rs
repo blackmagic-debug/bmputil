@@ -195,15 +195,15 @@ pub fn decode_response(response: &str, digits: usize) -> u64
 impl ProtocolVersion
 {
 	/// Extract an instance of the BMD remote protocol communication object for this version of the protocol
-	pub fn protocol_impl(&self, interface: Arc<Mutex<BmdRspInterface>>) -> Box<dyn BmdRemoteProtocol>
+	pub fn protocol_impl(&self, interface: Arc<Mutex<BmdRspInterface>>) -> Result<Box<dyn BmdRemoteProtocol>>
 	{
 		match self {
-			Self::V0 => Box::new(RemoteV0::from(interface)),
-			Self::V0Plus => Box::new(RemoteV0Plus::from(interface)),
-			Self::V1 => Box::new(RemoteV1::from(interface)),
-			Self::V2 => Box::new(RemoteV2::from(interface)),
-			Self::V3 => Box::new(RemoteV3::from(interface)),
-			Self::V4 => Box::new(RemoteV4::from(interface)),
+			Self::V0 => Ok(Box::new(RemoteV0::from(interface))),
+			Self::V0Plus => Ok(Box::new(RemoteV0Plus::from(interface))),
+			Self::V1 => Ok(Box::new(RemoteV1::from(interface))),
+			Self::V2 => Ok(Box::new(RemoteV2::from(interface))),
+			Self::V3 => Ok(Box::new(RemoteV3::from(interface))),
+			Self::V4 => Ok(Box::new(RemoteV4::try_from(interface)?)),
 			_ => todo!(),
 		}
 	}

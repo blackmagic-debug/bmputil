@@ -109,7 +109,7 @@ impl BmdRspInterface
 			.lock()
 			.map_err(|_| eyre!("Failed to aquire lock on interface to access remote protocol"))?
 			.protocol_version;
-		Ok(protocol.protocol_impl(interface.clone()))
+		protocol.protocol_impl(interface.clone())
 	}
 
 	pub(crate) fn buffer_write(&mut self, message: &str) -> Result<()>

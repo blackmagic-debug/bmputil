@@ -4,11 +4,13 @@
 
 use std::sync::{Arc, Mutex};
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Report, Result, eyre};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::protocol_v3::RemoteV3;
-use crate::serial::remote::{BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev};
+use crate::serial::remote::{
+	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_OK,
+};
 
 pub struct RemoteV4
 {
@@ -18,9 +20,14 @@ pub struct RemoteV4
 	inner_protocol: RemoteV3,
 }
 
-impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV4
+/// This command asks the probe what high-level protocol accelerations it supports
+const REMOTE_HL_ACCEL: &str = "!HA#";
+
+impl TryFrom<Arc<Mutex<BmdRspInterface>>> for RemoteV4
 {
-	fn from(interface: Arc<Mutex<BmdRspInterface>>) -> Self
+	type Error = Report;
+
+	fn try_from(interface: Arc<Mutex<BmdRspInterface>>) -> Result<Self>
 	{
 		Self::new(interface)
 	}
@@ -28,11 +35,27 @@ impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV4
 
 impl RemoteV4
 {
-	pub(crate) fn new(interface: Arc<Mutex<BmdRspInterface>>) -> Self
+	pub(crate) fn new(interface: Arc<Mutex<BmdRspInterface>>) -> Result<Self>
 	{
-		Self {
-			inner_protocol: RemoteV3::new(interface),
+		// Before we can create an instance of the remote protocol structure, we first need to ask
+		// the probe about supported accelerations as this determines the results of asking for the
+		// high-level accelerations below. Start by firing off the request to the probe
+		let mut iface = interface.lock().unwrap();
+		iface.buffer_write(REMOTE_HL_ACCEL)?;
+		// Read back the result and relinquish our comms lock so structure creation can work
+		let buffer = iface.buffer_read()?;
+		drop(iface);
+		// Check for communication failures
+		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+			return Err(eyre!(
+				"Error talking with probe, expected OK response to supported accelerations query, got {:?}",
+				buffer
+			));
 		}
+
+		Ok(Self {
+			inner_protocol: RemoteV3::new(interface),
+		})
 	}
 }
 
