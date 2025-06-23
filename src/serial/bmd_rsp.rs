@@ -102,11 +102,14 @@ impl BmdRspInterface
 	}
 
 	/// Extract the remote protocol object to use to talk with this probe
-	pub fn remote(self) -> Box<dyn BmdRemoteProtocol>
+	pub fn remote(self) -> Result<Box<dyn BmdRemoteProtocol>>
 	{
 		let interface = Arc::new(Mutex::new(self));
-		let iface = interface.lock().unwrap();
-		iface.protocol_version.protocol_impl(interface.clone())
+		let protocol = interface
+			.lock()
+			.map_err(|_| eyre!("Failed to aquire lock on interface to access remote protocol"))?
+			.protocol_version;
+		Ok(protocol.protocol_impl(interface.clone()))
 	}
 
 	pub(crate) fn buffer_write(&mut self, message: &str) -> Result<()>
