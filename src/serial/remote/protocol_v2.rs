@@ -79,7 +79,7 @@ impl BmdRemoteProtocol for RemoteV2
 		self.0.adiv5_init()
 	}
 
-	fn adiv6_init(&self) -> bool
+	fn adiv6_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
 		self.0.adiv6_init()
 	}

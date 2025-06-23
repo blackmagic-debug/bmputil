@@ -121,11 +121,11 @@ impl BmdRemoteProtocol for RemoteV0
 		None
 	}
 
-	fn adiv6_init(&self) -> bool
+	fn adiv6_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
 		warn!("Falling back to non-accelerated probe interface");
 		warn!("Please update your probe's firmware for a substantial speed increase");
-		false
+		None
 	}
 
 	fn riscv_jtag_init(&self) -> bool
@@ -193,7 +193,7 @@ impl BmdRemoteProtocol for RemoteV0Plus
 		Some(Arc::new(RemoteV0ADIv5::from(self.clone_interface())))
 	}
 
-	fn adiv6_init(&self) -> bool
+	fn adiv6_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
 		self.0.adiv6_init()
 	}

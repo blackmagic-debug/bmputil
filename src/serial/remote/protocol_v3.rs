@@ -61,7 +61,7 @@ impl BmdRemoteProtocol for RemoteV3
 		Some(Arc::new(RemoteV3ADIv5::from(self.clone_interface())))
 	}
 
-	fn adiv6_init(&self) -> bool
+	fn adiv6_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
 		self.0.adiv6_init()
 	}

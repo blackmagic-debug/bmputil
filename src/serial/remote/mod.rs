@@ -63,7 +63,7 @@ pub trait BmdRemoteProtocol
 	fn jtag_init(&self) -> Result<Box<dyn BmdJtagProtocol>>;
 	// Higher level protocol initialisation functions
 	fn adiv5_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>;
-	fn adiv6_init(&self) -> bool;
+	fn adiv6_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>;
 	fn riscv_jtag_init(&self) -> bool;
 
 	// Probe operation control functions

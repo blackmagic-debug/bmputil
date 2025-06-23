@@ -114,9 +114,9 @@ impl BmdRemoteProtocol for RemoteV4
 		}
 	}
 
-	fn adiv6_init(&self) -> bool
+	fn adiv6_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
-		false
+		None
 	}
 
 	fn riscv_jtag_init(&self) -> bool
