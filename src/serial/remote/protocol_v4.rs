@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 
 use bitmask_enum::bitmask;
@@ -78,7 +79,7 @@ impl RemoteV4
 		// Decode the response and translate the supported accelerations bitmask to our internal
 		// enumeration of accelerations
 		let accelerations = Acceleration::from(decode_response(&buffer[1..], 8));
-		debug!("Probe supports the following accelerations: {:?}", accelerations);
+		debug!("Probe supports the following accelerations: {}", accelerations);
 
 		Ok(Self {
 			inner_protocol: RemoteV3::new(interface),
@@ -184,5 +185,26 @@ impl BmdAdiV5Protocol for RemoteV4ADIv5
 	fn mem_write(&self, _ap: AdiV5AccessPort, _dest: TargetAddr64, _src: &[u8], _align: Align)
 	{
 		//
+	}
+}
+
+impl Display for Acceleration
+{
+	fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		let mut accelerations = Vec::with_capacity(4);
+		if self.contains(Self::ADIv5) {
+			accelerations.push("ADIv5");
+		}
+		if self.contains(Self::ADIv6) {
+			accelerations.push("ADIv6");
+		}
+		if self.contains(Self::RiscV) {
+			accelerations.push("RISC-V");
+		}
+		if self.contains(Self::CortexAR) {
+			accelerations.push("Cortex-A/R");
+		}
+		write!(fmt, "{}", accelerations.join(", "))
 	}
 }
