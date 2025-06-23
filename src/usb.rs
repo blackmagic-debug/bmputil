@@ -259,19 +259,19 @@ impl PartialEq for PortId
 	#[cfg(any(target_os = "linux", target_os = "android"))]
 	fn eq(&self, other: &Self) -> bool
 	{
-		return self.bus_number == other.bus_number && self.path == other.path;
+		self.bus_number == other.bus_number && self.path == other.path
 	}
 
 	#[cfg(target_os = "windows")]
 	fn eq(&self, other: &Self) -> bool
 	{
-		return self.bus_number == other.bus_number && self.port_number == other.port_number;
+		self.bus_number == other.bus_number && self.port_number == other.port_number
 	}
 
 	#[cfg(target_os = "macos")]
 	fn eq(&self, other: &Self) -> bool
 	{
-		return self.bus_number == other.bus_number && self.location == other.location;
+		self.bus_number == other.bus_number && self.location == other.location
 	}
 }
 
