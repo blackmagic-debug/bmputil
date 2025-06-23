@@ -34,6 +34,12 @@ pub struct RemoteV4ADIv5
 	interface: Arc<Mutex<BmdRspInterface>>,
 }
 
+pub struct RemoteV4ADIv6
+{
+	#[allow(unused)]
+	interface: Arc<Mutex<BmdRspInterface>>,
+}
+
 #[bitmask(u64)]
 #[bitmask_config(vec_debug)]
 enum Acceleration
@@ -116,7 +122,11 @@ impl BmdRemoteProtocol for RemoteV4
 
 	fn adiv6_init(&self) -> Option<Arc<dyn BmdAdiV5Protocol>>
 	{
-		None
+		if self.accelerations.contains(Acceleration::ADIv6) {
+			Some(Arc::new(RemoteV4ADIv6::from(self.clone_interface())))
+		} else {
+			None
+		}
 	}
 
 	fn riscv_jtag_init(&self) -> bool
@@ -156,6 +166,49 @@ impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV4ADIv5
 }
 
 impl BmdAdiV5Protocol for RemoteV4ADIv5
+{
+	fn raw_access(&self, _dp: AdiV5DebugPort, _rnw: u8, _addr: u16, _value: u32) -> u32
+	{
+		0
+	}
+
+	fn dp_read(&self, _dp: AdiV5DebugPort, _addr: u16) -> u32
+	{
+		0
+	}
+
+	fn ap_read(&self, _ap: AdiV5AccessPort, _addr: u16) -> u32
+	{
+		0
+	}
+
+	fn ap_write(&self, _ap: AdiV5AccessPort, _addr: u16, _value: u32)
+	{
+		//
+	}
+
+	fn mem_read(&self, _ap: AdiV5AccessPort, _dest: &mut [u8], _src: TargetAddr64)
+	{
+		//
+	}
+
+	fn mem_write(&self, _ap: AdiV5AccessPort, _dest: TargetAddr64, _src: &[u8], _align: Align)
+	{
+		//
+	}
+}
+
+impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV4ADIv6
+{
+	fn from(interface: Arc<Mutex<BmdRspInterface>>) -> Self
+	{
+		Self {
+			interface,
+		}
+	}
+}
+
+impl BmdAdiV5Protocol for RemoteV4ADIv6
 {
 	fn raw_access(&self, _dp: AdiV5DebugPort, _rnw: u8, _addr: u16, _value: u32) -> u32
 	{
