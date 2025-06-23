@@ -13,6 +13,7 @@ use crate::serial::remote::protocol_v1::RemoteV1;
 use crate::serial::remote::protocol_v2::RemoteV2;
 use crate::serial::remote::protocol_v3::RemoteV3;
 use crate::serial::remote::protocol_v4::RemoteV4;
+use crate::serial::remote::riscv_debug::RiscvDmi;
 
 pub mod adi;
 mod protocol_v0;
@@ -20,6 +21,7 @@ mod protocol_v1;
 mod protocol_v2;
 mod protocol_v3;
 mod protocol_v4;
+pub mod riscv_debug;
 
 /// This is the max possible size of a remote protocol packet which a hard limitation of the
 /// firmware on the probe - 1KiB is all the buffer that could be spared.
@@ -44,7 +46,7 @@ pub const REMOTE_RESP_NOTSUP: u8 = b'N';
 pub type TargetAddr32 = u32;
 pub type TargetAddr64 = u64;
 
-/// Allignments available for use by memory accesses
+/// Alignments available for use by memory accesses
 #[repr(u8)]
 pub enum Align
 {
@@ -144,6 +146,12 @@ pub trait BmdAdiV5Protocol
 	/// Write memory associated with an AP to the target from the buffer passed in src and with the
 	/// access alignment given by align
 	fn mem_write(&self, ap: AdiV5AccessPort, dest: TargetAddr64, src: &[u8], align: Align);
+}
+
+pub trait BmdRiscvProtocol
+{
+	fn dmi_read(&self, dmi: RiscvDmi, address: u32) -> Option<u32>;
+	fn dmi_write(&self, dmi: RiscvDmi, address: u32, value: u32) -> bool;
 }
 
 /// Structure representing a device on the JTAG scan chain
