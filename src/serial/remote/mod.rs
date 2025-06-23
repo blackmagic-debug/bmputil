@@ -12,12 +12,14 @@ use crate::serial::remote::protocol_v0::{RemoteV0, RemoteV0Plus};
 use crate::serial::remote::protocol_v1::RemoteV1;
 use crate::serial::remote::protocol_v2::RemoteV2;
 use crate::serial::remote::protocol_v3::RemoteV3;
+use crate::serial::remote::protocol_v4::RemoteV4;
 
 pub mod adi;
 mod protocol_v0;
 mod protocol_v1;
 mod protocol_v2;
 mod protocol_v3;
+mod protocol_v4;
 
 /// This is the max possible size of a remote protocol packet which a hard limitation of the
 /// firmware on the probe - 1KiB is all the buffer that could be spared.
@@ -200,6 +202,7 @@ impl ProtocolVersion
 			Self::V1 => Box::new(RemoteV1::from(interface)),
 			Self::V2 => Box::new(RemoteV2::from(interface)),
 			Self::V3 => Box::new(RemoteV3::from(interface)),
+			Self::V4 => Box::new(RemoteV4::from(interface)),
 			_ => todo!(),
 		}
 	}
