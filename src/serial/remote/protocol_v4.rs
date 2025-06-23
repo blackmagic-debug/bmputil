@@ -4,12 +4,14 @@
 
 use std::sync::{Arc, Mutex};
 
+use bitmask_enum::bitmask;
 use color_eyre::eyre::{Report, Result, eyre};
+use log::debug;
 
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::protocol_v3::RemoteV3;
 use crate::serial::remote::{
-	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_OK,
+	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_OK, decode_response,
 };
 
 pub struct RemoteV4
@@ -18,6 +20,19 @@ pub struct RemoteV4
 	/// can access the unchanged machinary from it such as the SWD and JTAG low-level protocol components.
 	/// This version of the protocol defines new high-level protocol components and support commands only.
 	inner_protocol: RemoteV3,
+	/// Bitmask of the accelerations supported by this probe
+	#[allow(unused)]
+	accelerations: Acceleration,
+}
+
+#[bitmask(u64)]
+#[bitmask_config(vec_debug)]
+enum Acceleration
+{
+	ADIv5,
+	CortexAR,
+	RiscV,
+	ADIv6,
 }
 
 /// This command asks the probe what high-level protocol accelerations it supports
@@ -52,9 +67,14 @@ impl RemoteV4
 				buffer
 			));
 		}
+		// Decode the response and translate the supported accelerations bitmask to our internal
+		// enumeration of accelerations
+		let accelerations = Acceleration::from(decode_response(&buffer[1..], 8));
+		debug!("Probe supports the following accelerations: {:?}", accelerations);
 
 		Ok(Self {
 			inner_protocol: RemoteV3::new(interface),
+			accelerations,
 		})
 	}
 }
