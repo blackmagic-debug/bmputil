@@ -65,3 +65,12 @@ pub struct AdiV5AccessPort
 	/// AP partno
 	partno: u16,
 }
+
+/// An ADIv6 access port associated with an ADIv6 debug port on a device
+/// NB: Uses the ADIv5 DP structure to represent the DP, and based on the ADIv5 AP structure
+#[allow(unused)]
+pub struct AdiV6AccessPort
+{
+	base: AdiV5AccessPort,
+	address: TargetAddr64,
+}
