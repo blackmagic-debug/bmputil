@@ -378,7 +378,7 @@ fn display_releases(paths: &ProjectDirs) -> Result<()>
 
 fn list_targets(probe: BmpDevice) -> Result<()>
 {
-	let bmd_interface = probe.bmd_serial_interface()?;
+	let remote = probe.bmd_serial_interface()?.remote()?;
 	Ok(())
 }
 
