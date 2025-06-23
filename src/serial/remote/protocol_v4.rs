@@ -12,6 +12,7 @@ use log::debug;
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::protocol_v3::RemoteV3;
+use crate::serial::remote::riscv_debug::RiscvDmi;
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
 	REMOTE_RESP_OK, TargetAddr64, decode_response,
@@ -35,6 +36,12 @@ pub struct RemoteV4ADIv5
 }
 
 pub struct RemoteV4ADIv6
+{
+	#[allow(unused)]
+	interface: Arc<Mutex<BmdRspInterface>>,
+}
+
+pub struct RemoteV4RiscvJtag
 {
 	#[allow(unused)]
 	interface: Arc<Mutex<BmdRspInterface>>,
@@ -131,7 +138,11 @@ impl BmdRemoteProtocol for RemoteV4
 
 	fn riscv_jtag_init(&self) -> Option<Arc<dyn BmdRiscvProtocol>>
 	{
-		None
+		if self.accelerations.contains(Acceleration::RiscV) {
+			Some(Arc::new(RemoteV4RiscvJtag::from(self.clone_interface())))
+		} else {
+			None
+		}
 	}
 
 	fn add_jtag_dev(&self, dev_index: u32, jtag_dev: &JtagDev)
@@ -238,6 +249,29 @@ impl BmdAdiV5Protocol for RemoteV4ADIv6
 	fn mem_write(&self, _ap: AdiV5AccessPort, _dest: TargetAddr64, _src: &[u8], _align: Align)
 	{
 		//
+	}
+}
+
+impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV4RiscvJtag
+{
+	fn from(interface: Arc<Mutex<BmdRspInterface>>) -> Self
+	{
+		Self {
+			interface,
+		}
+	}
+}
+
+impl BmdRiscvProtocol for RemoteV4RiscvJtag
+{
+	fn dmi_read(&self, _dmi: RiscvDmi, _address: u32) -> Option<u32>
+	{
+		None
+	}
+
+	fn dmi_write(&self, _dmi: RiscvDmi, _address: u32, _value: u32) -> bool
+	{
+		false
 	}
 }
 
