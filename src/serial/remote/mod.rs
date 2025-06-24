@@ -108,6 +108,7 @@ pub trait BmdRemoteProtocol
 	fn get_comms_frequency(&self) -> u32;
 	fn set_comms_frequency(&self, freq: u32) -> bool;
 	fn target_clk_output_enable(&self, enable: bool);
+	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>;
 }
 
 /// Types implementing this trait provide raw SWD access to targets over the BMD remote protocol

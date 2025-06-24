@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use color_eyre::eyre::Result;
 use log::warn;
@@ -12,7 +12,7 @@ use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::protocol_v2::RemoteV2;
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	TargetAddr64,
+	TargetAddr64, TargetArchitecture,
 };
 
 pub struct RemoteV3(RemoteV2);
@@ -37,6 +37,11 @@ impl RemoteV3
 	pub(crate) fn new(interface: Arc<Mutex<BmdRspInterface>>) -> Self
 	{
 		Self(RemoteV2::new(interface))
+	}
+
+	pub(crate) fn interface(&self) -> MutexGuard<'_, BmdRspInterface>
+	{
+		self.0.interface()
 	}
 
 	pub(crate) fn clone_interface(&self) -> Arc<Mutex<BmdRspInterface>>
@@ -90,6 +95,11 @@ impl BmdRemoteProtocol for RemoteV3
 	fn target_clk_output_enable(&self, enable: bool)
 	{
 		self.0.target_clk_output_enable(enable);
+	}
+
+	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>
+	{
+		self.0.supported_architectures()
 	}
 }
 

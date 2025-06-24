@@ -11,7 +11,7 @@ use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	REMOTE_RESP_ERR, TargetAddr64,
+	REMOTE_RESP_ERR, TargetAddr64, TargetArchitecture,
 };
 
 pub struct RemoteV0
@@ -154,6 +154,11 @@ impl BmdRemoteProtocol for RemoteV0
 	{
 		//
 	}
+
+	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>
+	{
+		Ok(None)
+	}
 }
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0Plus
@@ -222,6 +227,11 @@ impl BmdRemoteProtocol for RemoteV0Plus
 	fn target_clk_output_enable(&self, enable: bool)
 	{
 		self.0.target_clk_output_enable(enable);
+	}
+
+	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>
+	{
+		self.0.supported_architectures()
 	}
 }
 

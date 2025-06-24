@@ -12,6 +12,7 @@ use crate::serial::remote::protocol_v0::RemoteV0JTAG;
 use crate::serial::remote::protocol_v1::RemoteV1;
 use crate::serial::remote::{
 	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
+	TargetArchitecture,
 };
 
 pub struct RemoteV2(RemoteV1);
@@ -107,6 +108,11 @@ impl BmdRemoteProtocol for RemoteV2
 	fn target_clk_output_enable(&self, _enable: bool)
 	{
 		//
+	}
+
+	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>
+	{
+		self.0.supported_architectures()
 	}
 }
 

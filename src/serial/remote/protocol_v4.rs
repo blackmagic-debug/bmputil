@@ -3,11 +3,11 @@
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
 use std::fmt::Display;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use bitmask_enum::bitmask;
 use color_eyre::eyre::{Report, Result, eyre};
-use log::debug;
+use log::{debug, warn};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
@@ -15,7 +15,7 @@ use crate::serial::remote::protocol_v3::RemoteV3;
 use crate::serial::remote::riscv_debug::RiscvDmi;
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	REMOTE_RESP_OK, TargetAddr64, decode_response,
+	REMOTE_RESP_NOTSUP, REMOTE_RESP_OK, TargetAddr64, TargetArchitecture, decode_response,
 };
 
 pub struct RemoteV4
@@ -59,6 +59,10 @@ enum Acceleration
 
 /// This command asks the probe what high-level protocol accelerations it supports
 const REMOTE_HL_ACCEL: &str = "!HA#";
+/// This command asks the probe what target architectures the firmware build supports
+const REMOTE_HL_ARCHS: &str = "!Ha#";
+/// This command asks the probe what target families the firmware build supports
+const REMOTE_HL_FAMILIES: &str = "!HF#";
 
 impl TryFrom<Arc<Mutex<BmdRspInterface>>> for RemoteV4
 {
@@ -98,6 +102,11 @@ impl RemoteV4
 			inner_protocol: RemoteV3::new(interface),
 			accelerations,
 		})
+	}
+
+	pub(crate) fn interface(&self) -> MutexGuard<'_, BmdRspInterface>
+	{
+		self.inner_protocol.interface()
 	}
 
 	pub(crate) fn clone_interface(&self) -> Arc<Mutex<BmdRspInterface>>
@@ -163,6 +172,31 @@ impl BmdRemoteProtocol for RemoteV4
 	fn target_clk_output_enable(&self, enable: bool)
 	{
 		self.inner_protocol.target_clk_output_enable(enable);
+	}
+
+	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>
+	{
+		// Send the request to the probe
+		self.interface().buffer_write(REMOTE_HL_ARCHS)?;
+		let buffer = self.interface().buffer_read()?;
+		// Check too see if that failed for some reason
+		if buffer.is_empty() || (buffer.as_bytes()[0] != REMOTE_RESP_OK && buffer.as_bytes()[0] != REMOTE_RESP_NOTSUP) {
+			let message = if buffer.len() > 1 {
+				&buffer[1..]
+			} else {
+				"unknown"
+			};
+			Err(eyre!("Supported architectures request failed, error {}", message))
+		} else if buffer.as_bytes()[0] == REMOTE_RESP_NOTSUP {
+			// If we get here, the probe talks v4 but doesn't know this command - meaning pre-v2.0.0 firmware
+			// but post-v1.10.2. Ask the user to upgrade off development firmware onto the release or later.
+			warn!("Please upgrade your firmware to allow checking supported target architectures to work properly");
+			Ok(None)
+		} else {
+			// We got a good response, decode it and turn the value into a bitfield return
+			let architectures = decode_response(&buffer[1..], 8);
+			Ok(Some(architectures.into()))
+		}
 	}
 }
 
