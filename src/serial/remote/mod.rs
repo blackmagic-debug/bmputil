@@ -4,6 +4,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use bitmask_enum::bitmask;
 use color_eyre::eyre::Result;
 
 use crate::serial::bmd_rsp::BmdRspInterface;
@@ -54,6 +55,40 @@ pub enum Align
 	As16Bit,
 	As32Bit,
 	As64Bit,
+}
+
+#[bitmask(u64)]
+pub enum TargetArchitecture
+{
+	CortexM,
+	CortexAR,
+	RiscV32,
+	RiscV64,
+}
+
+#[bitmask(u64)]
+pub enum TargetFamily
+{
+	AT32,
+	Apollo3,
+	CH32,
+	CH579,
+	EFM,
+	GD32,
+	HC32,
+	LPC,
+	MM32,
+	NRF,
+	NXPKinetis,
+	Puya,
+	RenesasRZ,
+	RenesasRA,
+	RP,
+	SAM,
+	STM,
+	TI,
+	Xilinx,
+	NXPiMXRT,
 }
 
 /// Types implementing this trait implement the common portion of the BMD remote protocol
