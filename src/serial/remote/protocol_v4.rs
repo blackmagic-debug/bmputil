@@ -15,7 +15,7 @@ use crate::serial::remote::protocol_v3::RemoteV3;
 use crate::serial::remote::riscv_debug::RiscvDmi;
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	REMOTE_RESP_NOTSUP, REMOTE_RESP_OK, TargetAddr64, TargetArchitecture, decode_response,
+	REMOTE_RESP_NOTSUP, REMOTE_RESP_OK, TargetAddr64, TargetArchitecture, TargetFamily, decode_response,
 };
 
 pub struct RemoteV4
@@ -196,6 +196,31 @@ impl BmdRemoteProtocol for RemoteV4
 			// We got a good response, decode it and turn the value into a bitfield return
 			let architectures = decode_response(&buffer[1..], 8);
 			Ok(Some(architectures.into()))
+		}
+	}
+
+	fn supported_families(&self) -> Result<Option<TargetFamily>>
+	{
+		// Send the request to the probe
+		self.interface().buffer_write(REMOTE_HL_FAMILIES)?;
+		let buffer = self.interface().buffer_read()?;
+		// Check too see if that failed for some reason
+		if buffer.is_empty() || (buffer.as_bytes()[0] != REMOTE_RESP_OK && buffer.as_bytes()[0] != REMOTE_RESP_NOTSUP) {
+			let message = if buffer.len() > 1 {
+				&buffer[1..]
+			} else {
+				"unknown"
+			};
+			Err(eyre!("Supported architectures request failed, error {}", message))
+		} else if buffer.as_bytes()[0] == REMOTE_RESP_NOTSUP {
+			// If we get here, the probe talks v4 but doesn't know this command - meaning pre-v2.0.0 firmware
+			// but post-v1.10.2. Ask the user to upgrade off development firmware onto the release or later.
+			warn!("Please upgrade your firmware to allow checking supported target families to work properly");
+			Ok(None)
+		} else {
+			// We got a good response, decode it and turn the value into a bitfield return
+			let families = decode_response(&buffer[1..], 8);
+			Ok(Some(families.into()))
 		}
 	}
 }

@@ -12,7 +12,7 @@ use crate::serial::remote::protocol_v0::RemoteV0JTAG;
 use crate::serial::remote::protocol_v1::RemoteV1;
 use crate::serial::remote::{
 	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
-	TargetArchitecture,
+	TargetArchitecture, TargetFamily,
 };
 
 pub struct RemoteV2(RemoteV1);
@@ -113,6 +113,11 @@ impl BmdRemoteProtocol for RemoteV2
 	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>
 	{
 		self.0.supported_architectures()
+	}
+
+	fn supported_families(&self) -> Result<Option<TargetFamily>>
+	{
+		self.0.supported_families()
 	}
 }
 

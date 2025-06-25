@@ -12,7 +12,7 @@ use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::protocol_v2::RemoteV2;
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	TargetAddr64, TargetArchitecture,
+	TargetAddr64, TargetArchitecture, TargetFamily,
 };
 
 pub struct RemoteV3(RemoteV2);
@@ -100,6 +100,11 @@ impl BmdRemoteProtocol for RemoteV3
 	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>
 	{
 		self.0.supported_architectures()
+	}
+
+	fn supported_families(&self) -> Result<Option<TargetFamily>>
+	{
+		self.0.supported_families()
 	}
 }
 
