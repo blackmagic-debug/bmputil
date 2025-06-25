@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::{Result, eyre};
-use log::debug;
+use log::{debug, trace};
 
 use crate::serial::remote::*;
 
@@ -97,6 +97,7 @@ impl BmdRspInterface
 				_ => return Err(eyre!("Unknown remote protocol version {}", version)),
 			};
 		}
+		trace!("Probe talks BMD RSP {}", result.protocol_version);
 
 		// Now the object is ready to go, return it to the caller
 		Ok(result)
@@ -206,6 +207,7 @@ impl BmdRspInterface
 		tcsetattr(fd, TCSANOW, &attrs)?;
 
 		// Let the caller know that we successfully got done
+		trace!("Configured comms handle to probe remote serial interface");
 		Ok(())
 	}
 
@@ -241,6 +243,7 @@ impl BmdRspInterface
 		} else {
 			// Otherwise we now know there's data, so try to fill the read buffer
 			let bytes_received = self.handle.read(&mut self.read_buffer)?;
+			trace!("Read {} bytes from probe", bytes_received);
 			// Now we have more data, so update the read buffer counters
 			self.read_buffer_fullness = bytes_received;
 			self.read_buffer_offset = 0;
@@ -322,6 +325,7 @@ impl BmdRspInterface
 		}
 
 		// Let the caller know that we successfully got done
+		trace!("Configured comms handle to probe remote serial interface");
 		Ok(())
 	}
 
@@ -341,6 +345,7 @@ impl BmdRspInterface
 
 		// Now we know there's data, so try to fill the read buffer
 		let bytes_received = self.handle.read(&mut self.read_buffer)?;
+		trace!("Read {} bytes from probe", bytes_received);
 		// Now we have more data, so update the read buffer counters
 		self.read_buffer_fullness = bytes_received;
 		self.read_buffer_offset = 0;
