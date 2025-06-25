@@ -378,7 +378,22 @@ fn display_releases(paths: &ProjectDirs) -> Result<()>
 
 fn list_targets(probe: BmpDevice) -> Result<()>
 {
+	// Extract the remote protocol interface for the probe
 	let remote = probe.bmd_serial_interface()?.remote()?;
+	// Ask it what architectures it supports, and display that
+	let archs = remote.supported_architectures()?;
+	if let Some(archs) = archs {
+		info!("Probe supports the following target architectures: {}", archs);
+	} else {
+		info!("Could not determine what target architectures your probe supports - please upgrade your firmware.");
+	}
+	// Ask it what target families it supports, and display that
+	let families = remote.supported_families()?;
+	if let Some(families) = families {
+		info!("Probe supports the following target families: {}", families);
+	} else {
+		info!("Could not determine what target families your probe supports - please upgrade your firmware.");
+	}
 	Ok(())
 }
 
