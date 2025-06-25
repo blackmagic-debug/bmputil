@@ -45,6 +45,7 @@ deelevate = "0.2.0"
 libc = "0.2.132"
 lazy_static = "1.4.0"
 winreg = "0.10.1"
+windows = { version = "0.61.3", features = ["Win32_Devices_Communication"] }
 windows-registry = "0.5.2"
 
 [target.'cfg(windows)'.dependencies.winapi]

@@ -4,6 +4,7 @@
 
 use std::fs::File;
 use std::io::Write;
+use std::mem::MaybeUninit;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -211,7 +212,6 @@ impl BmdRspInterface
 	fn read_more_data(&mut self) -> Result<()>
 	{
 		use std::io::Read;
-		use std::mem::MaybeUninit;
 		use std::os::fd::AsRawFd;
 		use std::ptr::null_mut;
 
@@ -251,4 +251,78 @@ impl BmdRspInterface
 }
 
 #[cfg(target_os = "windows")]
-impl BmdRspInterface {}
+impl BmdRspInterface
+{
+	const DCB_CHECK_PARITY: u32 = 1 << 1;
+	const DCB_DSR_SENSITIVE: u32 = 1 << 6;
+	const DCB_DTR_CONTROL_ENABLE: u32 = 1 << 4;
+	const DCB_DTR_CONTROL_MASK: u32 = 3 << 4;
+	const DCB_RTS_CONTROL_DISABLE: u32 = 0 << 12;
+	const DCB_RTS_CONTROL_MASK: u32 = 3 << 12;
+	const DCB_USE_CTS: u32 = 1 << 2;
+	const DCB_USE_DSR: u32 = 1 << 3;
+	const DCB_USE_XOFF: u32 = 1 << 9;
+	const DCB_USE_XON: u32 = 1 << 8;
+
+	fn init_handle(&self) -> Result<()>
+	{
+		use std::os::windows::io::AsRawHandle;
+
+		use windows::Win32::Devices::Communication::{
+			COMMTIMEOUTS, DCB, GetCommState, NOPARITY, PURGE_RXCLEAR, PurgeComm, SetCommState, SetCommTimeouts,
+		};
+		use windows::Win32::Foundation::HANDLE;
+
+		// Extract the current CommState for the handle
+		let handle = HANDLE(self.handle.as_raw_handle());
+		let mut serial_params = MaybeUninit::<DCB>::uninit();
+		let mut serial_params = unsafe {
+			GetCommState(handle, serial_params.as_mut_ptr())?;
+			serial_params.assume_init()
+		};
+
+		// Reconfigure and adjust device state to disable hardware flow control and
+		// get it into the right mode for communications to work properly
+		serial_params.ByteSize = 8;
+		serial_params.Parity = NOPARITY;
+		// The windows-rs crate exposes the bitfield parameters to us as a nebulous thing..
+		// we hold local definitions for each of the values so we can turn them on and off
+		// appropriately here. See <https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-dcb>
+		// for where these values come from. When reading this particular bitfield, assume LSb to MSb
+		// as one traverses down the structure.
+		serial_params._bitfield &= !(Self::DCB_CHECK_PARITY |
+			Self::DCB_USE_CTS |
+			Self::DCB_USE_DSR |
+			Self::DCB_DTR_CONTROL_MASK |
+			Self::DCB_DSR_SENSITIVE |
+			Self::DCB_USE_XOFF |
+			Self::DCB_USE_XON |
+			Self::DCB_RTS_CONTROL_MASK);
+		serial_params._bitfield |= Self::DCB_DTR_CONTROL_ENABLE | Self::DCB_RTS_CONTROL_DISABLE;
+
+		// Reconfigure the handle with the new communications state
+		unsafe { SetCommState(handle, &serial_params)? };
+
+		let timeouts = COMMTIMEOUTS {
+			// Turn off read timeouts so that ReadFile() underlying File's read calls instantly returns
+			// even if there's o data waiting (we implement our own mechanism below for that case as we
+			// only want to wait if we get no data)
+			ReadIntervalTimeout: u32::MAX,
+			ReadTotalTimeoutMultiplier: 0,
+			ReadTotalTimeoutConstant: 0,
+			// Configure an exactly 100ms write timeout - we want this triggering to be fatal as something
+			// has gone very wrong if we ever hit this.
+			WriteTotalTimeoutMultiplier: 0,
+			WriteTotalTimeoutConstant: 100,
+		};
+		unsafe {
+			SetCommTimeouts(handle, &timeouts)?;
+
+			// Having adjusted the line state, discard anything sat in the receive buffer
+			PurgeComm(handle, PURGE_RXCLEAR)?;
+		}
+
+		// Let the caller know that we successfully got done
+		Ok(())
+	}
+}
