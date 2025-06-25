@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 
 use bitmask_enum::bitmask;
@@ -251,5 +252,26 @@ impl ProtocolVersion
 			Self::V4 => Ok(Box::new(RemoteV4::try_from(interface)?)),
 			_ => todo!(),
 		}
+	}
+}
+
+impl Display for TargetArchitecture
+{
+	fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		let mut architectures = Vec::with_capacity(4);
+		if self.contains(Self::CortexM) {
+			architectures.push("ARM Cortex-M");
+		}
+		if self.contains(Self::CortexAR) {
+			architectures.push("ARM Cortex-A/R");
+		}
+		if self.contains(Self::RiscV32) {
+			architectures.push("RISC-V 32-bit");
+		}
+		if self.contains(Self::RiscV64) {
+			architectures.push("RISC-V 64-bit");
+		}
+		write!(fmt, "{}", architectures.join(", "))
 	}
 }
