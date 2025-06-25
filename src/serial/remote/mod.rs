@@ -255,6 +255,22 @@ impl ProtocolVersion
 	}
 }
 
+impl Display for ProtocolVersion
+{
+	fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		match self {
+			Self::Unknown => write!(fmt, "<unknown>"),
+			Self::V0 => write!(fmt, "v0"),
+			Self::V0Plus => write!(fmt, "v0+"),
+			Self::V1 => write!(fmt, "v1"),
+			Self::V2 => write!(fmt, "v2"),
+			Self::V3 => write!(fmt, "v3"),
+			Self::V4 => write!(fmt, "v4"),
+		}
+	}
+}
+
 impl Display for TargetArchitecture
 {
 	fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
