@@ -3,7 +3,7 @@
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::mem::MaybeUninit;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -211,7 +211,6 @@ impl BmdRspInterface
 
 	fn read_more_data(&mut self) -> Result<()>
 	{
-		use std::io::Read;
 		use std::os::fd::AsRawFd;
 		use std::ptr::null_mut;
 
@@ -323,6 +322,28 @@ impl BmdRspInterface
 		}
 
 		// Let the caller know that we successfully got done
+		Ok(())
+	}
+
+	fn read_more_data(&mut self) -> Result<()>
+	{
+		use std::os::windows::io::AsRawHandle;
+
+		use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
+		use windows::Win32::System::Threading::WaitForSingleObject;
+		use windows_result::Error;
+
+		// Try to wait for up to 100ms for data to become available
+		let handle = HANDLE(self.handle.as_raw_handle());
+		if unsafe { WaitForSingleObject(handle, 100) } != WAIT_OBJECT_0 {
+			return Err(eyre!("Timeout while waiting for BMD RSP response: {}", Error::from_win32()));
+		}
+
+		// Now we know there's data, so try to fill the read buffer
+		let bytes_received = self.handle.read(&mut self.read_buffer)?;
+		// Now we have more data, so update the read buffer counters
+		self.read_buffer_fullness = bytes_received;
+		self.read_buffer_offset = 0;
 		Ok(())
 	}
 }
