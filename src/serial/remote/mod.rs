@@ -275,3 +275,72 @@ impl Display for TargetArchitecture
 		write!(fmt, "{}", architectures.join(", "))
 	}
 }
+
+impl Display for TargetFamily
+{
+	fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+	{
+		let mut families = Vec::with_capacity(64);
+		if self.contains(Self::AT32) {
+			families.push("AteryTek AT32");
+		}
+		if self.contains(Self::Apollo3) {
+			families.push("Ambiq Apollo3");
+		}
+		if self.contains(Self::CH32) {
+			families.push("WinChipHead CH32");
+		}
+		if self.contains(Self::CH579) {
+			families.push("WinChipHead CH579");
+		}
+		if self.contains(Self::EFM) {
+			families.push("Energy Micro EFM32/EFR32/EZR32");
+		}
+		if self.contains(Self::GD32) {
+			families.push("GigaDevice GD32");
+		}
+		if self.contains(Self::HC32) {
+			families.push("HDSC HC32");
+		}
+		if self.contains(Self::LPC) {
+			families.push("NXP LPC");
+		}
+		if self.contains(Self::MM32) {
+			families.push("MindMotion MM32");
+		}
+		if self.contains(Self::NRF) {
+			families.push("Nordi Semi nRF");
+		}
+		if self.contains(Self::NXPKinetis) {
+			families.push("NXP/Freescale Kinetis");
+		}
+		if self.contains(Self::NXPiMXRT) {
+			families.push("NXP i.MXRT");
+		}
+		if self.contains(Self::Puya) {
+			families.push("Puya PY32");
+		}
+		if self.contains(Self::RenesasRA) {
+			families.push("Renesas RA");
+		}
+		if self.contains(Self::RenesasRZ) {
+			families.push("Renesas RZ");
+		}
+		if self.contains(Self::RP) {
+			families.push("RPi Foundation RP2040/RP2350");
+		}
+		if self.contains(Self::SAM) {
+			families.push("Atmel/Microchip ATSAM");
+		}
+		if self.contains(Self::STM) {
+			families.push("ST Micro STM32");
+		}
+		if self.contains(Self::TI) {
+			families.push("TI MSP432 and LM3S/TM4C");
+		}
+		if self.contains(Self::Xilinx) {
+			families.push("Xilinx Zynq");
+		}
+		write!(fmt, "{}", families.join(", "))
+	}
+}
