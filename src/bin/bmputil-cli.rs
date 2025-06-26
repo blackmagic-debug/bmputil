@@ -339,7 +339,7 @@ fn display_releases(paths: &ProjectDirs) -> Result<()>
 	let metadata = download_metadata(cache)?;
 	// Loop through all the entries and display them
 	for (version, release) in metadata.releases {
-		info!("Details of release {}:", version);
+		info!("Details of release {version}:");
 		info!("-> Release includes BMDA builds? {}", release.includes_bmda);
 		info!(
 			"-> Release done for probes: {}",
@@ -392,14 +392,14 @@ fn list_targets(probe: BmpDevice) -> Result<()>
 	// Ask it what architectures it supports, and display that
 	let archs = remote.supported_architectures()?;
 	if let Some(archs) = archs {
-		info!("Probe supports the following target architectures: {}", archs);
+		info!("Probe supports the following target architectures: {archs}");
 	} else {
 		info!("Could not determine what target architectures your probe supports - please upgrade your firmware.");
 	}
 	// Ask it what target families it supports, and display that
 	let families = remote.supported_families()?;
 	if let Some(families) = families {
-		info!("Probe supports the following target families: {}", families);
+		info!("Probe supports the following target families: {families}");
 	} else {
 		info!("Could not determine what target families your probe supports - please upgrade your firmware.");
 	}
@@ -422,12 +422,12 @@ fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()
 	let multiple = devices.len() > 1;
 
 	for (index, dev) in devices.iter().enumerate() {
-		println!("Found: {}", dev);
+		println!("Found: {dev}");
 
 		// If we have multiple connected probes, then additionally display their index
 		// and print a trailing newline.
 		if multiple {
-			println!("  Index:  {}\n", index);
+			println!("  Index:  {index}\n");
 		}
 	}
 
