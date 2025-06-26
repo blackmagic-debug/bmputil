@@ -117,6 +117,10 @@ struct UpdateArguments
 	/// Force the current latest release onto the probe even if the probe is running ostensibly newer firmware
 	force: bool,
 
+	#[arg(long = "use-rc", default_value_t = false)]
+	/// Allow the tool to use release candidates as possible upgrade targets when considering the latest release
+	use_rc: bool,
+
 	#[command(subcommand)]
 	subcommand: Option<UpdateCommands>,
 }
@@ -276,7 +280,7 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
 			let metadata = download_metadata(cache)?;
 			// Extract the most recent release from the metadata
 			let (latest_version, latest_release) = metadata
-				.latest()
+				.latest(flash_args.use_rc)
 				.ok_or_eyre("Could not determine the latest release of the firmware")?;
 			// Extract the matching firmware for the probe
 			let latest_firmware = latest_release.firmware.get(&identity.variant());

@@ -329,7 +329,7 @@ impl<'de> Visitor<'de> for TargetArchVisitor
 
 impl Metadata
 {
-	pub fn latest(&self) -> Option<(VersionNumber, &Release)>
+	pub fn latest(&self, include_rcs: bool) -> Option<(VersionNumber, &Release)>
 	{
 		let mut current_release = None;
 
@@ -337,7 +337,7 @@ impl Metadata
 		// latest stable release (not pre-release)
 		for (version, release) in &self.releases {
 			// Check if the version is pre-release, and if so.. ignore it
-			if version.contains("-rc") {
+			if version.contains("-rc") && !include_rcs {
 				continue;
 			}
 			// Otherwise, turn it into a version string and compare
