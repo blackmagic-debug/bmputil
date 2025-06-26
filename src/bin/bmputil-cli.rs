@@ -113,6 +113,10 @@ struct UpdateArguments
 	/// Forcibly override firmware type autodetection and Flash anyway (may result in an unbootable device!)
 	force_override_flash: bool,
 
+	#[arg(short = 'f', long = "force", default_value_t = false)]
+	/// Force the current latest release onto the probe even if the probe is running ostensibly newer firmware
+	force: bool,
+
 	#[command(subcommand)]
 	subcommand: Option<UpdateCommands>,
 }
@@ -285,8 +289,9 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
 			};
 
 			// Check whether the release is newer than the firmware on the probe, and if it is, pick that as the file.
-			// If it is not, print a message and exit successfully.
-			if identity.version >= latest_version {
+			// If it is not, print a message and exit successfully. This check is bypassed when `--force` is given
+			// which makes this command push the selected firmware to the probe anyway
+			if identity.version >= latest_version && !flash_args.force {
 				info!(
 					"Latest release {} is not newer than firmware version {}, not updating",
 					latest_version, identity.version
