@@ -91,10 +91,10 @@ impl<'a> FirmwareMultichoice<'a>
 			.items(self.friendly_names.as_slice())
 			.interact_opt()?;
 		// Encode the result into a new FSM state
-		Ok(match selection {
-			Some(index) => State::PickAction(index),
-			None => State::Cancel,
-		})
+		match selection {
+			Some(index) => Ok(State::PickAction(index)),
+			None => Ok(State::Cancel),
+		}
 	}
 
 	fn action_selection(&self, name_index: usize) -> Result<State>
