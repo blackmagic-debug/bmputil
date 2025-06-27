@@ -11,7 +11,7 @@ use color_eyre::eyre::{Error, Result, eyre};
 use reqwest::Url;
 use serde::Deserialize;
 use serde::de::Visitor;
-
+pub(crate) use crate::metadata::firmware_download::FirmwareDownload;
 use crate::probe_identity::VersionNumber;
 
 #[derive(Deserialize)]
@@ -63,17 +63,6 @@ pub struct Firmware
 {
 	#[serde(flatten)]
 	pub variants: BTreeMap<String, FirmwareDownload>,
-}
-
-#[derive(Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct FirmwareDownload
-{
-	#[serde(rename = "friendlyName")]
-	pub friendly_name: String,
-	#[serde(rename = "fileName")]
-	pub file_name: PathBuf,
-	pub uri: Url,
 }
 
 /// Enumeration of the OSes that BMDA can be officially run on
