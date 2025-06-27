@@ -166,14 +166,15 @@ impl TryFrom<&str> for ProbeIdentity
 
 		// Removes the first length from the identity, because we know it starts with the 'Black Magic Probe'
 		let parse_slice = &identity[BMP_PRODUCT_STRING_LENGTH..];
-		let probe_result = parse_name_from_identity_string(parse_slice);
-		let probe_string = probe_result.map_err(|error| eyre!("Error while parsing probe string: {}", error))?;
-		let probe = probe_string.to_lowercase().try_into()?;
+		let probe = parse_name_from_identity_string(parse_slice)
+			.map_err(|error| eyre!("Error while parsing probe string: {}", error))?
+			.to_lowercase();
 
-		let version_result = parse_version_from_identity_string(parse_slice);
-		let version = version_result.map_err(|error| eyre!("Error while parsing version string: {}", error))?;
+		let version = parse_version_from_identity_string(parse_slice)
+			.map_err(|error| eyre!("Error while parsing version string: {}", error))?;
+
 		Ok(ProbeIdentity {
-			probe,
+			probe: probe.try_into()?,
 			version: version.into(),
 		})
 	}
