@@ -96,6 +96,23 @@ mod tests
 	}
 
 	#[test]
+	fn extract_bootloader() -> Result<()>
+	{
+		let result: ProbeIdentity = "Black Magic Probe DFU v1.8.0".try_into()?;
+
+		assert_eq!(result.variant(), None);
+		assert_eq!(result.version, VersionNumber::Unknown);
+		assert!(result.is_bootloader());
+
+		let result: ProbeIdentity = "dragonBoot DFU bootloader".try_into()?;
+
+		assert_eq!(result.variant(), None);
+		assert_eq!(result.version, VersionNumber::Unknown);
+		assert!(result.is_bootloader());
+		Ok(())
+	}
+
+	#[test]
 	fn unknown()
 	{
 		let result: Result<ProbeIdentity> = "Something (v1.2.3)".try_into();

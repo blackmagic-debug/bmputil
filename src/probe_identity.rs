@@ -241,6 +241,11 @@ impl ProbeIdentity
 			_ => None,
 		}
 	}
+
+	pub fn is_bootloader(&self) -> bool
+	{
+		matches!(self.kind, DeviceKind::Bootloader(_))
+	}
 }
 
 impl TryFrom<String> for Probe
