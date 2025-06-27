@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
+// SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use color_eyre::eyre::{Result, eyre};
 use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
 use reqwest::StatusCode;
-use url::Url;
 
 use crate::docs_viewer::Viewer;
 use crate::metadata::structs::FirmwareDownload;
@@ -92,10 +91,10 @@ impl<'a> FirmwareMultichoice<'a>
 			.items(self.friendly_names.as_slice())
 			.interact_opt()?;
 		// Encode the result into a new FSM state
-		Ok(match selection {
-			Some(index) => State::PickAction(index),
-			None => State::Cancel,
-		})
+		match selection {
+			Some(index) => Ok(State::PickAction(index)),
+			None => Ok(State::Cancel),
+		}
 	}
 
 	fn action_selection(&self, name_index: usize) -> Result<State>
@@ -107,7 +106,7 @@ impl<'a> FirmwareMultichoice<'a>
 			.iter()
 			.enumerate()
 			.find(|(_, variant)| variant.friendly_name == friendly_name)
-			.unwrap(); // Can't fail anyway..
+			.expect("The friendly_name should always be found");
 
 		// Ask the user what they wish to do
 		let items = ["Flash to probe", "Show documentation", "Choose a different variant"];
@@ -127,40 +126,13 @@ impl<'a> FirmwareMultichoice<'a>
 		})
 	}
 
-	fn compute_release_uri(&self, variant: &FirmwareDownload) -> Url
-	{
-		// Clone the download URI for this firmware variant and convert the path part into a Path
-		let mut uri = variant.uri.clone();
-		let mut path = PathBuf::from(uri.path());
-		// Find where the release tag component is in the path, stripping back to that
-		while path.components().count() != 0 && !path.ends_with(self.release) {
-			path.pop();
-		}
-		// Now replace the preceeding `/download/` chunk with `/tag/`
-		path.pop();
-		path.set_file_name("tag");
-		path.push(self.release);
-		// Having completed that, replace the path component of the URI
-		uri.set_path(path.to_str().unwrap());
-		// And now return the completed URI
-		uri
-	}
-
 	fn show_documentation(&self, name_index: usize, variant_index: usize) -> Result<State>
 	{
 		// Extract which firmware download we're to work with
 		let variant = self.variants[variant_index];
-		// Convert the path compoment of the download URI to a Path
-		let mut docs_path = PathBuf::from(variant.uri.path());
-		// Replace the file extension from ".elf" to ".md"
-		docs_path.set_extension("md");
+
 		// Convert back into a URI
-		let mut docs_uri = variant.uri.clone();
-		docs_uri.set_path(
-			docs_path
-				.to_str()
-				.expect("Something went terribly wrong building the documentation URI"),
-		);
+		let docs_uri = variant.calculate_documentation_url()?;
 
 		// Now try and download this documentation file
 		let client = reqwest::blocking::Client::new();
@@ -174,7 +146,7 @@ impl<'a> FirmwareMultichoice<'a>
 			// XXX: Need to compute the release URI from the download URI and release name string
 			StatusCode::NOT_FOUND => println!(
 				"No documentation found, please go to {} to find out more",
-				self.compute_release_uri(variant)
+				variant.calculate_release_uri(self.release)?
 			),
 			StatusCode::OK => Viewer::display(&variant.friendly_name, &response.text()?)?,
 			status => Err(eyre!(
