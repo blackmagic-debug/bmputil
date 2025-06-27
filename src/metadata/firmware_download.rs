@@ -126,7 +126,8 @@ mod tests {
     }
 
     #[test]
-    fn calculate_documentation_url_success(){
+    fn calculate_documentation_url_success()
+    {
         let variant = FirmwareDownload{
             friendly_name: "Black Magic Debug for BMP (common targets)".to_string(),
             file_name: PathBuf::from("blackmagic-native-common-v2.0.0-rc1.elf"),
