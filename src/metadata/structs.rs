@@ -8,6 +8,7 @@ use std::str::FromStr;
 use std::string::ToString;
 
 use color_eyre::eyre::{Error, Result, eyre};
+use log::warn;
 use reqwest::Url;
 use serde::Deserialize;
 use serde::de::Visitor;
@@ -332,6 +333,9 @@ impl Metadata
 	pub fn latest(&self, include_rcs: bool) -> Option<(VersionNumber, &Release)>
 	{
 		let mut current_release = None;
+		if include_rcs {
+			warn!("Considering release candidates when computing latest release");
+		}
 
 		// Loop through the available releases and find the most recent one that's currently the
 		// latest stable release (not pre-release)
