@@ -6,9 +6,9 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use color_eyre::eyre::{eyre, Result};
-use dialoguer::theme::ColorfulTheme;
+use color_eyre::eyre::{Result, eyre};
 use dialoguer::Select;
+use dialoguer::theme::ColorfulTheme;
 use reqwest::StatusCode;
 
 use crate::docs_viewer::Viewer;
