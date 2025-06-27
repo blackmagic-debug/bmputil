@@ -11,7 +11,8 @@ use color_eyre::eyre::{Report, Result, eyre};
 use crate::metadata::structs::Probe;
 
 const BMP_PRODUCT_STRING: &str = "Black Magic Probe";
-const BMP_PRODUCT_STRING_LENGTH: usize = BMP_PRODUCT_STRING.len();
+const BMP_BOOT_STRING: &str = "Black Magic Probe DFU";
+const DRAGON_BOOT_STRING: &str = "dragonBoot DFU bootloader";
 const BMP_NATIVE: &str = "native";
 
 #[derive(PartialEq, Eq)]
@@ -158,7 +159,16 @@ impl TryFrom<&str> for ProbeIdentity
 		// We mark these additional strings as bootloader strings for which we cannot determine the
 		// probe kind that they run on as the strings fail to encode that information.
 
-		// Every identity should start with 'Black Magic Probe'
+		// Bootloaders should either start with the project DFU base string, or one of a small set of
+		// known alternatives like dragonBoot's signature string. Handle them here first.
+		if identity.starts_with(BMP_BOOT_STRING) || identity.starts_with(DRAGON_BOOT_STRING) {
+			return Ok(ProbeIdentity {
+				kind: DeviceKind::Bootloader(identity.to_string()),
+				version: VersionNumber::Unknown,
+			});
+		}
+
+		// Every probe identity should start with 'Black Magic Probe'
 		if !identity.starts_with(BMP_PRODUCT_STRING) {
 			return Err(eyre!("Product string doesn't start with '{}'", BMP_PRODUCT_STRING));
 		}
@@ -172,7 +182,7 @@ impl TryFrom<&str> for ProbeIdentity
 		}
 
 		// Removes the first length from the identity, because we know it starts with the 'Black Magic Probe'
-		let parse_slice = &identity[BMP_PRODUCT_STRING_LENGTH..];
+		let parse_slice = &identity[BMP_PRODUCT_STRING.len()..];
 		let probe = parse_name_from_identity_string(parse_slice)
 			.map_err(|error| eyre!("Error while parsing probe string: {}", error))?
 			.to_lowercase();
