@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Writen by Rachel Mant <git@dragonmux.network>
 
-pub mod structs;
 pub mod firmware_download;
+pub mod structs;
 
 use std::fs::{File, create_dir_all};
 use std::io;
