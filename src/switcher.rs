@@ -7,7 +7,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{OptionExt, Result};
 use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
 use directories::ProjectDirs;
@@ -106,7 +106,9 @@ where
 
 fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(&str, &Firmware)>>
 {
-	let variant = &identity.variant();
+	let variant = identity
+		.variant()
+		.ok_or_eyre("Device appears to be in bootloader, so cannot determine probe type")?;
 	let firmware_version = match &identity.version {
 		// If we don't know what version of firmware is on the probe, presume it's v1.6 for now.
 		// We can't actually know which prior version to v1.6 it actually is, but it's very old either way
@@ -129,8 +131,8 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(
 		.releases
 		.iter()
 		.filter(|&(version, release)| {
-			!(firmware_version.as_str() == version && release.firmware[variant].variants.len() == 1) &&
-				release.firmware.contains_key(variant)
+			!(firmware_version.as_str() == version && release.firmware[&variant].variants.len() == 1) &&
+				release.firmware.contains_key(&variant)
 		})
 		.collect();
 
@@ -148,7 +150,7 @@ fn pick_release(metadata: &Metadata, identity: ProbeIdentity) -> Result<Option<(
 	};
 	Ok(Some((
 		items[selection].as_str(),
-		&metadata.releases[items[selection].as_str()].firmware[variant],
+		&metadata.releases[items[selection].as_str()].firmware[&variant],
 	)))
 }
 

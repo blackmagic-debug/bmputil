@@ -18,7 +18,7 @@ use clap::{Arg, ArgAction, Args, Command, CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use color_eyre::eyre::{Context, OptionExt, Result};
 use directories::ProjectDirs;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 
 #[derive(Parser)]
 #[command(
@@ -283,7 +283,11 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
 				.latest(flash_args.use_rc)
 				.ok_or_eyre("Could not determine the latest release of the firmware")?;
 			// Extract the matching firmware for the probe
-			let latest_firmware = latest_release.firmware.get(&identity.variant());
+			let latest_firmware = latest_release.firmware.get(
+				&identity
+					.variant()
+					.ok_or_eyre("Device appears to be in bootloader, so cannot determine probe type")?,
+			);
 			let latest_firmware = if let Some(firmware) = latest_firmware {
 				firmware
 			} else {
@@ -429,6 +433,7 @@ fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()
 	let multiple = devices.len() > 1;
 
 	for (index, dev) in devices.iter().enumerate() {
+		debug!("Probe identity: {}", dev.firmware_identity()?);
 		println!("Found: {dev}");
 
 		// If we have multiple connected probes, then additionally display their index

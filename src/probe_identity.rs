@@ -17,8 +17,15 @@ const BMP_NATIVE: &str = "native";
 #[derive(PartialEq, Eq)]
 pub struct ProbeIdentity
 {
-	probe: Probe,
+	kind: DeviceKind,
 	pub version: VersionNumber,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum DeviceKind
+{
+	Probe(Probe),
+	Bootloader(String),
 }
 
 enum ParseNameError
@@ -159,7 +166,7 @@ impl TryFrom<&str> for ProbeIdentity
 		// If it is exactly 'Black Magic Probe', then it is an old identity, with an unknown version.
 		if identity == BMP_PRODUCT_STRING {
 			return Ok(ProbeIdentity {
-				probe: Probe::Native,
+				kind: DeviceKind::Probe(Probe::Native),
 				version: VersionNumber::Unknown,
 			});
 		}
@@ -174,7 +181,7 @@ impl TryFrom<&str> for ProbeIdentity
 			.map_err(|error| eyre!("Error while parsing version string: {}", error))?;
 
 		Ok(ProbeIdentity {
-			probe: probe.try_into()?,
+			kind: DeviceKind::Probe(probe.try_into()?),
 			version: version.into(),
 		})
 	}
@@ -194,27 +201,35 @@ impl Display for ProbeIdentity
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result
 	{
-		// Probe names always use the product string as a prefix
-		write!(f, "{}", BMP_PRODUCT_STRING)?;
-		// If it's not a native probe, display the variant name
-		if self.probe != Probe::Native {
-			write!(f, " ({})", self.probe.to_string())?;
-		}
-		// Translate the version string as best as possible to a readable form
-		match &self.version {
-			VersionNumber::Unknown => Ok(()),
-			VersionNumber::Invalid => write!(f, " <invalid version>"),
-			VersionNumber::GitHash(hash) => write!(f, " {}", hash),
-			VersionNumber::FullVersion(version_parts) => write!(f, " {}", version_parts.to_string()),
+		match &self.kind {
+			DeviceKind::Probe(probe) => {
+				// Probe names always use the product string as a prefix
+				write!(f, "{}", BMP_PRODUCT_STRING)?;
+				// If it's not a native probe, display the variant name
+				if probe != &Probe::Native {
+					write!(f, " ({})", probe.to_string())?;
+				}
+				// Translate the version string as best as possible to a readable form
+				match &self.version {
+					VersionNumber::Unknown => Ok(()),
+					VersionNumber::Invalid => write!(f, " <invalid version>"),
+					VersionNumber::GitHash(hash) => write!(f, " {}", hash),
+					VersionNumber::FullVersion(version_parts) => write!(f, " {}", version_parts.to_string()),
+				}
+			},
+			DeviceKind::Bootloader(ident) => write!(f, "{ident}"),
 		}
 	}
 }
 
 impl ProbeIdentity
 {
-	pub fn variant(&self) -> Probe
+	pub fn variant(&self) -> Option<Probe>
 	{
-		self.probe
+		match self.kind {
+			DeviceKind::Probe(probe) => Some(probe),
+			_ => None,
+		}
 	}
 }
 

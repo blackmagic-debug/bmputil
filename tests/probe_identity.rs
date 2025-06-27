@@ -15,7 +15,7 @@ mod tests
 	{
 		let result: ProbeIdentity = "Black Magic Probe v2.0.0-rc2".try_into()?;
 
-		assert_eq!(result.variant(), Probe::Native);
+		assert_eq!(result.variant(), Some(Probe::Native));
 		assert_eq!(
 			result.version,
 			VersionNumber::FullVersion(VersionParts::from_parts(2, 0, 0, VersionKind::ReleaseCandidate(2), false))
@@ -28,7 +28,7 @@ mod tests
 	{
 		let result: ProbeIdentity = "Black Magic Probe".try_into()?;
 
-		assert_eq!(result.variant(), Probe::Native);
+		assert_eq!(result.variant(), Some(Probe::Native));
 		assert_eq!(result.version, VersionNumber::Unknown);
 		Ok(())
 	}
@@ -38,7 +38,7 @@ mod tests
 	{
 		let result: ProbeIdentity = "Black Magic Probe v2.0.0-rc2-65-g221c3031f".try_into()?;
 
-		assert_eq!(result.variant(), Probe::Native);
+		assert_eq!(result.variant(), Some(Probe::Native));
 		assert_eq!(
 			result.version,
 			VersionNumber::FullVersion(VersionParts::from_parts(
@@ -57,7 +57,7 @@ mod tests
 	{
 		let result: ProbeIdentity = "Black Magic Probe g221c3031f".try_into()?;
 
-		assert_eq!(result.variant(), Probe::Native);
+		assert_eq!(result.variant(), Some(Probe::Native));
 		assert_eq!(result.version, VersionNumber::GitHash("221c3031f".into()));
 		Ok(())
 	}
@@ -67,7 +67,7 @@ mod tests
 	{
 		let result: ProbeIdentity = "Black Magic Probe (ST-Link/v2) v1.10.0-1273-g2b1ce9aee".try_into()?;
 
-		assert_eq!(result.variant(), Probe::Stlink);
+		assert_eq!(result.variant(), Some(Probe::Stlink));
 		assert_eq!(
 			result.version,
 			VersionNumber::FullVersion(VersionParts::from_parts(
