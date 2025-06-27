@@ -3,6 +3,7 @@
 // SPDX-FileContributor: Writen by Rachel Mant <git@dragonmux.network>
 
 pub mod structs;
+pub mod firmware_download;
 
 use std::fs::{File, create_dir_all};
 use std::io;

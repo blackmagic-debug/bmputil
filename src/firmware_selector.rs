@@ -4,14 +4,12 @@
 // SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::time::Duration;
 
-use color_eyre::eyre::{Result, eyre, ContextCompat};
-use dialoguer::Select;
+use color_eyre::eyre::{eyre, Result};
 use dialoguer::theme::ColorfulTheme;
+use dialoguer::Select;
 use reqwest::StatusCode;
-use url::Url;
 
 use crate::docs_viewer::Viewer;
 use crate::metadata::structs::FirmwareDownload;
@@ -128,64 +126,13 @@ impl<'a> FirmwareMultichoice<'a>
 		})
 	}
 
-	fn calculate_release_uri(&self, variant: &FirmwareDownload) -> Result<Url>
-	{
-		// Find where the release tag component is in the path, stripping back to that
-		let mut path_segments = variant.uri.path_segments().context( "cannot be base")?
-			.collect::<Vec<_>>();
-
-		// Find the release segment position
-		let release_segment_position = path_segments
-			.iter()
-			.position(|s| s.ends_with(self.release))
-			.with_context(|| format!("This firmware URL doesn't contain the segment release with value '{}'", self.release))?;
-		
-		let new_segments = path_segments.as_mut_slice()
-			.get_mut(..=release_segment_position)
-			.context("The segment range should be in path_segment")?;
-
-		let tag_segment_index = release_segment_position.checked_sub(1)
-			.with_context(|| format!("Version '{}' segment can't be first segment", self.release))?;
-		
-		//Change the 'download' segment into a 'tag'
-		let download_segment = new_segments.get_mut(tag_segment_index).expect("Segment shouldn't be possible to be out of bounds");
-		*download_segment = "tag";
-		
-		// Only parse the origin
-		let mut new_url = Url::parse(&variant.uri.origin().ascii_serialization())?;
-		{
-			let mut path_segments_mut = new_url.path_segments_mut().expect("Cannot be base URL");
-			path_segments_mut.clear(); 
-			path_segments_mut.extend(new_segments);
-		}
-
-		Ok(new_url)
-	}
-
-	fn calculate_documentation_url(&self, variant_uri: &Url) -> Result<Url>
-	{
-		// Convert the path compoment of the download URI to a Path
-		let mut docs_path = PathBuf::from(variant_uri.path());
-		// Replace the file extension from ".elf" to ".md"
-		docs_path.set_extension("md");
-		// Copy only the origin
-		let mut docs_uri = Url::parse(&variant_uri.origin().ascii_serialization())?;
-		docs_uri.set_path(
-			docs_path
-				.to_str()
-				.expect("Can't set a path from a doc path")
-		);
-
-		Ok(docs_uri)
-	}
-
 	fn show_documentation(&self, name_index: usize, variant_index: usize) -> Result<State>
 	{
 		// Extract which firmware download we're to work with
 		let variant = self.variants[variant_index];
 
 		// Convert back into a URI
-		let docs_uri = self.calculate_documentation_url(&variant.uri)?;
+		let docs_uri = variant.calculate_documentation_url()?;
 
 		// Now try and download this documentation file
 		let client = reqwest::blocking::Client::new();
@@ -199,7 +146,7 @@ impl<'a> FirmwareMultichoice<'a>
 			// XXX: Need to compute the release URI from the download URI and release name string
 			StatusCode::NOT_FOUND => println!(
 				"No documentation found, please go to {} to find out more",
-				self.calculate_release_uri(variant)?
+				variant.calculate_release_uri(self.release)?
 			),
 			StatusCode::OK => Viewer::display(&variant.friendly_name, &response.text()?)?,
 			status => Err(eyre!(
@@ -209,90 +156,5 @@ impl<'a> FirmwareMultichoice<'a>
 		};
 
 		Ok(State::PickAction(name_index))
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn calculate_release_uri_success()
-	{
-		let variant = FirmwareDownload{
-			friendly_name: "Black Magic Debug for BMP (full)".to_string(),
-			file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
-			uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
-		};
-
-		let map = &BTreeMap::from([
-			("full".to_string(), variant.clone())
-		]);
-
-		let multiple_choice = FirmwareMultichoice::new("v1.10.0", map);
-
-		let res = multiple_choice.calculate_release_uri(&variant);
-
-		//Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(res.unwrap(), Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/tag/v1.10.0").unwrap());
-	}
-
-	#[test]
-	fn calculate_release_uri_error()
-	{
-		let variant = FirmwareDownload{
-			friendly_name: "Black Magic Debug for BMP (full)".to_string(),
-			file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
-			uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
-		};
-
-		let map = &BTreeMap::from([
-			("full".to_string(), variant.clone())
-		]);
-
-		let multiple_choice = FirmwareMultichoice::new("error", map);
-
-		let res = multiple_choice.calculate_release_uri(&variant);
-
-		//Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(res.unwrap_err().to_string(), "This firmware URL doesn't contain the segment release with value 'error'");
-	}
-
-	#[test]
-	fn calculate_release_uri_release_first_segment_error()
-	{
-		let variant = FirmwareDownload{
-			friendly_name: "Black Magic Debug for BMP (full)".to_string(),
-			file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
-			uri: Url::parse("https://github.com/v1.2.3").expect("Setup url shouldn't fail"),
-		};
-
-		let map = &BTreeMap::from([
-			("full".to_string(), variant.clone())
-		]);
-
-		let multiple_choice = FirmwareMultichoice::new("v1.2.3", map);
-
-		let res = multiple_choice.calculate_release_uri(&variant);
-
-		//Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(res.unwrap_err().to_string(), "Version 'v1.2.3' segment can't be first segment");
-	}
-
-	#[test]
-	fn calculate_documentation_url_success(){
-		let variant = FirmwareDownload{
-			friendly_name: "Black Magic Debug for BMP (common targets)".to_string(),
-			file_name: PathBuf::from("blackmagic-native-common-v2.0.0-rc1.elf"),
-			uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.elf").expect("Setup url shouldn't fail"),
-		};
-
-		let map = &BTreeMap::default();
-
-		let multiple_choice = FirmwareMultichoice::new("native", map);
-		let res = multiple_choice.calculate_documentation_url(&variant.uri);
-
-		//Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(res.unwrap(), Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.md").unwrap());
 	}
 }
