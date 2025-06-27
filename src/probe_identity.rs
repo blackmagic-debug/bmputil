@@ -140,6 +140,16 @@ impl TryFrom<&str> for ProbeIdentity
 		//    Old: Black Magic Probe
 		// From this we want to extract two main things: version (if available), and probe variety
 		// (probe variety meaning alternative platform kind if not a BMP itself)
+		//
+		// NB: Bootloaders do not necessarily follow this pattern and can use other string formats.
+		// They are no less valid(!) and must be represented somehow by a ProbeIdentity.
+		// Examples from the wild include:
+		// - Black Magic Probe DFU v1.9.0
+		// - dragonBoot DFU bootloader
+		// and ST's boot ROM bootloader
+		//
+		// We mark these additional strings as bootloader strings for which we cannot determine the
+		// probe kind that they run on as the strings fail to encode that information.
 
 		// Every identity should start with 'Black Magic Probe'
 		if !identity.starts_with(BMP_PRODUCT_STRING) {
