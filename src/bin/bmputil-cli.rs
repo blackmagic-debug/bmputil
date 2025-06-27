@@ -303,8 +303,15 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
 				return Ok(());
 			}
 			// Convert the version number to a string for display and use with the switcher
-			let latest_version = latest_version.to_string();
-			info!("Upgrading probe firmware from {} to {}", identity.version, latest_version);
+			let latest_version_str = latest_version.to_string();
+			if identity.version < latest_version {
+				info!("Upgrading probe firmware from {} to {}", identity.version, latest_version_str);
+			} else if flash_args.force {
+				warn!(
+					"Forcibly downgrading firmware from {} to {}",
+					identity.version, latest_version_str
+				);
+			}
 
 			// If there's more than one variant in this release, defer to the switcher engine to pick the
 			// variant that will be used. Otherwise, jump below to the flasher system with the file
@@ -315,7 +322,7 @@ fn update_probe(cli_args: &CliArguments, flash_args: &UpdateArguments, paths: &P
 				1 => latest_firmware.variants.values().next().unwrap(),
 				// There's more than one variant? okay, ask the switcher system to have the user tell us
 				// which to use then.
-				_ => match pick_firmware(latest_version.as_str(), latest_firmware)? {
+				_ => match pick_firmware(latest_version_str.as_str(), latest_firmware)? {
 					Some(variant) => variant,
 					None => {
 						println!("firmware variant selection cancelled, stopping operation");
