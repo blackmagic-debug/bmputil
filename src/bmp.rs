@@ -374,7 +374,7 @@ impl BmpDevice
 			}
 		}
 
-		info!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
+		debug!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
 		self.interface = None;
 		Ok(())
@@ -432,8 +432,13 @@ impl BmpDevice
 
 	pub fn reboot(&self, dfu_iface: DfuSync) -> Result<()>
 	{
-		if dfu_iface.will_detach() {
-			Ok(dfu_iface.detach()?)
+		// If the bootloader is not manifestation tolerant, we have to force matters with a DFU_DETACH
+		if !dfu_iface.manifestation_tolerant() {
+			dfu_iface.detach()?;
+		}
+		// If the bootloader will not automatically detach, we have to force matters by doing a USB reset
+		if !dfu_iface.will_detach() {
+			Ok(dfu_iface.usb_reset()?)
 		} else {
 			Ok(())
 		}
