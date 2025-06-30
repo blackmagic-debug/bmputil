@@ -12,14 +12,14 @@ use std::{mem, thread};
 
 use clap::ValueEnum;
 use clap::builder::PossibleValue;
-use color_eyre::eyre::{Context, Error, Report, Result, eyre};
+use color_eyre::eyre::{Context, Error, OptionExt, Report, Result, eyre};
 use dfu_core::{DfuIo, DfuProtocol, Error as DfuCoreError, State as DfuState};
 use dfu_nusb::{DfuNusb, DfuSync, Error as DfuNusbError};
 use log::{debug, error, info, trace, warn};
 use nusb::descriptors::Descriptor;
 #[cfg(target_os = "macos")]
 use nusb::transfer::TransferError;
-use nusb::transfer::{Control, ControlType, Recipient};
+use nusb::transfer::{Control, ControlType, Direction, Recipient};
 use nusb::{Device, DeviceInfo, Interface, list_devices};
 
 use crate::BmpParams;
@@ -56,6 +56,11 @@ pub struct BmpDevice
 
 	/// RefCell for interior-mutability-based caching.
 	port: PortId,
+}
+
+fn request_type(direction: Direction, control_type: ControlType, recipient: Recipient) -> u8
+{
+	((direction as u8) << 7) | ((control_type as u8) << 5) | (recipient as u8)
 }
 
 impl BmpDevice
@@ -277,43 +282,64 @@ impl BmpDevice
 		Ok((dfu_interface_descriptor.interface_number(), dfu_func_desc))
 	}
 
-	/// Requests the device to leave DFU mode, using the DefuSe extensions.
+	/// Requests the device to leave DFU mode, using the DfuSe extensions.
 	fn leave_dfu_mode(&mut self) -> Result<()>
 	{
 		debug!("Attempting to leave DFU mode...");
-		let (iface_number, _func_desc) = self.dfu_descriptors()?;
 
-		// Perform the zero-length DFU_DNLOAD request.
-		let request = Control {
-			control_type: ControlType::Class,
-			recipient: Recipient::Interface,
-			request: DfuRequest::Dnload as u8,
-			value: 0,
-			index: 0,
-		};
-		let _response = self
-			.interface
-			.as_ref()
-			.unwrap()
-			.control_out_blocking(request, &[], Duration::from_secs(2))?;
+		// Start by opening the DFU interface
+		let dfu = DfuNusb::open(
+			self.device().clone(),
+			self.interface
+				.clone()
+				.ok_or_eyre("BmpDevice does not have valid interface")?,
+			0,
+		)?;
 
-		// Then perform a DFU_GETSTATUS request to complete the leave "request".
-		let request = Control {
-			control_type: ControlType::Class,
-			recipient: Recipient::Interface,
-			request: DfuRequest::GetStatus as u8,
-			value: 0,
-			index: iface_number as u16,
-		};
-		let mut buf: [u8; 6] = [0; 6];
-		let status = self
-			.interface
-			.as_ref()
-			.unwrap()
-			.control_in_blocking(request, &mut buf, Duration::from_secs(2))?;
+		// Extract the functional descriptor
+		let descriptor = dfu.functional_descriptor();
 
-		trace!("Device status after zero-length DNLOAD is 0x{:02x}", status);
-		info!("DFU_GETSTATUS request completed. Device should now re-enumerate into runtime mode.");
+		// Ask if the bootloader is manifestation tolerant - this determines how the bootloader
+		// must be asked to go back into the firmware. Manifestation tolerant bootloaders usue
+		// a 0-length DFU_DNLOAD packet followed by DFU_GETSTATUS. non-tollerant require us
+		// to instead issue DFU_DETACH. In both cases after this happens.. if the bootloader
+		// is not marked as auto-detaching, we must issue a USB reset to complete the process.
+		if descriptor.manifestation_tolerant {
+			// Perform the zero-length DFU_DNLOAD request.
+			dfu.write_control(
+				request_type(Direction::Out, ControlType::Class, Recipient::Interface),
+				DfuRequest::Dnload as u8,
+				0,
+				&[],
+			)?;
+
+			// Then perform a DFU_GETSTATUS request to complete the leave "request".
+			let mut buf: [u8; 6] = [0; 6];
+			let status = dfu.read_control(
+				request_type(Direction::In, ControlType::Class, Recipient::Interface),
+				DfuRequest::GetStatus as u8,
+				0,
+				&mut buf,
+			)?;
+			trace!("Device status after zero-length DNLOAD is 0x{:02x}", status);
+			debug!("DFU_GETSTATUS request completed. Device should now re-enumerate into runtime mode.");
+		} else {
+			// Extract from the descriptors how long a deatch can take at most
+			let timeout_ms = dfu.functional_descriptor().detach_timeout;
+			// Send a DFU_DETACH request to ask the bootloader to go back into runtime mode
+			dfu.write_control(
+				request_type(Direction::Out, ControlType::Class, Recipient::Interface),
+				DfuRequest::Detach as u8,
+				timeout_ms,
+				&[],
+			)?;
+			debug!("DFU_DETACH request completed. Device should now re-enumerate into runtime mode.");
+		}
+
+		// If the device requires a reset to complete this request, perform it now
+		if !dfu.functional_descriptor().will_detach {
+			dfu.usb_reset()?;
+		}
 
 		self.interface = None;
 		Ok(())
