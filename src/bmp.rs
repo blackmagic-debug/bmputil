@@ -15,11 +15,9 @@ use clap::builder::PossibleValue;
 use color_eyre::eyre::{Context, Error, OptionExt, Report, Result, eyre};
 use dfu_core::{DfuIo, DfuProtocol, Error as DfuCoreError, State as DfuState};
 use dfu_nusb::{DfuNusb, DfuSync, Error as DfuNusbError};
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, trace, warn};
 use nusb::descriptors::Descriptor;
-#[cfg(target_os = "macos")]
-use nusb::transfer::TransferError;
-use nusb::transfer::{Control, ControlType, Direction, Recipient};
+use nusb::transfer::{Control, ControlType, Direction, Recipient, TransferError};
 use nusb::{Device, DeviceInfo, Interface, list_devices};
 
 use crate::BmpParams;
@@ -61,6 +59,38 @@ pub struct BmpDevice
 fn request_type(direction: Direction, control_type: ControlType, recipient: Recipient) -> u8
 {
 	((direction as u8) << 7) | ((control_type as u8) << 5) | (recipient as u8)
+}
+
+fn handle_detach_errors<T>(result: std::result::Result<T, DfuNusbError>) -> Result<()>
+{
+	if let Err(err) = result {
+		match err {
+			DfuNusbError::Transfer(error) => match error {
+				// If the error reported on Linux was a disconnection, that was just the
+				// bootloader rebooting and we can safely ignore it
+				#[cfg(any(target_os = "linux", target_os = "android", target_os = "windows"))]
+				TransferError::Disconnected => Ok(()),
+				// If the error reported was a STALL, that was just the
+				// bootloader rebooting and we can safely ignore it
+				TransferError::Stall => Ok(()),
+				// If the error reported on macOS was unknown, this is most probably just the
+				// OS having a bad time tracking the result of the detach packet and the
+				// device rebooting as a result, so we can safely ignore it
+				#[cfg(target_os = "macos")]
+				TransferError::Unknown => Ok(()),
+				_ => {
+					warn!("Possibly spurious error from OS while rebooting probe: {}", err);
+					Err(err.into())
+				},
+			},
+			_ => {
+				warn!("Possibly spurious error from OS while rebooting probe: {}", err);
+				Err(err.into())
+			},
+		}
+	} else {
+		Ok(())
+	}
 }
 
 impl BmpDevice
@@ -327,12 +357,12 @@ impl BmpDevice
 			// Extract from the descriptors how long a deatch can take at most
 			let timeout_ms = dfu.functional_descriptor().detach_timeout;
 			// Send a DFU_DETACH request to ask the bootloader to go back into runtime mode
-			dfu.write_control(
+			handle_detach_errors(dfu.write_control(
 				request_type(Direction::Out, ControlType::Class, Recipient::Interface),
 				DfuRequest::Detach as u8,
 				timeout_ms,
 				&[],
-			)?;
+			))?;
 			debug!("DFU_DETACH request completed. Device should now re-enumerate into runtime mode.");
 		}
 
@@ -359,20 +389,17 @@ impl BmpDevice
 			index: iface_number as u16,
 		};
 
-		let response = self.interface.as_ref().unwrap().control_out_blocking(
-			request,
-			&[],                    // buffer
-			Duration::from_secs(1), // timeout for the request
-		);
-
-		// Suppress errors if they're just how the OS handles the device going away due to the request
-		if let Err(error) = response {
-			match error {
-				#[cfg(target_os = "macos")]
-				TransferError::Unknown => {},
-				_ => Err(error)?,
-			}
-		}
+		handle_detach_errors(
+			self.interface
+				.as_ref()
+				.unwrap()
+				.control_out_blocking(
+					request,
+					&[],                    // buffer
+					Duration::from_secs(1), // timeout for the request
+				)
+				.map_err(DfuNusbError::Transfer),
+		)?;
 
 		debug!("DFU_DETACH request completed. Device should now re-enumerate into DFU mode.");
 
@@ -434,7 +461,7 @@ impl BmpDevice
 	{
 		// If the bootloader is not manifestation tolerant, we have to force matters with a DFU_DETACH
 		if !dfu_iface.manifestation_tolerant() {
-			dfu_iface.detach()?;
+			handle_detach_errors(dfu_iface.detach())?;
 		}
 		// If the bootloader will not automatically detach, we have to force matters by doing a USB reset
 		if !dfu_iface.will_detach() {

@@ -11,10 +11,8 @@ use std::time::Duration;
 
 use color_eyre::eyre::{Context, Result, eyre};
 use color_eyre::owo_colors::OwoColorize;
-use dfu_nusb::Error as DfuNusbError;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info, warn};
-use nusb::transfer::TransferError;
 
 use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
 use crate::usb::PortId;
@@ -122,36 +120,7 @@ impl Firmware
 		info!("Flash complete!");
 
 		if progress_bar.position() == (self.length as u64) {
-			match device.reboot(dfu_iface) {
-				Err(err) => {
-					let err = err.downcast::<DfuNusbError>()?;
-					match err {
-						DfuNusbError::Transfer(error) => match error {
-							// If the error reported on Linux was a disconnection, that was just the
-							// bootloader rebooting and we can safely ignore it
-							#[cfg(any(target_os = "linux", target_os = "android", target_os = "windows"))]
-							TransferError::Disconnected => Ok(()),
-							// If the error reported was a STALL, that was just the
-							// bootloader rebooting and we can safely ignore it
-							TransferError::Stall => Ok(()),
-							// If the error reported on macOS was unknown, this is most probably just the
-							// OS having a bad time tracking the result of the detach packet and the
-							// device rebooting as a result, so we can safely ignore it
-							#[cfg(target_os = "macos")]
-							TransferError::Unknown => Ok(()),
-							_ => {
-								warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
-								Err(err.into())
-							},
-						},
-						_ => {
-							warn!("Possibly spurious error from OS at the very end of flashing: {}", err);
-							Err(err.into())
-						},
-					}
-				},
-				result => result,
-			}
+			device.reboot(dfu_iface)
 		} else {
 			Err(eyre!("Failed to flash device, download incomplete"))
 		}
