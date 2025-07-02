@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use color_eyre::eyre::{Result, eyre};
+use color_eyre::eyre::{Result, eyre, OptionExt};
 use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
 use reqwest::StatusCode;
@@ -106,7 +106,7 @@ impl<'a> FirmwareMultichoice<'a>
 			.iter()
 			.enumerate()
 			.find(|(_, variant)| variant.friendly_name == friendly_name)
-			.expect("The friendly_name should always be found");
+			.ok_or_eyre(eyre!("The friendly_name '{}' should always be found", friendly_name))?;
 
 		// Ask the user what they wish to do
 		let items = ["Flash to probe", "Show documentation", "Choose a different variant"];

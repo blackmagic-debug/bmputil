@@ -44,10 +44,10 @@ impl FirmwareDownload
 	}
 
 	pub fn build_release_uri(&self, release: &str) -> Result<Url>
-	{
+	{		
 		// Expected uri input: https://github.com/blackmagic-debug/blackmagic/releases/download/<release>/blackmagic-native-v2_0_0-rc1.elf
 		let release_position_option = self.uri.path_segments()
-			.expect("Can't be base")
+			.expect("URI shape incorrect, must be a web address")
 			.position(|r| r == release);
 		
 		// The download position should be before the release position
@@ -60,7 +60,7 @@ impl FirmwareDownload
 		// From: /blackmagic-debug/blackmagic/releases/download/<release>/blackmagic-native-v2_0_0-rc1.elf
 		// To  : /blackmagic-debug/blackmagic/releases/tag/<release>
 		let release_path: PathBuf = self.uri.path_segments()
-			.expect("Can't be base")
+			.expect("URI shape incorrect, must be a web address")
 			.take(download_position)
 			// Now add on /tag/ and the release number
 			.chain(["tag", release])
@@ -92,7 +92,7 @@ mod tests
 	fn calculate_release_uri_success()
 	{
 		let variant = FirmwareDownload{
-            friendly_name: "Black Magic Debug for BMP (full)".to_string(),
+            friendly_name: "Black Magic Debug for BMP (full)".into(),
             file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
             uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
         };
@@ -100,17 +100,17 @@ mod tests
 		let res = variant.build_release_uri("v1.10.0");
 
 		// Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(
-			res.unwrap(),
-			Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/tag/v1.10.0").unwrap()
-		);
+		match res {
+			Ok(url) => assert_eq!(url, Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/tag/v1.10.0").unwrap()),
+			Err(_) => assert!(false, "Shouldn't return an error"),
+		}
 	}
 
 	#[test]
 	fn calculate_release_uri_error()
 	{
 		let variant = FirmwareDownload{
-            friendly_name: "Black Magic Debug for BMP (full)".to_string(),
+            friendly_name: "Black Magic Debug for BMP (full)".into(),
             file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
             uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
         };
@@ -118,17 +118,17 @@ mod tests
 		let res = variant.build_release_uri("error");
 
 		// Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(
-			res.unwrap_err().to_string(),
-			"The provided uri doesn't contain the release segment 'error'"
-		);
+		match res {
+			Ok(_) => assert!(false, "Result should fail"),
+			Err(str) => assert_eq!(str.to_string(), "The provided uri doesn't contain the release segment 'error'"),
+		}
 	}
 
 	#[test]
 	fn calculate_release_uri_release_first_segment_error()
 	{
 		let variant = FirmwareDownload {
-			friendly_name: "Black Magic Debug for BMP (full)".to_string(),
+			friendly_name: "Black Magic Debug for BMP (full)".into(),
 			file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
 			uri: Url::parse("https://github.com/v1.2.3").expect("Setup url shouldn't fail"),
 		};
@@ -136,14 +136,17 @@ mod tests
 		let res = variant.build_release_uri("v1.2.3");
 
 		// Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(res.unwrap_err().to_string(), "The release segment 'v1.2.3' can't be the first one");
+		match res {
+			Ok(_) => assert!(false, "Result should fail"),
+			Err(str) => assert_eq!(str.to_string(), "The release segment 'v1.2.3' can't be the first one"),
+		}
 	}
 
 	#[test]
 	fn calculate_documentation_url_success()
 	{
 		let variant = FirmwareDownload{
-            friendly_name: "Black Magic Debug for BMP (common targets)".to_string(),
+            friendly_name: "Black Magic Debug for BMP (common targets)".into(),
             file_name: PathBuf::from("blackmagic-native-common-v2.0.0-rc1.elf"),
             uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.elf").expect("Setup url shouldn't fail"),
         };
@@ -151,6 +154,9 @@ mod tests
 		let res = variant.build_documentation_url();
 
 		// Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(res.unwrap(), Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.md").unwrap());
+		match res { 
+			Ok(url) => assert_eq!(url, Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.md").unwrap()),
+			Err(_) => assert!(false, "Shouldn't return an error"),
+		}		
 	}
 }
