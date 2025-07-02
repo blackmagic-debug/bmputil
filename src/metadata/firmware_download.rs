@@ -3,9 +3,10 @@
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 // SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
+use std::ffi::OsStr;
 use std::path::PathBuf;
 
-use color_eyre::eyre::ContextCompat;
+use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use serde::Deserialize;
 use url::Url;
@@ -27,54 +28,57 @@ impl FirmwareDownload
 	{
 		// Convert the path compoment of the download URI to a Path
 		let mut docs_path = PathBuf::from(&self.uri.path());
-		// Replace the file extension from ".elf" to ".md"
-		docs_path.set_extension("md");
+		if docs_path.extension() == Some(OsStr::new("elf")) {
+			docs_path.set_extension("md");	
+		} else {
+			return Err(eyre!("Suspected"));
+		}
+
 		// Copy only the origin
-		let mut docs_uri = Url::parse(&self.uri.origin().ascii_serialization())?;
+		let mut docs_uri = self.uri.clone();
 		docs_uri.set_path(docs_path.to_str().expect("Can't set a path from a doc path"));
+		docs_uri.set_fragment(None);
+		docs_uri.set_query(None);
 
 		Ok(docs_uri)
 	}
 
 	pub fn build_release_uri(&self, release: &str) -> Result<Url>
 	{
-		// Find where the release tag component is in the path, stripping back to that
-		let mut path_segments = self.uri.path_segments().context("cannot be base")?.collect::<Vec<_>>();
-
-		// Find the release segment position
-		let release_segment_position = path_segments
-			.iter()
-			.position(|s| s.ends_with(release))
-			.with_context(|| {
-				format!("This firmware URL doesn't contain the segment release with value '{}'", release)
-			})?;
-
-		// We take all the segments up to the 'version' segment, including that segment
-		// Mutating because we have to change one of the segments.		
-		let new_segments = path_segments
-			.as_mut_slice()
-			.get_mut(..=release_segment_position)
-			.context("The segment range should be in path_segment")?;
-
-		// Get the segment that has to be changed.
-		let tag_segment_index = release_segment_position
-			.checked_sub(1)
-			.with_context(|| format!("Version '{}' segment can't be first segment", release))?;
-
-		// Change the 'download' segment into a 'tag'
-		let download_segment = new_segments
-			.get_mut(tag_segment_index)
-			.expect("Segment shouldn't be possible to be out of bounds");
-		*download_segment = "tag";
-
-		// Only parse the origin
-		let mut new_url = Url::parse(&self.uri.origin().ascii_serialization())?;
-		{
-			let mut path_segments_mut = new_url.path_segments_mut().expect("Cannot be base URL");
-			path_segments_mut.clear();
-			path_segments_mut.extend(new_segments);
-		}
-
+		// Expected uri input: https://github.com/blackmagic-debug/blackmagic/releases/download/<release>/blackmagic-native-v2_0_0-rc1.elf
+		let release_position_option = self.uri.path_segments()
+			.expect("Can't be base")
+			.position(|r| r == release);
+		
+		// The download position should be before the release position
+		let download_position = match release_position_option {
+			Some(position) => position.checked_sub(1).ok_or_else(|| eyre!("The release segment '{}' can't be the first one", release))?,
+			None => return Err(eyre!("The provided uri doesn't contain the release segment '{}'", release)) 
+		};
+		
+		// Take the segments up to the /download/ position
+		// From: /blackmagic-debug/blackmagic/releases/download/<release>/blackmagic-native-v2_0_0-rc1.elf
+		// To  : /blackmagic-debug/blackmagic/releases/tag/<release>
+		let release_path: PathBuf = self.uri.path_segments()
+			.expect("Can't be base")
+			.take(download_position)
+			// Now add on /tag/ and the release number
+			.chain(["tag", release])
+			.collect();
+		
+		let new_path = release_path.to_str()
+			.expect("cannot be base");
+		
+		// build on the premise that the shape is smaller, or at least the segment "tag" is smaller then "download"
+		if self.uri.path().len() < new_path.len() {
+			return Err(eyre!("Something in path building went horrible wrong"));
+		} 
+		
+		let mut new_url = self.uri.clone();
+		new_url.set_path(new_path);
+		new_url.set_fragment(None);
+		new_url.set_query(None);
+				
 		Ok(new_url)
 	}
 }
@@ -108,7 +112,7 @@ mod tests
 		let variant = FirmwareDownload{
             friendly_name: "Black Magic Debug for BMP (full)".to_string(),
             file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
-            uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
+            uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
         };
 
 		let res = variant.build_release_uri("error");
@@ -116,7 +120,7 @@ mod tests
 		// Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
 		assert_eq!(
 			res.unwrap_err().to_string(),
-			"This firmware URL doesn't contain the segment release with value 'error'"
+			"The provided uri doesn't contain the release segment 'error'"
 		);
 	}
 
@@ -132,7 +136,7 @@ mod tests
 		let res = variant.build_release_uri("v1.2.3");
 
 		// Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		assert_eq!(res.unwrap_err().to_string(), "Version 'v1.2.3' segment can't be first segment");
+		assert_eq!(res.unwrap_err().to_string(), "The release segment 'v1.2.3' can't be the first one");
 	}
 
 	#[test]
