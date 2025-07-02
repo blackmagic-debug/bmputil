@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use color_eyre::eyre::ContextCompat;
+use color_eyre::Result;
 use serde::Deserialize;
 use url::Url;
 
@@ -22,22 +23,20 @@ pub struct FirmwareDownload
 
 impl FirmwareDownload
 {
-	pub fn calculate_documentation_url(&self) -> color_eyre::Result<Url>
+	pub fn build_documentation_url(&self) -> Result<Url>
 	{
-		let variant_uri = &self.uri;
-
 		// Convert the path compoment of the download URI to a Path
-		let mut docs_path = PathBuf::from(variant_uri.path());
+		let mut docs_path = PathBuf::from(&self.uri.path());
 		// Replace the file extension from ".elf" to ".md"
 		docs_path.set_extension("md");
 		// Copy only the origin
-		let mut docs_uri = Url::parse(&variant_uri.origin().ascii_serialization())?;
+		let mut docs_uri = Url::parse(&self.uri.origin().ascii_serialization())?;
 		docs_uri.set_path(docs_path.to_str().expect("Can't set a path from a doc path"));
 
 		Ok(docs_uri)
 	}
 
-	pub fn calculate_release_uri(&self, release: &str) -> color_eyre::Result<Url>
+	pub fn build_release_uri(&self, release: &str) -> Result<Url>
 	{
 		// Find where the release tag component is in the path, stripping back to that
 		let mut path_segments = self.uri.path_segments().context("cannot be base")?.collect::<Vec<_>>();
@@ -50,11 +49,14 @@ impl FirmwareDownload
 				format!("This firmware URL doesn't contain the segment release with value '{}'", release)
 			})?;
 
+		// We take all the segments up to the 'version' segment, including that segment
+		// Mutating because we have to change one of the segments.		
 		let new_segments = path_segments
 			.as_mut_slice()
 			.get_mut(..=release_segment_position)
 			.context("The segment range should be in path_segment")?;
 
+		// Get the segment that has to be changed.
 		let tag_segment_index = release_segment_position
 			.checked_sub(1)
 			.with_context(|| format!("Version '{}' segment can't be first segment", release))?;
@@ -91,7 +93,7 @@ mod tests
             uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
         };
 
-		let res = variant.calculate_release_uri("v1.10.0");
+		let res = variant.build_release_uri("v1.10.0");
 
 		// Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
 		assert_eq!(
@@ -109,7 +111,7 @@ mod tests
             uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
         };
 
-		let res = variant.calculate_release_uri("error");
+		let res = variant.build_release_uri("error");
 
 		// Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
 		assert_eq!(
@@ -127,7 +129,7 @@ mod tests
 			uri: Url::parse("https://github.com/v1.2.3").expect("Setup url shouldn't fail"),
 		};
 
-		let res = variant.calculate_release_uri("v1.2.3");
+		let res = variant.build_release_uri("v1.2.3");
 
 		// Can't do Err(err) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
 		assert_eq!(res.unwrap_err().to_string(), "Version 'v1.2.3' segment can't be first segment");
@@ -142,7 +144,7 @@ mod tests
             uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.elf").expect("Setup url shouldn't fail"),
         };
 
-		let res = variant.calculate_documentation_url();
+		let res = variant.build_documentation_url();
 
 		// Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
 		assert_eq!(res.unwrap(), Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.md").unwrap());

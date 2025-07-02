@@ -13,7 +13,7 @@ use reqwest::Url;
 use serde::Deserialize;
 use serde::de::Visitor;
 
-pub(crate) use crate::metadata::firmware_download::FirmwareDownload;
+pub use crate::metadata::firmware_download::FirmwareDownload;
 use crate::probe_identity::VersionNumber;
 
 #[derive(Deserialize)]

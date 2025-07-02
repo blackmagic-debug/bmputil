@@ -132,7 +132,7 @@ impl<'a> FirmwareMultichoice<'a>
 		let variant = self.variants[variant_index];
 
 		// Convert back into a URI
-		let docs_uri = variant.calculate_documentation_url()?;
+		let docs_uri = variant.build_documentation_url()?;
 
 		// Now try and download this documentation file
 		let client = reqwest::blocking::Client::new();
@@ -146,7 +146,7 @@ impl<'a> FirmwareMultichoice<'a>
 			// XXX: Need to compute the release URI from the download URI and release name string
 			StatusCode::NOT_FOUND => println!(
 				"No documentation found, please go to {} to find out more",
-				variant.calculate_release_uri(self.release)?
+				variant.build_release_uri(self.release)?
 			),
 			StatusCode::OK => Viewer::display(&variant.friendly_name, &response.text()?)?,
 			status => Err(eyre!(
