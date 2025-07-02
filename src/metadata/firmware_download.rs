@@ -6,8 +6,8 @@
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
-use color_eyre::eyre::eyre;
 use color_eyre::Result;
+use color_eyre::eyre::eyre;
 use serde::Deserialize;
 use url::Url;
 
@@ -29,7 +29,7 @@ impl FirmwareDownload
 		// Convert the path compoment of the download URI to a Path
 		let mut docs_path = PathBuf::from(&self.uri.path());
 		if docs_path.extension() == Some(OsStr::new("elf")) {
-			docs_path.set_extension("md");	
+			docs_path.set_extension("md");
 		} else {
 			return Err(eyre!("Suspected"));
 		}
@@ -44,18 +44,22 @@ impl FirmwareDownload
 	}
 
 	pub fn build_release_uri(&self, release: &str) -> Result<Url>
-	{		
+	{
 		// Expected uri input: https://github.com/blackmagic-debug/blackmagic/releases/download/<release>/blackmagic-native-v2_0_0-rc1.elf
-		let release_position_option = self.uri.path_segments()
+		let release_position_option = self
+			.uri
+			.path_segments()
 			.expect("URI shape incorrect, must be a web address")
 			.position(|r| r == release);
-		
+
 		// The download position should be before the release position
 		let download_position = match release_position_option {
-			Some(position) => position.checked_sub(1).ok_or_else(|| eyre!("The release segment '{}' can't be the first one", release))?,
-			None => return Err(eyre!("The provided uri doesn't contain the release segment '{}'", release)) 
+			Some(position) => position
+				.checked_sub(1)
+				.ok_or_else(|| eyre!("The release segment '{}' can't be the first one", release))?,
+			None => return Err(eyre!("The provided uri doesn't contain the release segment '{}'", release)),
 		};
-		
+
 		// Take the segments up to the /download/ position
 		// From: /blackmagic-debug/blackmagic/releases/download/<release>/blackmagic-native-v2_0_0-rc1.elf
 		// To  : /blackmagic-debug/blackmagic/releases/tag/<release>
@@ -65,20 +69,19 @@ impl FirmwareDownload
 			// Now add on /tag/ and the release number
 			.chain(["tag", release])
 			.collect();
-		
-		let new_path = release_path.to_str()
-			.expect("cannot be base");
-		
+
+		let new_path = release_path.to_str().expect("cannot be base");
+
 		// build on the premise that the shape is smaller, or at least the segment "tag" is smaller then "download"
 		if self.uri.path().len() < new_path.len() {
 			return Err(eyre!("Something in path building went horrible wrong"));
-		} 
-		
+		}
+
 		let mut new_url = self.uri.clone();
 		new_url.set_path(new_path);
 		new_url.set_fragment(None);
 		new_url.set_query(None);
-				
+
 		Ok(new_url)
 	}
 }
@@ -101,7 +104,10 @@ mod tests
 
 		// Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
 		match res {
-			Ok(url) => assert_eq!(url, Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/tag/v1.10.0").unwrap()),
+			Ok(url) => assert_eq!(
+				url,
+				Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/tag/v1.10.0").unwrap()
+			),
 			Err(_) => assert!(false, "Shouldn't return an error"),
 		}
 	}
@@ -109,11 +115,11 @@ mod tests
 	#[test]
 	fn calculate_release_uri_error()
 	{
-		let variant = FirmwareDownload{
-            friendly_name: "Black Magic Debug for BMP (full)".into(),
-            file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
-            uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
-        };
+		let variant = FirmwareDownload {
+			friendly_name: "Black Magic Debug for BMP (full)".into(),
+			file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
+			uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
+		};
 
 		let res = variant.build_release_uri("error");
 
@@ -154,9 +160,9 @@ mod tests
 		let res = variant.build_documentation_url();
 
 		// Can't do Ok(Url) because of '`'the foreign item type `ErrReport` doesn't implement `PartialEq`'
-		match res { 
+		match res {
 			Ok(url) => assert_eq!(url, Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/download/v2.0.0-rc1/blackmagic-native-v2_0_0-rc1.md").unwrap()),
 			Err(_) => assert!(false, "Shouldn't return an error"),
-		}		
+		}
 	}
 }
