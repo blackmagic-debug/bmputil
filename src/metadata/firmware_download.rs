@@ -28,10 +28,11 @@ impl FirmwareDownload
 	{
 		// Convert the path compoment of the download URI to a Path
 		let mut docs_path = PathBuf::from(&self.uri.path());
-		if docs_path.extension() == Some(OsStr::new("elf")) {
+		let checked_extension = OsStr::new("elf");
+		if docs_path.extension() == Some(checked_extension) {
 			docs_path.set_extension("md");
 		} else {
-			return Err(eyre!("Suspected"));
+			return Err(eyre!("Path extension is not of '{:?}', got '{:?}'", checked_extension, docs_path.extension()));
 		}
 
 		// Copy only the origin
@@ -71,11 +72,6 @@ impl FirmwareDownload
 			.collect();
 
 		let new_path = release_path.to_str().expect("cannot be base");
-
-		// build on the premise that the shape is smaller, or at least the segment "tag" is smaller then "download"
-		if self.uri.path().len() < new_path.len() {
-			return Err(eyre!("Something in path building went horrible wrong"));
-		}
 
 		let mut new_url = self.uri.clone();
 		new_url.set_path(new_path);

@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use color_eyre::eyre::{Result, eyre, OptionExt};
+use color_eyre::eyre::{OptionExt, Result, eyre};
 use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
 use reqwest::StatusCode;
