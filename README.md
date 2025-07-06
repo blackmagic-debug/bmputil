@@ -15,14 +15,21 @@ Binary releases for Linux, mac OS (amd64/AArch64) and Windows (amd64/AArch64) ar
 [release](https://github.com/blackmagic-debug/bmputil/releases). These should work out-of-the-box with no
 extra dependencies or software needing to be installed.
 
-Alternately, you can install directly from [crates.io](https://crates.io/crates/bmputil) via cargo.
+Alternatively `cargo binstall` can be used instead. Which allows for easy updates.
+We recommend the following order of operations:
+* [Install rustup](https://rustup.rs/)
+* [Install cargo-binstall](https://github.com/cargo-bins/cargo-binstall?tab=readme-ov-file#installation)
+* Install bmputil by invoking
+  * `cargo binstall bmputil` for the stable release
+  * `cargo binstall bmputil@v1.0.0-rc.2` for a release candidate
 
-First install Rust on your computer using `rustup`. For this, you can follow the instructions on the
-[Rust Lang website](https://www.rust-lang.org/tools/install).
+The tool will be available as `bmputil-cli` starting with v1.0.0 and `bmputil` for older releases.
 
-Then, install bmputil using `cargo install bmputil`. The tool will be available as `bmputil-cli`.
+Another alternative is to use `cargo install` instead of `cargo binstall` which will install the tool from source. In
+such case `cargo-binstall` can be skipped in the instructions above. The `binstall` path will fall back to source
+compilation if a binary build is not available for the specific os/architecture combination.
 
-bmputil on Windows will automatically setup driver installation on first run for a probe if appropriate.
+`bmputil` on Windows will automatically setup driver installation on first run for a probe if appropriate.
 This will require administrator access when it occurs, and uses the Windows Driver Installer framework.
 
 ## Building from source
