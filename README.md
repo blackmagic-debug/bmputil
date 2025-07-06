@@ -21,7 +21,7 @@ We recommend the following order of operations:
 * [Install cargo-binstall](https://github.com/cargo-bins/cargo-binstall?tab=readme-ov-file#installation)
 * Install bmputil by invoking
   * `cargo binstall bmputil` for the stable release
-  * `cargo binstall bmputil@v1.0.0-rc.2` for a release candidate
+  * `cargo binstall bmputil@1.0.0-rc.2` for a release candidate
 
 The tool will be available as `bmputil-cli` starting with v1.0.0 and `bmputil` for older releases.
 
