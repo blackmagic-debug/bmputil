@@ -20,6 +20,7 @@ use color_eyre::config::HookBuilder;
 use color_eyre::eyre::{Context, EyreHandler, InstallError, OptionExt, Result};
 use directories::ProjectDirs;
 use log::{debug, error, info, warn};
+use owo_colors::OwoColorize;
 
 #[derive(Parser)]
 #[command(
@@ -510,7 +511,7 @@ impl BmputilPanic
 	fn print_footer(&self)
 	{
 		eprintln!();
-		eprintln!("Please report this issue to our issue tracker at");
+		eprintln!("{}", "Please report this issue to our issue tracker at".yellow());
 		eprintln!("https://github.com/blackmagic-debug/bmputil/issues")
 	}
 }
@@ -524,7 +525,7 @@ impl EyreHandler for BmputilHandler
 		self.inner_handler.debug(error, fmt)?;
 		writeln!(fmt)?;
 		writeln!(fmt)?;
-		writeln!(fmt, "Please report this issue to our issue tracker at")?;
+		writeln!(fmt, "{}", "Please report this issue to our issue tracker at".yellow())?;
 		write!(fmt, "https://github.com/blackmagic-debug/bmputil/issues")
 	}
 

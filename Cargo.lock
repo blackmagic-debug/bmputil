@@ -241,6 +241,7 @@ dependencies = [
  "libc",
  "log",
  "nusb",
+ "owo-colors",
  "ratatui",
  "rc-zip-sync",
  "reqwest",
