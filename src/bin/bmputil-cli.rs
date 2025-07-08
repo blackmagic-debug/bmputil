@@ -504,6 +504,7 @@ impl BmputilPanic
 
 	fn print_header(&self)
 	{
+		eprintln!("------------[ ✂ cut here ✂ ]------------");
 		eprintln!("Unhandled crash in bmputil-cli v{}", crate_version!());
 		eprintln!();
 	}
@@ -511,8 +512,9 @@ impl BmputilPanic
 	fn print_footer(&self)
 	{
 		eprintln!();
-		eprintln!("{}", "Please report this issue to our issue tracker at".yellow());
-		eprintln!("https://github.com/blackmagic-debug/bmputil/issues")
+		eprintln!("{}", "Please include all lines down to this one from the cut here".yellow());
+		eprintln!("{}", "marker, and report this issue to our issue tracker at".yellow());
+		eprintln!("https://github.com/blackmagic-debug/bmputil/issues");
 	}
 }
 
@@ -521,11 +523,17 @@ impl EyreHandler for BmputilHandler
 	fn debug(&self, error: &(dyn std::error::Error + 'static), fmt: &mut core::fmt::Formatter<'_>)
 	-> core::fmt::Result
 	{
+		writeln!(fmt, "------------[ ✂ cut here ✂ ]------------")?;
 		write!(fmt, "Unhandled crash in bmputil-cli v{}", crate_version!())?;
 		self.inner_handler.debug(error, fmt)?;
 		writeln!(fmt)?;
 		writeln!(fmt)?;
-		writeln!(fmt, "{}", "Please report this issue to our issue tracker at".yellow())?;
+		writeln!(
+			fmt,
+			"{}",
+			"Please include all lines down to this one from the cut here".yellow()
+		)?;
+		writeln!(fmt, "{}", " marker, and report this issue to our issue tracker at".yellow())?;
 		write!(fmt, "https://github.com/blackmagic-debug/bmputil/issues")
 	}
 
