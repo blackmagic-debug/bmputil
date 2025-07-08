@@ -14,7 +14,7 @@ use bmputil::windows;
 use bmputil::{AllowDangerous, BmpParams, FlashParams};
 use clap::builder::TypedValueParser;
 use clap::builder::styling::Styles;
-use clap::{Arg, ArgAction, Args, Command, CommandFactory, Parser, Subcommand};
+use clap::{Arg, ArgAction, Args, Command, CommandFactory, Parser, Subcommand, crate_description, crate_version};
 use clap_complete::{Shell, generate};
 use color_eyre::eyre::{Context, OptionExt, Result};
 use directories::ProjectDirs;
@@ -23,7 +23,7 @@ use log::{debug, error, info, warn};
 #[derive(Parser)]
 #[command(
 	version,
-	about,
+	about = format!("{} v{}", crate_description!(), crate_version!()),
 	styles(style()),
 	disable_colored_help(false),
 	arg_required_else_help(true)
