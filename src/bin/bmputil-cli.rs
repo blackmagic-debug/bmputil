@@ -16,7 +16,8 @@ use clap::builder::TypedValueParser;
 use clap::builder::styling::Styles;
 use clap::{Arg, ArgAction, Args, Command, CommandFactory, Parser, Subcommand, crate_description, crate_version};
 use clap_complete::{Shell, generate};
-use color_eyre::eyre::{Context, OptionExt, Result};
+use color_eyre::config::HookBuilder;
+use color_eyre::eyre::{Context, EyreHandler, InstallError, OptionExt, Result};
 use directories::ProjectDirs;
 use log::{debug, error, info, warn};
 
@@ -446,6 +447,75 @@ fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()
 	Ok(())
 }
 
+type EyreHookFunc = Box<dyn Fn(&(dyn std::error::Error + 'static)) -> Box<dyn EyreHandler> + Send + Sync + 'static>;
+
+struct BmputilHook
+{
+	inner_hook: EyreHookFunc,
+}
+
+struct BmputilHandler
+{
+	inner_handler: Box<dyn EyreHandler>,
+}
+
+impl BmputilHook
+{
+	fn build_handler(&self, error: &(dyn std::error::Error + 'static)) -> BmputilHandler
+	{
+		BmputilHandler {
+			inner_handler: (*self.inner_hook)(error),
+		}
+	}
+
+	pub fn install(self) -> Result<(), InstallError>
+	{
+		color_eyre::eyre::set_hook(self.into_eyre_hook())
+	}
+
+	pub fn into_eyre_hook(self) -> EyreHookFunc
+	{
+		Box::new(move |err| Box::new(self.build_handler(err)))
+	}
+}
+
+impl EyreHandler for BmputilHandler
+{
+	fn debug(&self, error: &(dyn std::error::Error + 'static), fmt: &mut core::fmt::Formatter<'_>)
+	-> core::fmt::Result
+	{
+		write!(fmt, "Unhandled crash in bmputil-cli v{}", crate_version!())?;
+		self.inner_handler.debug(error, fmt)?;
+		writeln!(fmt)?;
+		writeln!(fmt)?;
+		writeln!(fmt, "Please report this issue to our issue tracker at")?;
+		write!(fmt, "https://github.com/blackmagic-debug/bmputil/issues")
+	}
+
+	fn track_caller(&mut self, location: &'static std::panic::Location<'static>)
+	{
+		self.inner_handler.track_caller(location);
+	}
+}
+
+fn install_error_handler() -> Result<()>
+{
+	// Grab us a new default handler
+	let default_handler = HookBuilder::default();
+	// Turn that into a pair of hooks - one for panic, and the other for errors
+	let (panic_hook, eyre_hook) = default_handler.try_into_hooks()?;
+
+	// Make an instance of our custom handler, passing it the default one to do the main
+	// error handling with, so we only have to deal with our additions, and install it
+	BmputilHook {
+		inner_hook: eyre_hook.into_eyre_hook(),
+	}
+	.install()?;
+
+	panic_hook.install();
+	Ok(())
+}
+
 /// Clap v3 style (approximate)
 /// See https://stackoverflow.com/a/75343828
 fn style() -> clap::builder::Styles
@@ -466,7 +536,7 @@ fn style() -> clap::builder::Styles
 
 fn main() -> Result<()>
 {
-	color_eyre::install()?;
+	install_error_handler()?;
 	env_logger::Builder::new()
 		.filter_level(log::LevelFilter::Info)
 		.parse_default_env()
