@@ -448,10 +448,16 @@ fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()
 }
 
 type EyreHookFunc = Box<dyn Fn(&(dyn std::error::Error + 'static)) -> Box<dyn EyreHandler> + Send + Sync + 'static>;
+type PanicHookFunc = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync + 'static>;
 
 struct BmputilHook
 {
 	inner_hook: EyreHookFunc,
+}
+
+struct BmputilPanic
+{
+	inner_hook: PanicHookFunc,
 }
 
 struct BmputilHandler
@@ -476,6 +482,36 @@ impl BmputilHook
 	pub fn into_eyre_hook(self) -> EyreHookFunc
 	{
 		Box::new(move |err| Box::new(self.build_handler(err)))
+	}
+}
+
+impl BmputilPanic
+{
+	pub fn install(self)
+	{
+		std::panic::set_hook(self.into_panic_hook());
+	}
+
+	pub fn into_panic_hook(self) -> PanicHookFunc
+	{
+		Box::new(move |panic_info| {
+			self.print_header();
+			(*self.inner_hook)(panic_info);
+			self.print_footer();
+		})
+	}
+
+	fn print_header(&self)
+	{
+		eprintln!("Unhandled crash in bmputil-cli v{}", crate_version!());
+		eprintln!();
+	}
+
+	fn print_footer(&self)
+	{
+		eprintln!();
+		eprintln!("Please report this issue to our issue tracker at");
+		eprintln!("https://github.com/blackmagic-debug/bmputil/issues")
 	}
 }
 
@@ -505,14 +541,19 @@ fn install_error_handler() -> Result<()>
 	// Turn that into a pair of hooks - one for panic, and the other for errors
 	let (panic_hook, eyre_hook) = default_handler.try_into_hooks()?;
 
+	// Make an instance of our custom handler, paassing it the panic one to do normal panic
+	// handling with, so we only have to deal with our additions, and install it
+	BmputilPanic {
+		inner_hook: panic_hook.into_panic_hook(),
+	}
+	.install();
+
 	// Make an instance of our custom handler, passing it the default one to do the main
 	// error handling with, so we only have to deal with our additions, and install it
 	BmputilHook {
 		inner_hook: eyre_hook.into_eyre_hook(),
 	}
 	.install()?;
-
-	panic_hook.install();
 	Ok(())
 }
 
