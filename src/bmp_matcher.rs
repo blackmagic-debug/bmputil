@@ -135,8 +135,7 @@ impl BmpMatcher
 
 	fn matching_probe(&self, index: usize, device_info: DeviceInfo) -> MatchResult
 	{
-		// If we're trying to match against a serial number
-		// Matches Serial None => True and equal with device_info serial number.
+		// Consider the serial to match if it equals that of the device or if one was not specified at all.
 		let serial_matches = self.serial.as_deref().is_none_or(|s| Some(s) == device_info.serial_number());
 
 		// Consider the index to match if it equals that of the device or if one was not specified at all.
