@@ -22,6 +22,7 @@ pub mod switcher;
 pub mod usb;
 #[cfg(windows)]
 pub mod windows;
+mod bmp_matcher;
 
 pub trait BmpParams
 {
