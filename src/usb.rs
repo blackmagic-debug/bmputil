@@ -209,7 +209,7 @@ impl DfuFunctionalDescriptor
 
 		if bytes[1] != Self::TYPE {
 			return Err(DescriptorConvertError::DescriptorTypeMismatch {
-				provided_type: bytes[0],
+				provided_type: bytes[1],
 				correct_type: Self::TYPE,
 			});
 		}
