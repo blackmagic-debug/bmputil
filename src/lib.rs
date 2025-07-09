@@ -10,6 +10,7 @@ use clap::builder::PossibleValue;
 use crate::bmp::FirmwareType;
 
 pub mod bmp;
+mod bmp_matcher;
 pub mod docs_viewer;
 pub mod elf;
 pub mod error;
@@ -22,7 +23,6 @@ pub mod switcher;
 pub mod usb;
 #[cfg(windows)]
 pub mod windows;
-mod bmp_matcher;
 
 pub trait BmpParams
 {

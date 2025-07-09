@@ -7,20 +7,20 @@ use std::array::TryFromSliceError;
 use std::cell::{Ref, RefCell};
 use std::fmt::{self, Debug, Display, Formatter};
 use std::io::Read;
+use std::thread;
 use std::time::{Duration, Instant};
-use std::{mem, thread};
 
 use clap::ValueEnum;
 use clap::builder::PossibleValue;
-use color_eyre::eyre::{Context, Error, OptionExt, Report, Result, eyre};
+use color_eyre::eyre::{Context, Error, OptionExt, Result, eyre};
 use dfu_core::{DfuIo, DfuProtocol, Error as DfuCoreError, State as DfuState};
 use dfu_nusb::{DfuNusb, DfuSync, Error as DfuNusbError};
 use log::{debug, error, trace, warn};
 use nusb::descriptors::Descriptor;
 use nusb::transfer::{Control, ControlType, Direction, Recipient, TransferError};
-use nusb::{Device, DeviceInfo, Interface, list_devices};
+use nusb::{Device, DeviceInfo, Interface};
+
 pub use crate::bmp_matcher::BmpMatcher;
-use crate::BmpParams;
 use crate::error::ErrorKind;
 use crate::probe_identity::ProbeIdentity;
 use crate::serial::bmd_rsp::BmdRspInterface;
