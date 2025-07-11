@@ -33,10 +33,7 @@ impl BmpMatcher
 
 	pub fn new_with_port(port: PortId) -> Self
 	{
-		BmpMatcher {
-			port: Some(port),
-			..Default::default()
-		}
+		Self::new().port(Some(port))
 	}
 
 	pub fn from_params<Params>(params: &Params) -> Self
@@ -133,6 +130,7 @@ impl BmpMatcher
 			.collect()
 	}
 
+	/// Checks if a match is matching an DeviceInfo, and returns the matched state.
 	fn matching_probe(&self, index: usize, device_info: DeviceInfo) -> MatchResult
 	{
 		// Consider the serial to match if it equals that of the device or if one was not specified at all.
@@ -170,6 +168,7 @@ pub struct BmpMatchResults
 
 impl FromIterator<MatchResult> for BmpMatchResults
 {
+	/// The BmpMatchResults groups the MatchResult into categories for a collection overview
 	fn from_iter<I: IntoIterator<Item = MatchResult>>(iter: I) -> Self
 	{
 		let mut results = BmpMatchResults {
@@ -197,13 +196,11 @@ impl BmpMatchResults
 	{
 		match self.found.len() {
 			0 => {
-				// Move all out of filtered_out
-				let mut drained: Vec<DeviceInfo> = std::mem::take(&mut self.filtered_out);
 				// Give some feedback what is found.
-				match drained.len() {
+				match self.filtered_out.len() {
 					0 => {},
 					1 => {
-						match BmpDevice::from_usb_device(drained.pop().unwrap()) {
+						match BmpDevice::from_usb_device(self.filtered_out.pop().expect("The length check makes this a guaranteed assumption")) {
 							Ok(bmpdev) => warn!(
 								"Matching device not found, but and the following Black Magic Probe device was \
 								 filtered out: {}",
@@ -222,6 +219,8 @@ impl BmpMatchResults
 						warn!("Filter arguments (--serial, --index, --port) may be incorrect.");
 					},
 				}
+				// Now we're done reporting the filtered, clear it so everything is cleared.
+				self.filtered_out.clear();
 
 				if !self.errors.is_empty() {
 					warn!("Device not found and errors occurred when searching for devices.");
