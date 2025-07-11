@@ -168,7 +168,7 @@ pub struct BmpMatchResults
 
 impl FromIterator<MatchResult> for BmpMatchResults
 {
-	/// The BmpMatchResults groups the MatchResult into categories for a collection overview
+	/// This implements the internals of .collect() on an iterator to convert the iterator MatchResult into a BmpMatchResults
 	fn from_iter<I: IntoIterator<Item = MatchResult>>(iter: I) -> Self
 	{
 		let mut results = BmpMatchResults {
