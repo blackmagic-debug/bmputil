@@ -1,7 +1,7 @@
 [package]
 name = "bmputil"
 description = "Black Magic Probe companion utility"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/blackmagic-debug/bmputil"
 edition = "2024"
