@@ -1,12 +1,15 @@
 use std::mem;
+use std::path::PathBuf;
 
 use color_eyre::Report;
 use log::{error, warn};
 use nusb::{DeviceInfo, list_devices};
+use url::Url;
 
 use crate::BmpParams;
 use crate::bmp::{BmpDevice, BmpPlatform};
 use crate::error::ErrorKind;
+use crate::metadata::firmware_download::FirmwareDownload;
 use crate::usb::{Pid, PortId, Vid};
 
 #[derive(Debug, Clone, Default)]
@@ -130,24 +133,11 @@ impl BmpMatcher
 			.collect()
 	}
 
-	/// Checks if a match is matching an DeviceInfo, and returns the matched state.
 	fn matching_probe(&self, index: usize, device_info: DeviceInfo) -> MatchResult
 	{
-		// Consider the serial to match if it equals that of the device or if one was not specified at all.
-		let serial_matches = self.serial.as_deref().is_none_or(|s| Some(s) == device_info.serial_number());
-
-		// Consider the index to match if it equals that of the device or if one was not specified at all.
-		let index_matches = self.index.is_none_or(|needle| needle == index);
-
-		// Consider the port to match if it equals that of the device or if one was not specified at all.
-		let port_matches = self.port.as_ref().is_none_or(|p| {
-			let port = PortId::new(&device_info);
-
-			p == &port
-		});
-
-		// Finally, check the provided matchers.
-		if index_matches && port_matches && serial_matches {
+		// Checks if a match is matching an DeviceInfo, and returns the matched state.
+		let matched = self.is_probe_matching(index, &device_info);
+		if matched {
 			match BmpDevice::from_usb_device(device_info) {
 				Ok(bmpdev) => MatchResult::Found(bmpdev),
 				Err(e) => MatchResult::Error(e),
@@ -155,6 +145,41 @@ impl BmpMatcher
 		} else {
 			MatchResult::NoMatch(device_info)
 		}
+	}
+
+	/// Checks if the serial, index and port matches if specified
+	fn is_probe_matching(&self, index: usize, match_information: &impl MatchInformation) -> bool
+	{
+		// Consider the serial to match if it equals that of the device or if one was not specified at all.
+		let serial_matches = self.serial.as_deref().is_none_or(|s| Some(s) == match_information.match_serial_number());
+
+		// Consider the index to match if it equals that of the device or if one was not specified at all.
+		let index_matches = self.index.is_none_or(|needle| needle == index);
+
+		// Consider the port to match if it equals that of the device or if one was not specified at all.
+		let port_matches = self.port.as_ref().is_none_or(|p| *p == match_information.match_port_id());
+
+		serial_matches && index_matches && port_matches
+	}
+}
+
+/// Checks if the the information matches with the probe
+trait MatchInformation
+{
+	fn match_serial_number(&self) -> Option<&str>;
+	fn match_port_id(&self) -> PortId;
+}
+
+impl MatchInformation for DeviceInfo
+{
+	fn match_serial_number(&self) -> Option<&str>
+	{
+		self.serial_number()
+	}
+
+	fn match_port_id(&self) -> PortId
+	{
+		PortId::new(self)
 	}
 }
 
@@ -168,7 +193,8 @@ pub struct BmpMatchResults
 
 impl FromIterator<MatchResult> for BmpMatchResults
 {
-	/// This implements the internals of .collect() on an iterator to convert the iterator MatchResult into a BmpMatchResults
+	/// This implements the internals of .collect() on an iterator to convert the iterator MatchResult into a
+	/// BmpMatchResults
 	fn from_iter<I: IntoIterator<Item = MatchResult>>(iter: I) -> Self
 	{
 		let mut results = BmpMatchResults {
@@ -300,5 +326,183 @@ impl BmpMatchResults
 			1 => Ok(self.found.remove(0)),
 			_ => Err(ErrorKind::TooManyDevices),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests
+{
+	use super::*;
+
+	struct TestProbeDevice<'a>
+	{
+		serial_number: Option<&'a str>,
+		port_id: &'a PortId,
+	}
+
+	impl MatchInformation for TestProbeDevice<'_>
+	{
+		fn match_serial_number(&self) -> Option<&str>
+		{
+			self.serial_number
+		}
+
+		fn match_port_id(&self) -> PortId
+		{
+			self.port_id.clone()
+		}
+	}
+
+	#[test]
+	fn exact_match_success()
+	{
+		let match_port = &PortId::new_test(1, PathBuf::from("abc"), 2, 3);
+
+		let matching_serial = &String::from("Serial");
+		let matcher = BmpMatcher {
+			index: Some(1),
+			serial: Some(matching_serial.clone()),
+			port: Some(match_port.clone()),
+		};
+
+		// Match index and probe
+		let result = matcher.is_probe_matching(1, &TestProbeDevice {
+			serial_number: Some(matching_serial.as_str()),
+			port_id: match_port,
+		});
+		assert_eq!(true, result);
+	}
+
+	#[test]
+	fn exact_match_failure_index()
+	{
+		let match_port = &PortId::new_test(1, PathBuf::from("abc"), 2, 3);
+		let matching_serial = &String::from("Serial");
+
+		let matcher = BmpMatcher {
+			index: Some(1),
+			serial: Some(matching_serial.clone()),
+			port: Some(match_port.clone()),
+		};
+
+		// Don't match on different index
+		let result = matcher.is_probe_matching(2, &TestProbeDevice {
+			serial_number: Some(matching_serial.as_str()),
+			port_id: &match_port.clone(),
+		});
+		assert_eq!(false, result);
+	}
+
+	#[test]
+	fn exact_match_failure_port()
+	{
+		let match_port = &PortId::new_test(1, PathBuf::from("abc"), 2, 3);
+		let matching_serial = &String::from("Serial");
+		let matcher = BmpMatcher {
+			index: Some(1),
+			serial: Some(matching_serial.clone()),
+			port: Some(match_port.clone()),
+		};
+
+		// Don't match on different port
+		let not_match_port = PortId::new_test(9, PathBuf::from("xyz"), 8, 7);
+		let result = matcher.is_probe_matching(1, &TestProbeDevice {
+			serial_number: Some(matching_serial.as_str()),
+			port_id: &not_match_port.clone(),
+		});
+		assert_eq!(false, result);
+	}
+
+	#[test]
+	fn exact_match_failure_serial_number()
+	{
+		let match_port = &PortId::new_test(1, PathBuf::from("abc"), 2, 3);
+		let matching_serial = &String::from("Serial");
+
+		let matcher = BmpMatcher {
+			index: Some(1),
+			serial: Some(matching_serial.clone()),
+			port: Some(match_port.clone()),
+		};
+
+		// Don't match on different serial
+		let result = matcher.is_probe_matching(1, &TestProbeDevice {
+			serial_number: Some("don't match"),
+			port_id: &match_port.clone(),
+		});
+		assert_eq!(false, result);
+	}
+
+	#[test]
+	fn match_success_unknown_index()
+	{
+		let match_port = &PortId::new_test(1, PathBuf::from("abc"), 2, 3);
+		let matching_serial = &String::from("Serial");
+
+		let matcher = BmpMatcher {
+			index: None,
+			serial: Some(matching_serial.clone()),
+			port: Some(match_port.clone()),
+		};
+
+		let result = matcher.is_probe_matching(1, &TestProbeDevice {
+			serial_number: Some(matching_serial),
+			port_id: &match_port.clone(),
+		});
+		assert_eq!(true, result);
+
+		let result = matcher.is_probe_matching(2, &TestProbeDevice {
+			serial_number: Some(matching_serial),
+			port_id: &match_port.clone(),
+		});
+		assert_eq!(true, result);
+	}
+
+	#[test]
+	fn match_success_unknown_serial()
+	{
+		let match_port = &PortId::new_test(1, PathBuf::from("abc"), 2, 3);
+
+		let matcher = BmpMatcher {
+			index: Some(1),
+			serial: None,
+			port: Some(match_port.clone()),
+		};
+
+		let result = matcher.is_probe_matching(1, &TestProbeDevice {
+			serial_number: Some(&String::from("Serial")),
+			port_id: &match_port.clone(),
+		});
+		assert_eq!(true, result);
+
+		let result = matcher.is_probe_matching(1, &TestProbeDevice {
+			serial_number: Some(&String::from("Unknown")),
+			port_id: &match_port.clone(),
+		});
+		assert_eq!(true, result);
+	}
+
+	#[test]
+	fn match_success_unknown_port()
+	{
+		let matching_serial = &String::from("ABC");
+
+		let matcher = BmpMatcher {
+			index: Some(1),
+			serial: Some(matching_serial.clone()),
+			port: None,
+		};
+
+		let result = matcher.is_probe_matching(1, &TestProbeDevice {
+			serial_number: Some(matching_serial),
+			port_id: &PortId::new_test(1, PathBuf::from("abc"), 2, 3),
+		});
+		assert_eq!(true, result);
+
+		let result = matcher.is_probe_matching(1, &TestProbeDevice {
+			serial_number: Some(matching_serial),
+			port_id: &PortId::new_test(9, PathBuf::from("xyz"), 8, 7),
+		});
+		assert_eq!(true, result);
 	}
 }
