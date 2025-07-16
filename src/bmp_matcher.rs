@@ -148,39 +148,38 @@ impl BmpMatcher
 	}
 
 	/// Checks if the serial, index and port matches if specified
-	fn is_probe_matching(&self, index: usize, matcher: &impl ProbeInformationMatcher) -> bool
+	fn is_probe_matching(&self, index: usize, match_information: &impl MatchInformation) -> bool
 	{
 		// Consider the serial to match if it equals that of the device or if one was not specified at all.
-		let serial_matches = self.serial.as_deref().is_none_or(|s| matcher.match_serial_number(s));
+		let serial_matches = self.serial.as_deref().is_none_or(|s| Some(s) == match_information.match_serial_number());
 
 		// Consider the index to match if it equals that of the device or if one was not specified at all.
 		let index_matches = self.index.is_none_or(|needle| needle == index);
 
 		// Consider the port to match if it equals that of the device or if one was not specified at all.
-		let port_matches = self.port.as_ref().is_none_or(|p| matcher.match_port_id(p));
+		let port_matches = self.port.as_ref().is_none_or(|p| *p == match_information.match_port_id());
 
 		serial_matches && index_matches && port_matches
 	}
 }
 
 /// Checks if the the information matches with the probe
-trait ProbeInformationMatcher
+trait MatchInformation
 {
-	fn match_serial_number(&self, serial_number: &str) -> bool;
-	fn match_port_id(&self, port_id: &PortId) -> bool;
+	fn match_serial_number(&self) -> Option<&str>;
+	fn match_port_id(&self) -> PortId;
 }
 
-impl ProbeInformationMatcher for DeviceInfo
+impl MatchInformation for DeviceInfo
 {
-	fn match_serial_number(&self, serial_number: &str) -> bool
+	fn match_serial_number(&self) -> Option<&str>
 	{
-		self.serial_number() == Some(serial_number)
+		self.serial_number()
 	}
 
-	fn match_port_id(&self, port_id: &PortId) -> bool
+	fn match_port_id(&self) -> PortId
 	{
-		let port = PortId::new(self);
-		*port_id == port
+		PortId::new(self)
 	}
 }
 
@@ -338,19 +337,19 @@ mod tests
 	struct TestProbeDevice<'a>
 	{
 		serial_number: Option<&'a str>,
-		port_id: PortId,
+		port_id: &'a PortId,
 	}
 
-	impl ProbeInformationMatcher for TestProbeDevice<'_>
+	impl MatchInformation for TestProbeDevice<'_>
 	{
-		fn match_serial_number(&self, serial_number: &str) -> bool
+		fn match_serial_number(&self) -> Option<&str>
 		{
-			self.serial_number == Some(serial_number)
+			self.serial_number
 		}
 
-		fn match_port_id(&self, port_id: &PortId) -> bool
+		fn match_port_id(&self) -> PortId
 		{
-			self.port_id == *port_id
+			self.port_id.clone()
 		}
 	}
 
@@ -369,7 +368,7 @@ mod tests
 		// Match index and probe
 		let result = matcher.is_probe_matching(1, &TestProbeDevice {
 			serial_number: Some(matching_serial.as_str()),
-			port_id: match_port.clone(),
+			port_id: match_port,
 		});
 		assert_eq!(true, result);
 	}
@@ -389,7 +388,7 @@ mod tests
 		// Don't match on different index
 		let result = matcher.is_probe_matching(2, &TestProbeDevice {
 			serial_number: Some(matching_serial.as_str()),
-			port_id: match_port.clone(),
+			port_id: &match_port.clone(),
 		});
 		assert_eq!(false, result);
 	}
@@ -409,7 +408,7 @@ mod tests
 		let not_match_port = PortId::new_test(9, PathBuf::from("xyz"), 8, 7);
 		let result = matcher.is_probe_matching(1, &TestProbeDevice {
 			serial_number: Some(matching_serial.as_str()),
-			port_id: not_match_port.clone(),
+			port_id: &not_match_port.clone(),
 		});
 		assert_eq!(false, result);
 	}
@@ -429,7 +428,7 @@ mod tests
 		// Don't match on different serial
 		let result = matcher.is_probe_matching(1, &TestProbeDevice {
 			serial_number: Some("don't match"),
-			port_id: match_port.clone(),
+			port_id: &match_port.clone(),
 		});
 		assert_eq!(false, result);
 	}
@@ -448,13 +447,13 @@ mod tests
 
 		let result = matcher.is_probe_matching(1, &TestProbeDevice {
 			serial_number: Some(matching_serial),
-			port_id: match_port.clone(),
+			port_id: &match_port.clone(),
 		});
 		assert_eq!(true, result);
 
 		let result = matcher.is_probe_matching(2, &TestProbeDevice {
 			serial_number: Some(matching_serial),
-			port_id: match_port.clone(),
+			port_id: &match_port.clone(),
 		});
 		assert_eq!(true, result);
 	}
@@ -472,13 +471,13 @@ mod tests
 
 		let result = matcher.is_probe_matching(1, &TestProbeDevice {
 			serial_number: Some(&String::from("Serial")),
-			port_id: match_port.clone(),
+			port_id: &match_port.clone(),
 		});
 		assert_eq!(true, result);
 
 		let result = matcher.is_probe_matching(1, &TestProbeDevice {
 			serial_number: Some(&String::from("Unknown")),
-			port_id: match_port.clone(),
+			port_id: &match_port.clone(),
 		});
 		assert_eq!(true, result);
 	}
@@ -496,13 +495,13 @@ mod tests
 
 		let result = matcher.is_probe_matching(1, &TestProbeDevice {
 			serial_number: Some(matching_serial),
-			port_id: PortId::new_test(1, PathBuf::from("abc"), 2, 3),
+			port_id: &PortId::new_test(1, PathBuf::from("abc"), 2, 3),
 		});
 		assert_eq!(true, result);
 
 		let result = matcher.is_probe_matching(1, &TestProbeDevice {
 			serial_number: Some(matching_serial),
-			port_id: PortId::new_test(9, PathBuf::from("xyz"), 8, 7),
+			port_id: &PortId::new_test(9, PathBuf::from("xyz"), 8, 7),
 		});
 		assert_eq!(true, result);
 	}
