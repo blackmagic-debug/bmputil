@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: 2022-2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
-// SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
+// SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::ffi::OsStr;
 use std::io::stdout;
@@ -451,7 +451,7 @@ fn power_command(cli_args: &CliArguments) -> Result<()>
 
 	let power = remote.get_target_power_state()?;
 
-	println!("Device target power state: {}", power);
+    info!("Device target power state: {}", power);
 
 	Ok(())
 }
