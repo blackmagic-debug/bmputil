@@ -10,16 +10,15 @@ use log::{debug, warn};
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::protocol_v0::RemoteV0JTAG;
 use crate::serial::remote::protocol_v1::RemoteV1;
-use crate::serial::remote::{
-	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
-	TargetArchitecture, TargetFamily,
-};
+use crate::serial::remote::{BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR, TargetArchitecture, TargetFamily, REMOTE_RESP_OK};
 
 pub struct RemoteV2(RemoteV1);
 
 pub struct RemoteV2JTAG(RemoteV0JTAG);
 
 const REMOTE_JTAG_INIT: &str = "!JS#";
+/// This command asks the probe if the power is used
+const REMOTE_PWR_GET: &str = "!GV#";
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV2
 {
@@ -118,6 +117,21 @@ impl BmdRemoteProtocol for RemoteV2
 	fn supported_families(&self) -> Result<Option<TargetFamily>>
 	{
 		self.0.supported_families()
+	}
+
+	fn get_target_power_state(&self) -> Result<bool> {
+		self.interface().buffer_write(REMOTE_PWR_GET)?;
+		let buffer = self.interface().buffer_read()?;
+
+		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+			return Err(eyre!("Supported current powered request failed"));
+		}
+
+		if buffer.len() < 2 {
+			return Err(eyre!("Current powered response is too short"));
+		}
+
+		Ok(buffer.as_bytes()[1] == b'1')
 	}
 }
 

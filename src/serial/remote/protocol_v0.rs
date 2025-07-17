@@ -9,10 +9,7 @@ use log::{debug, warn};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
-use crate::serial::remote::{
-	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	REMOTE_RESP_ERR, TargetAddr64, TargetArchitecture, TargetFamily,
-};
+use crate::serial::remote::{Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR, TargetAddr64, TargetArchitecture, TargetFamily, REMOTE_RESP_OK, REMOTE_RESP_NOTSUP};
 
 pub struct RemoteV0
 {
@@ -164,6 +161,10 @@ impl BmdRemoteProtocol for RemoteV0
 	{
 		Ok(None)
 	}
+
+	fn get_target_power_state(&self) -> Result<bool> {
+		Err(eyre!("Not supported"))
+	}
 }
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0Plus
@@ -242,6 +243,10 @@ impl BmdRemoteProtocol for RemoteV0Plus
 	fn supported_families(&self) -> Result<Option<TargetFamily>>
 	{
 		self.0.supported_families()
+	}
+
+	fn get_target_power_state(&self) -> Result<bool> {
+		self.0.get_target_power_state()
 	}
 }
 

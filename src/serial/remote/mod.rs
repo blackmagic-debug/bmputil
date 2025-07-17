@@ -111,6 +111,7 @@ pub trait BmdRemoteProtocol
 	fn target_clk_output_enable(&self, enable: bool);
 	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>;
 	fn supported_families(&self) -> Result<Option<TargetFamily>>;
+	fn get_target_power_state(&self) -> Result<bool>;
 }
 
 /// Types implementing this trait provide raw SWD access to targets over the BMD remote protocol

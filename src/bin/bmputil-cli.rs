@@ -57,7 +57,7 @@ enum ToplevelCommmands
 	/// Actions to be performed against a probe
 	Probe(ProbeArguments),
 	/// Actions to be performed against a target connected to a probe
-	Target,
+	Target(TargetArguments),
 	/// Actions that run the tool as a debug/tracing server
 	Server,
 	/// Actions that run debugging commands against a target connected to a probe
@@ -76,6 +76,26 @@ struct ProbeArguments
 
 	#[command(subcommand)]
 	subcommand: ProbeCommmands,
+}
+
+#[derive(Args)]
+struct TargetArguments
+{
+	#[arg(global = true, long = "allow-dangerous-options", hide = true, default_value_t = AllowDangerous::Never)]
+	#[arg(value_enum)]
+	/// Allow usage of advanced, dangerous options that can result in unbootable devices (use with heavy caution!)
+	allow_dangerous_options: AllowDangerous,
+
+	#[command(subcommand)]
+	subcommand: TargetCommmands,
+}
+
+#[derive(Subcommand)]
+#[command(arg_required_else_help(true))]
+enum TargetCommmands
+{
+	/// Print information about the target powered Command
+	Power,
 }
 
 #[derive(Subcommand)]
@@ -419,6 +439,23 @@ fn list_targets(probe: BmpDevice) -> Result<()>
 	Ok(())
 }
 
+fn power_command(cli_args: &CliArguments) -> Result<()>
+{
+	// Try and identify all the probes on the system that are allowed by the invocation
+	let matcher = BmpMatcher::from_params(cli_args);
+	let mut results = matcher.find_matching_probes();
+
+	// Otherwise, turn the result set into a list and go through them displaying them
+	let device = results.pop_single("power").map_err(|kind| kind.error())?;
+	let remote = device.bmd_serial_interface()?.remote()?;
+
+	let power = remote.get_target_power_state()?;
+
+	println!("Device target power state: {}", power);
+
+	Ok(())
+}
+
 fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()>
 {
 	// Try and identify all the probes on the system that are allowed by the invocation
@@ -645,9 +682,8 @@ fn main() -> Result<()>
 				Ok(())
 			},
 		},
-		ToplevelCommmands::Target => {
-			warn!("Command space reserved for future tool version");
-			Ok(())
+		ToplevelCommmands::Target(target_args) => match &target_args.subcommand {
+			TargetCommmands::Power => power_command(&cli_args),
 		},
 		ToplevelCommmands::Server => {
 			warn!("Command space reserved for future tool version");

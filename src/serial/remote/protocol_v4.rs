@@ -223,6 +223,10 @@ impl BmdRemoteProtocol for RemoteV4
 			Ok(Some(families.into()))
 		}
 	}
+
+	fn get_target_power_state(&self) -> Result<bool> {
+		self.inner_protocol.get_target_power_state()
+	}
 }
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV4ADIv5
