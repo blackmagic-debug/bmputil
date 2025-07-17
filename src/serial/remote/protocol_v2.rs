@@ -119,7 +119,8 @@ impl BmdRemoteProtocol for RemoteV2
 		self.0.supported_families()
 	}
 
-	fn get_target_power_state(&self) -> Result<bool> {
+	fn get_target_power_state(&self) -> Result<bool>
+	{
 		self.interface().buffer_write(REMOTE_PWR_GET)?;
 		let buffer = self.interface().buffer_read()?;
 

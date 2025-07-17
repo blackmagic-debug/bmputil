@@ -224,7 +224,8 @@ impl BmdRemoteProtocol for RemoteV4
 		}
 	}
 
-	fn get_target_power_state(&self) -> Result<bool> {
+	fn get_target_power_state(&self) -> Result<bool>
+	{
 		self.inner_protocol.get_target_power_state()
 	}
 }
