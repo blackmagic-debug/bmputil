@@ -240,6 +240,20 @@ pub struct PortId
 
 impl PortId
 {
+	#[cfg(test)]
+	pub fn new_test(bus_number: u8, path: PathBuf, port_number: u32, location: u32) -> Self
+	{
+		Self {
+			bus_number,
+			#[cfg(any(target_os = "linux", target_os = "android"))]
+			path,
+			#[cfg(target_os = "windows")]
+			port_number,
+			#[cfg(target_os = "macos")]
+			location,
+		}
+	}
+
 	pub fn new(device: &DeviceInfo) -> Self
 	{
 		Self {
