@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: 2022-2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
+// SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
 // SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::ffi::OsStr;
@@ -81,11 +82,6 @@ struct ProbeArguments
 #[derive(Args)]
 struct TargetArguments
 {
-	#[arg(global = true, long = "allow-dangerous-options", hide = true, default_value_t = AllowDangerous::Never)]
-	#[arg(value_enum)]
-	/// Allow usage of advanced, dangerous options that can result in unbootable devices (use with heavy caution!)
-	allow_dangerous_options: AllowDangerous,
-
 	#[command(subcommand)]
 	subcommand: TargetCommmands,
 }
@@ -94,7 +90,7 @@ struct TargetArguments
 #[command(arg_required_else_help(true))]
 enum TargetCommmands
 {
-	/// Print information about the target powered Command
+	/// Print information about the target power control state
 	Power,
 }
 
@@ -682,7 +678,7 @@ fn main() -> Result<()>
 				Ok(())
 			},
 		},
-		ToplevelCommmands::Target(target_args) => match &target_args.subcommand {
+		ToplevelCommmands::Target(target_command) => match target_command.subcommand {
 			TargetCommmands::Power => power_command(&cli_args),
 		},
 		ToplevelCommmands::Server => {

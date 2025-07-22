@@ -18,7 +18,7 @@ pub struct RemoteV2JTAG(RemoteV0JTAG);
 
 const REMOTE_JTAG_INIT: &str = "!JS#";
 /// This command asks the probe if the power is used
-const REMOTE_PWR_GET: &str = "!GV#";
+const REMOTE_TARGET_VOLTAGE: &str = "!Gp#";
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV2
 {
@@ -121,7 +121,7 @@ impl BmdRemoteProtocol for RemoteV2
 
 	fn get_target_power_state(&self) -> Result<bool>
 	{
-		self.interface().buffer_write(REMOTE_PWR_GET)?;
+		self.interface().buffer_write(REMOTE_TARGET_VOLTAGE)?;
 		let buffer = self.interface().buffer_read()?;
 
 		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
