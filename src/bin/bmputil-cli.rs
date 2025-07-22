@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2022-2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Mikaela Szekely <mikaela.szekely@qyriad.me>
 // SPDX-FileContributor: Modified by Rachel Mant <git@dragonmux.network>
+// SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::ffi::OsStr;
 use std::io::stdout;
@@ -57,7 +58,7 @@ enum ToplevelCommmands
 	/// Actions to be performed against a probe
 	Probe(ProbeArguments),
 	/// Actions to be performed against a target connected to a probe
-	Target,
+	Target(TargetArguments),
 	/// Actions that run the tool as a debug/tracing server
 	Server,
 	/// Actions that run debugging commands against a target connected to a probe
@@ -76,6 +77,21 @@ struct ProbeArguments
 
 	#[command(subcommand)]
 	subcommand: ProbeCommmands,
+}
+
+#[derive(Args)]
+struct TargetArguments
+{
+	#[command(subcommand)]
+	subcommand: TargetCommmands,
+}
+
+#[derive(Subcommand)]
+#[command(arg_required_else_help(true))]
+enum TargetCommmands
+{
+	/// Print information about the target power control state
+	Power,
 }
 
 #[derive(Subcommand)]
@@ -419,6 +435,23 @@ fn list_targets(probe: BmpDevice) -> Result<()>
 	Ok(())
 }
 
+fn power_command(cli_args: &CliArguments) -> Result<()>
+{
+	// Try and identify all the probes on the system that are allowed by the invocation
+	let matcher = BmpMatcher::from_params(cli_args);
+	let mut results = matcher.find_matching_probes();
+
+	// Otherwise, turn the result set into a list and go through them displaying them
+	let device = results.pop_single("power").map_err(|kind| kind.error())?;
+	let remote = device.bmd_serial_interface()?.remote()?;
+
+	let power = remote.get_target_power_state()?;
+
+	info!("Device target power state: {}", power);
+
+	Ok(())
+}
+
 fn info_command(cli_args: &CliArguments, info_args: &InfoArguments) -> Result<()>
 {
 	// Try and identify all the probes on the system that are allowed by the invocation
@@ -645,9 +678,8 @@ fn main() -> Result<()>
 				Ok(())
 			},
 		},
-		ToplevelCommmands::Target => {
-			warn!("Command space reserved for future tool version");
-			Ok(())
+		ToplevelCommmands::Target(target_command) => match target_command.subcommand {
+			TargetCommmands::Power => power_command(&cli_args),
 		},
 		ToplevelCommmands::Server => {
 			warn!("Command space reserved for future tool version");

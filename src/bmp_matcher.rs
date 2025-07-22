@@ -134,7 +134,10 @@ impl BmpMatcher
 	fn matching_probe(&self, index: usize, device_info: DeviceInfo) -> MatchResult
 	{
 		// Consider the serial to match if it equals that of the device or if one was not specified at all.
-		let serial_matches = self.serial.as_deref().is_none_or(|s| Some(s) == device_info.serial_number());
+		let serial_matches = self
+			.serial
+			.as_deref()
+			.is_none_or(|s| Some(s) == device_info.serial_number());
 
 		// Consider the index to match if it equals that of the device or if one was not specified at all.
 		let index_matches = self.index.is_none_or(|needle| needle == index);
@@ -168,7 +171,8 @@ pub struct BmpMatchResults
 
 impl FromIterator<MatchResult> for BmpMatchResults
 {
-	/// This implements the internals of .collect() on an iterator to convert the iterator MatchResult into a BmpMatchResults
+	/// This implements the internals of .collect() on an iterator to convert the iterator MatchResult into a
+	/// BmpMatchResults
 	fn from_iter<I: IntoIterator<Item = MatchResult>>(iter: I) -> Self
 	{
 		let mut results = BmpMatchResults {
@@ -200,7 +204,11 @@ impl BmpMatchResults
 				match self.filtered_out.len() {
 					0 => {},
 					1 => {
-						match BmpDevice::from_usb_device(self.filtered_out.pop().expect("The length check makes this a guaranteed assumption")) {
+						match BmpDevice::from_usb_device(
+							self.filtered_out
+								.pop()
+								.expect("The length check makes this a guaranteed assumption"),
+						) {
 							Ok(bmpdev) => warn!(
 								"Matching device not found, but and the following Black Magic Probe device was \
 								 filtered out: {}",

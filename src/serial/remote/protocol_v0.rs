@@ -164,6 +164,11 @@ impl BmdRemoteProtocol for RemoteV0
 	{
 		Ok(None)
 	}
+
+	fn get_target_power_state(&self) -> Result<bool>
+	{
+		Err(eyre!("Not supported"))
+	}
 }
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0Plus
@@ -242,6 +247,11 @@ impl BmdRemoteProtocol for RemoteV0Plus
 	fn supported_families(&self) -> Result<Option<TargetFamily>>
 	{
 		self.0.supported_families()
+	}
+
+	fn get_target_power_state(&self) -> Result<bool>
+	{
+		self.0.get_target_power_state()
 	}
 }
 
