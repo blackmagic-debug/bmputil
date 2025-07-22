@@ -32,7 +32,11 @@ impl FirmwareDownload
 		if docs_path.extension() == Some(checked_extension) {
 			docs_path.set_extension("md");
 		} else {
-			return Err(eyre!("Path extension is not of '{:?}', got '{:?}'", checked_extension, docs_path.extension()));
+			return Err(eyre!(
+				"Path extension is not of '{:?}', got '{:?}'",
+				checked_extension,
+				docs_path.extension()
+			));
 		}
 
 		// Copy only the origin
@@ -114,7 +118,10 @@ mod tests
 		let variant = FirmwareDownload {
 			friendly_name: "Black Magic Debug for BMP (full)".into(),
 			file_name: PathBuf::from("blackmagic-native-full-v1.10.0.elf"),
-			uri: Url::parse("https://github.com/blackmagic-debug/blackmagic/releases/v1.10.0/blackmagic-native-v1_10_0.elf").expect("Setup url shouldn't fail"),
+			uri: Url::parse(
+				"https://github.com/blackmagic-debug/blackmagic/releases/v1.10.0/blackmagic-native-v1_10_0.elf",
+			)
+			.expect("Setup url shouldn't fail"),
 		};
 
 		let res = variant.build_release_uri("error");

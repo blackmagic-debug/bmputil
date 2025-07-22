@@ -10,7 +10,10 @@ use log::{debug, warn};
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::protocol_v0::RemoteV0JTAG;
 use crate::serial::remote::protocol_v1::RemoteV1;
-use crate::serial::remote::{BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR, TargetArchitecture, TargetFamily, REMOTE_RESP_OK};
+use crate::serial::remote::{
+	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
+	REMOTE_RESP_OK, TargetArchitecture, TargetFamily,
+};
 
 pub struct RemoteV2(RemoteV1);
 

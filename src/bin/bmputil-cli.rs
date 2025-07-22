@@ -447,7 +447,7 @@ fn power_command(cli_args: &CliArguments) -> Result<()>
 
 	let power = remote.get_target_power_state()?;
 
-    info!("Device target power state: {}", power);
+	info!("Device target power state: {}", power);
 
 	Ok(())
 }
