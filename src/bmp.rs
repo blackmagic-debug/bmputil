@@ -78,6 +78,10 @@ fn handle_detach_errors<T>(result: std::result::Result<T, DfuNusbError>) -> Resu
 				// device rebooting as a result, so we can safely ignore it
 				#[cfg(target_os = "macos")]
 				TransferError::Unknown => Ok(()),
+				// If the error reported on Linux was a Fault, that was just the timing of
+				// bootloader reboot initiation and we can safely ignore it
+				#[cfg(any(target_os = "linux", target_os = "android"))]
+				TransferError::Fault => Ok(()),
 				_ => {
 					warn!("Possibly spurious error from OS while rebooting probe: {}", err);
 					Err(err.into())
