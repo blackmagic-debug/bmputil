@@ -10,9 +10,11 @@ use directories::ProjectDirs;
 use log::error;
 
 use crate::cli_commands::probe::ProbeArguments;
+use crate::cli_commands::target::TargetCommmands;
 use crate::{CliArguments, CompletionArguments};
 
 pub mod probe;
+mod target;
 
 #[derive(Subcommand)]
 pub enum ToplevelCommmands
@@ -20,7 +22,8 @@ pub enum ToplevelCommmands
 	/// Actions to be performed against a probe
 	Probe(ProbeArguments),
 	/// Actions to be performed against a target connected to a probe
-	Target,
+	#[command(subcommand)]
+	Target(TargetCommmands),
 	/// Actions that run the tool as a debug/tracing server
 	Server,
 	/// Actions that run debugging commands against a target connected to a probe

@@ -244,10 +244,7 @@ fn main() -> Result<()>
 
 	match &cli_args.subcommand {
 		ToplevelCommmands::Probe(probe_args) => probe_args.subcommand(&cli_args),
-		ToplevelCommmands::Target => {
-			warn!("Command space reserved for future tool version");
-			Ok(())
-		},
+		ToplevelCommmands::Target(target_commands) => target_commands.subcommand(&cli_args),
 		ToplevelCommmands::Server => {
 			warn!("Command space reserved for future tool version");
 			Ok(())
