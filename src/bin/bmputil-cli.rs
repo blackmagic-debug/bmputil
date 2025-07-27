@@ -58,7 +58,8 @@ enum ToplevelCommmands
 	/// Actions to be performed against a probe
 	Probe(ProbeArguments),
 	/// Actions to be performed against a target connected to a probe
-	Target(TargetArguments),
+	#[command(subcommand)]
+	Target(TargetCommmands),
 	/// Actions that run the tool as a debug/tracing server
 	Server,
 	/// Actions that run debugging commands against a target connected to a probe
@@ -77,13 +78,6 @@ struct ProbeArguments
 
 	#[command(subcommand)]
 	subcommand: ProbeCommmands,
-}
-
-#[derive(Args)]
-struct TargetArguments
-{
-	#[command(subcommand)]
-	subcommand: TargetCommmands,
 }
 
 #[derive(Subcommand)]
@@ -678,7 +672,7 @@ fn main() -> Result<()>
 				Ok(())
 			},
 		},
-		ToplevelCommmands::Target(target_command) => match target_command.subcommand {
+		ToplevelCommmands::Target(command) => match command {
 			TargetCommmands::Power => power_command(&cli_args),
 		},
 		ToplevelCommmands::Server => {
