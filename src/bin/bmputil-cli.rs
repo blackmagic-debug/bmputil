@@ -438,10 +438,15 @@ fn power_command(cli_args: &CliArguments) -> Result<()>
 	// Otherwise, turn the result set into a list and go through them displaying them
 	let device = results.pop_single("power").map_err(|kind| kind.error())?;
 	let remote = device.bmd_serial_interface()?.remote()?;
+	
+	match remote.get_target_power_state() {
+		Ok(power) => info!("Device target power state: {}", power),
+		Err(e) => warn!("Failed to retrieve target power state: {}", e),
+	};	
 
-	let power = remote.get_target_power_state()?;
+	let voltage = remote.get_target_voltage()?;
+	info!("Target voltage: {}V", voltage);
 
-	info!("Device target power state: {}", power);
 
 	Ok(())
 }

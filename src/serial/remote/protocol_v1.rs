@@ -115,6 +115,10 @@ impl BmdRemoteProtocol for RemoteV1
 	{
 		self.0.get_target_power_state()
 	}
+
+	fn get_target_voltage(&self) -> Result<f32> {
+		self.0.get_target_voltage()
+	}
 }
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV1ADIv5

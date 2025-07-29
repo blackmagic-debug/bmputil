@@ -3,16 +3,15 @@
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
 use std::sync::{Arc, Mutex, MutexGuard};
-
-use color_eyre::eyre::{Result, eyre};
+use color_eyre::eyre;
+use color_eyre::eyre::{Result, eyre, OptionExt};
 use log::{debug, warn};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
-use crate::serial::remote::{
-	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	REMOTE_RESP_ERR, TargetAddr64, TargetArchitecture, TargetFamily,
-};
+use crate::serial::remote::{Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR, TargetAddr64, TargetArchitecture, TargetFamily, REMOTE_RESP_OK};
+
+pub const REMOTE_TARGET_VOLTAGE: &str = "!GV#";
 
 pub struct RemoteV0
 {
@@ -169,6 +168,22 @@ impl BmdRemoteProtocol for RemoteV0
 	{
 		Err(eyre!("Not supported"))
 	}
+
+	fn get_target_voltage(&self) -> Result<f32> {
+		self.interface().buffer_write(REMOTE_TARGET_VOLTAGE)?;
+		let buffer = self.interface().buffer_read()?;
+
+		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+			return Err(eyre!("Target voltage request failed"));
+		}
+
+		if buffer.len() < 2 {
+			return Err(eyre!("Target voltage response is too short"));
+		}
+
+		let value = buffer.get(1..buffer.len().saturating_sub(1)).expect("Should have some value");
+		value.parse::<f32>().map_err(|e| eyre!("Can't parse target voltage value to a float, input {}, reason: {}", value, e) )
+	}
 }
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV0Plus
@@ -252,6 +267,10 @@ impl BmdRemoteProtocol for RemoteV0Plus
 	fn get_target_power_state(&self) -> Result<bool>
 	{
 		self.0.get_target_power_state()
+	}
+
+	fn get_target_voltage(&self) -> Result<f32> {
+		self.0.get_target_voltage()
 	}
 }
 
