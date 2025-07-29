@@ -113,6 +113,8 @@ pub trait BmdRemoteProtocol
 	fn supported_families(&self) -> Result<Option<TargetFamily>>;
 	fn get_target_power_state(&self) -> Result<bool>;
 	fn get_target_voltage(&self) -> Result<f32>;
+	fn get_srst_val(&self) -> Result<bool>;
+	fn get_target_supply_power(&self) -> Result<bool>;
 }
 
 /// Types implementing this trait provide raw SWD access to targets over the BMD remote protocol

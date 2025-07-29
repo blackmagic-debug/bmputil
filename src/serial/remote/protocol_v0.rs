@@ -1,17 +1,30 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
+// SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::sync::{Arc, Mutex, MutexGuard};
+
 use color_eyre::eyre;
-use color_eyre::eyre::{Result, eyre, OptionExt};
+use color_eyre::eyre::{OptionExt, Result, eyre};
 use log::{debug, warn};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
-use crate::serial::remote::{Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR, TargetAddr64, TargetArchitecture, TargetFamily, REMOTE_RESP_OK};
+use crate::serial::remote::{
+	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
+	REMOTE_RESP_ERR, REMOTE_RESP_OK, TargetAddr64, TargetArchitecture, TargetFamily,
+};
 
 pub const REMOTE_TARGET_VOLTAGE: &str = "!GV#";
+#[allow(dead_code)]
+pub const REMOTE_SRST_SET: &str = "!GZ#";
+pub const REMOTE_SRST_GET: &str = "!Gz#";
+#[allow(dead_code)]
+pub const REMOTE_PWR_SET: &str = "!GP#";
+pub const REMOTE_PWR_GET: &str = "!Gp#";
+#[allow(dead_code)]
+pub const REMOTE_START: &str = "!GA#";
 
 pub struct RemoteV0
 {
@@ -169,7 +182,8 @@ impl BmdRemoteProtocol for RemoteV0
 		Err(eyre!("Not supported"))
 	}
 
-	fn get_target_voltage(&self) -> Result<f32> {
+	fn get_target_voltage(&self) -> Result<f32>
+	{
 		self.interface().buffer_write(REMOTE_TARGET_VOLTAGE)?;
 		let buffer = self.interface().buffer_read()?;
 
@@ -181,8 +195,44 @@ impl BmdRemoteProtocol for RemoteV0
 			return Err(eyre!("Target voltage response is too short"));
 		}
 
-		let value = buffer.get(1..buffer.len().saturating_sub(1)).expect("Should have some value");
-		value.parse::<f32>().map_err(|e| eyre!("Can't parse target voltage value to a float, input {}, reason: {}", value, e) )
+		let value = buffer
+			.get(1..buffer.len().saturating_sub(1))
+			.expect("Should have some value");
+		value
+			.parse::<f32>()
+			.map_err(|e| eyre!("Can't parse target voltage value to a float, input {}, reason: {}", value, e))
+	}
+
+	fn get_srst_val(&self) -> Result<bool>
+	{
+		self.interface().buffer_write(REMOTE_SRST_GET)?;
+		let buffer = self.interface().buffer_read()?;
+
+		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+			return Err(eyre!("srst value request failed"));
+		}
+
+		if buffer.len() < 2 {
+			return Err(eyre!("srst value response is too short"));
+		}
+
+		Ok(buffer.as_bytes()[1] == b'1')
+	}
+
+	fn get_target_supply_power(&self) -> Result<bool>
+	{
+		self.interface().buffer_write(REMOTE_PWR_GET)?;
+		let buffer = self.interface().buffer_read()?;
+
+		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+			return Err(eyre!("remote_target_get_power value request failed"));
+		}
+
+		if buffer.len() < 2 {
+			return Err(eyre!("remote_target_get_power value response is too short"));
+		}
+
+		Ok(buffer.as_bytes()[1] == b'1')
 	}
 }
 
@@ -269,8 +319,19 @@ impl BmdRemoteProtocol for RemoteV0Plus
 		self.0.get_target_power_state()
 	}
 
-	fn get_target_voltage(&self) -> Result<f32> {
+	fn get_target_voltage(&self) -> Result<f32>
+	{
 		self.0.get_target_voltage()
+	}
+
+	fn get_srst_val(&self) -> Result<bool>
+	{
+		self.0.get_srst_val()
+	}
+
+	fn get_target_supply_power(&self) -> Result<bool>
+	{
+		self.0.get_target_supply_power()
 	}
 }
 
