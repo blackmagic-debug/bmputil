@@ -13,18 +13,8 @@ use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	REMOTE_RESP_ERR, REMOTE_RESP_OK, TargetAddr64, TargetArchitecture, TargetFamily,
+	REMOTE_RESP_ERR, REMOTE_RESP_OK, RemoteCommands, TargetAddr64, TargetArchitecture, TargetFamily,
 };
-
-pub const REMOTE_TARGET_VOLTAGE: &str = "!GV#";
-#[allow(dead_code)]
-pub const REMOTE_SRST_SET: &str = "!GZ#";
-pub const REMOTE_SRST_GET: &str = "!Gz#";
-#[allow(dead_code)]
-pub const REMOTE_PWR_SET: &str = "!GP#";
-pub const REMOTE_PWR_GET: &str = "!Gp#";
-#[allow(dead_code)]
-pub const REMOTE_START: &str = "!GA#";
 
 pub struct RemoteV0
 {
@@ -184,7 +174,7 @@ impl BmdRemoteProtocol for RemoteV0
 
 	fn get_target_voltage(&self) -> Result<f32>
 	{
-		self.interface().buffer_write(REMOTE_TARGET_VOLTAGE)?;
+		self.interface().buffer_write(RemoteCommands::TARGET_VOLTAGE)?;
 		let buffer = self.interface().buffer_read()?;
 
 		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
@@ -205,7 +195,7 @@ impl BmdRemoteProtocol for RemoteV0
 
 	fn get_srst_val(&self) -> Result<bool>
 	{
-		self.interface().buffer_write(REMOTE_SRST_GET)?;
+		self.interface().buffer_write(RemoteCommands::NRST_GET)?;
 		let buffer = self.interface().buffer_read()?;
 
 		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
@@ -221,7 +211,7 @@ impl BmdRemoteProtocol for RemoteV0
 
 	fn get_target_supply_power(&self) -> Result<bool>
 	{
-		self.interface().buffer_write(REMOTE_PWR_GET)?;
+		self.interface().buffer_write(RemoteCommands::PWR_GET)?;
 		let buffer = self.interface().buffer_read()?;
 
 		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {

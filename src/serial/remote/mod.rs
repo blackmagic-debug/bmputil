@@ -25,6 +25,22 @@ mod protocol_v3;
 mod protocol_v4;
 pub mod riscv_debug;
 
+pub struct RemoteCommands;
+
+#[allow(unused)]
+impl RemoteCommands
+{
+	/// This command asks the probe if the power is used
+	pub const GET_TARGET_POWER_STATE: &'static str = "!Gp#";
+	pub const JTAG_INIT: &'static str = "!JS#";
+	pub const NRST_GET: &'static str = "!Gz#";
+	pub const NRST_SET: &'static str = "!GZ#";
+	pub const PWR_GET: &'static str = "!Gp#";
+	pub const PWR_SET: &'static str = "!GP#";
+	pub const START: &'static str = "!GA#";
+	pub const TARGET_VOLTAGE: &'static str = "!GV#";
+}
+
 /// This is the max possible size of a remote protocol packet which a hard limitation of the
 /// firmware on the probe - 1KiB is all the buffer that could be spared.
 pub const REMOTE_MAX_MSG_SIZE: usize = 1024;
