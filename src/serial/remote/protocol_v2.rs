@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
+// SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -11,19 +12,13 @@ use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::protocol_v0::RemoteV0JTAG;
 use crate::serial::remote::protocol_v1::RemoteV1;
 use crate::serial::remote::{
-	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
-	REMOTE_RESP_OK, TargetArchitecture, TargetFamily,
+	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, RemoteCommands,
+	RemoteResponse, TargetArchitecture, TargetFamily,
 };
 
 pub struct RemoteV2(RemoteV1);
 
 pub struct RemoteV2JTAG(RemoteV0JTAG);
-
-const REMOTE_JTAG_INIT: &str = "!JS#";
-/// This command asks the probe if the power is used
-#[allow(dead_code)]
-const REMOTE_TARGET_VOLTAGE: &str = "!GV#";
-const REMOTE_GET_TARGET_POWER_STATE: &str = "!Gp#";
 
 impl From<Arc<Mutex<BmdRspInterface>>> for RemoteV2
 {
@@ -58,10 +53,10 @@ impl BmdRemoteProtocol for RemoteV2
 	{
 		// Try to have the probe initialise JTAG comms to any connected targets
 		debug!("Remote JTAG init");
-		self.interface().buffer_write(REMOTE_JTAG_INIT)?;
+		self.interface().buffer_write(RemoteCommands::JTAG_INIT)?;
 		let buffer = self.interface().buffer_read()?;
 		// If that failed for some reason, report it and abort
-		if buffer.is_empty() || buffer.as_bytes()[0] == REMOTE_RESP_ERR {
+		if buffer.is_empty() || buffer.as_bytes()[0] == RemoteResponse::RESP_ERR {
 			let message = if buffer.len() > 1 {
 				&buffer[1..]
 			} else {
@@ -126,10 +121,10 @@ impl BmdRemoteProtocol for RemoteV2
 
 	fn get_target_power_state(&self) -> Result<bool>
 	{
-		self.interface().buffer_write(REMOTE_GET_TARGET_POWER_STATE)?;
+		self.interface().buffer_write(RemoteCommands::GET_TARGET_POWER_STATE)?;
 		let buffer = self.interface().buffer_read()?;
 
-		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+		if buffer.is_empty() || buffer.as_bytes()[0] != RemoteResponse::RESP_OK {
 			return Err(eyre!("Supported current powered request failed"));
 		}
 
@@ -138,6 +133,16 @@ impl BmdRemoteProtocol for RemoteV2
 		}
 
 		Ok(buffer.as_bytes()[1] == b'1')
+	}
+
+	fn get_nrst_voltage(&self) -> Result<f32>
+	{
+		self.0.get_nrst_voltage()
+	}
+
+	fn get_nrst_val(&self) -> Result<bool>
+	{
+		self.0.get_nrst_val()
 	}
 }
 
