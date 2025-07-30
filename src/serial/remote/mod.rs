@@ -30,20 +30,20 @@ pub struct RemoteCommands;
 impl RemoteCommands
 {
 	/// This command asks the probe if the reset pin is on
-	pub const GET_NRST: &'static str = "!Gz#";
+	pub const GET_NRST: &str = "!Gz#";
 	/// This command asks the probe if power is being supplied to the target
-	pub const GET_TARGET_POWER_STATE: &'static str = "!Gp#";
+	pub const GET_TARGET_POWER_STATE: &str = "!Gp#";
 	/// This command asks the probe what it's protocol version is
-	pub const HL_CHECK: &'static str = "!HC#";
+	pub const HL_CHECK: &str = "!HC#";
 	/// This command asks the probe to initialise JTAG comms to any connected targets
-	pub const JTAG_INIT: &'static str = "!JS#";
-	pub const NRST_TARGET_VOLTAGE: &'static str = "!GV#";
+	pub const JTAG_INIT: &str = "!JS#";
+	pub const NRST_TARGET_VOLTAGE: &str = "!GV#";
 	/// This command asks the probe to the reset pin state
-	pub const SET_NRST: &'static str = "!GZ#";
+	pub const SET_NRST: &str = "!GZ#";
 	/// This command asks the probe to set the power state to the target
-	pub const SET_TARGET_POWER_STATE: &'static str = "!GP#";
+	pub const SET_TARGET_POWER_STATE: &str = "!GP#";
 	/// This command asks to start remote protocol communications with the probe
-	pub const START: &'static str = "+#!GA#";
+	pub const START: &str = "+#!GA#";
 }
 
 pub struct RemoteResponse;
