@@ -12,8 +12,8 @@ use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::protocol_v0::RemoteV0JTAG;
 use crate::serial::remote::protocol_v1::RemoteV1;
 use crate::serial::remote::{
-	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, REMOTE_RESP_ERR,
-	REMOTE_RESP_OK, RemoteCommands, TargetArchitecture, TargetFamily,
+	BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev, RemoteCommands,
+	RemoteResponse, TargetArchitecture, TargetFamily,
 };
 
 pub struct RemoteV2(RemoteV1);
@@ -56,7 +56,7 @@ impl BmdRemoteProtocol for RemoteV2
 		self.interface().buffer_write(RemoteCommands::JTAG_INIT)?;
 		let buffer = self.interface().buffer_read()?;
 		// If that failed for some reason, report it and abort
-		if buffer.is_empty() || buffer.as_bytes()[0] == REMOTE_RESP_ERR {
+		if buffer.is_empty() || buffer.as_bytes()[0] == RemoteResponse::RESP_ERR {
 			let message = if buffer.len() > 1 {
 				&buffer[1..]
 			} else {
@@ -124,7 +124,7 @@ impl BmdRemoteProtocol for RemoteV2
 		self.interface().buffer_write(RemoteCommands::GET_TARGET_POWER_STATE)?;
 		let buffer = self.interface().buffer_read()?;
 
-		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+		if buffer.is_empty() || buffer.as_bytes()[0] != RemoteResponse::RESP_OK {
 			return Err(eyre!("Supported current powered request failed"));
 		}
 
@@ -135,19 +135,14 @@ impl BmdRemoteProtocol for RemoteV2
 		Ok(buffer.as_bytes()[1] == b'1')
 	}
 
-	fn get_target_voltage(&self) -> Result<f32>
+	fn get_nrst_voltage(&self) -> Result<f32>
 	{
-		self.0.get_target_voltage()
+		self.0.get_nrst_voltage()
 	}
 
-	fn get_srst_val(&self) -> Result<bool>
+	fn get_nrst_val(&self) -> Result<bool>
 	{
-		self.0.get_srst_val()
-	}
-
-	fn get_target_supply_power(&self) -> Result<bool>
-	{
-		self.0.get_target_supply_power()
+		self.0.get_nrst_val()
 	}
 }
 

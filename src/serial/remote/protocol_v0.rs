@@ -5,15 +5,14 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use color_eyre::eyre;
-use color_eyre::eyre::{OptionExt, Result, eyre};
+use color_eyre::eyre::{Result, eyre};
 use log::{debug, warn};
 
 use crate::serial::bmd_rsp::BmdRspInterface;
 use crate::serial::remote::adi::{AdiV5AccessPort, AdiV5DebugPort};
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	REMOTE_RESP_ERR, REMOTE_RESP_OK, RemoteCommands, TargetAddr64, TargetArchitecture, TargetFamily,
+	RemoteCommands, RemoteResponse, TargetAddr64, TargetArchitecture, TargetFamily,
 };
 
 pub struct RemoteV0
@@ -85,7 +84,7 @@ impl BmdRemoteProtocol for RemoteV0
 		self.interface().buffer_write(REMOTE_JTAG_INIT)?;
 		let buffer = self.interface().buffer_read()?;
 		// If that failed for some reason, report it and abort
-		if buffer.is_empty() || buffer.as_bytes()[0] == REMOTE_RESP_ERR {
+		if buffer.is_empty() || buffer.as_bytes()[0] == RemoteResponse::RESP_ERR {
 			let message = if buffer.len() > 1 {
 				&buffer[1..]
 			} else {
@@ -104,7 +103,7 @@ impl BmdRemoteProtocol for RemoteV0
 		self.interface().buffer_write(REMOTE_SWD_INIT)?;
 		let buffer = self.interface().buffer_read()?;
 		// If that failed for some reason, report it and abort
-		if buffer.is_empty() || buffer.as_bytes()[0] == REMOTE_RESP_ERR {
+		if buffer.is_empty() || buffer.as_bytes()[0] == RemoteResponse::RESP_ERR {
 			let message = if buffer.len() > 1 {
 				&buffer[1..]
 			} else {
@@ -172,12 +171,12 @@ impl BmdRemoteProtocol for RemoteV0
 		Err(eyre!("Not supported"))
 	}
 
-	fn get_target_voltage(&self) -> Result<f32>
+	fn get_nrst_voltage(&self) -> Result<f32>
 	{
-		self.interface().buffer_write(RemoteCommands::TARGET_VOLTAGE)?;
+		self.interface().buffer_write(RemoteCommands::NRST_TARGET_VOLTAGE)?;
 		let buffer = self.interface().buffer_read()?;
 
-		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+		if buffer.is_empty() || buffer.as_bytes()[0] != RemoteResponse::RESP_OK {
 			return Err(eyre!("Target voltage request failed"));
 		}
 
@@ -188,38 +187,23 @@ impl BmdRemoteProtocol for RemoteV0
 		let value = buffer
 			.get(1..buffer.len().saturating_sub(1))
 			.expect("Should have some value");
+
 		value
 			.parse::<f32>()
 			.map_err(|e| eyre!("Can't parse target voltage value to a float, input {}, reason: {}", value, e))
 	}
 
-	fn get_srst_val(&self) -> Result<bool>
+	fn get_nrst_val(&self) -> Result<bool>
 	{
-		self.interface().buffer_write(RemoteCommands::NRST_GET)?;
+		self.interface().buffer_write(RemoteCommands::GET_NRST)?;
 		let buffer = self.interface().buffer_read()?;
 
-		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+		if buffer.is_empty() || buffer.as_bytes()[0] != RemoteResponse::RESP_OK {
 			return Err(eyre!("srst value request failed"));
 		}
 
 		if buffer.len() < 2 {
 			return Err(eyre!("srst value response is too short"));
-		}
-
-		Ok(buffer.as_bytes()[1] == b'1')
-	}
-
-	fn get_target_supply_power(&self) -> Result<bool>
-	{
-		self.interface().buffer_write(RemoteCommands::PWR_GET)?;
-		let buffer = self.interface().buffer_read()?;
-
-		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
-			return Err(eyre!("remote_target_get_power value request failed"));
-		}
-
-		if buffer.len() < 2 {
-			return Err(eyre!("remote_target_get_power value response is too short"));
 		}
 
 		Ok(buffer.as_bytes()[1] == b'1')
@@ -309,19 +293,14 @@ impl BmdRemoteProtocol for RemoteV0Plus
 		self.0.get_target_power_state()
 	}
 
-	fn get_target_voltage(&self) -> Result<f32>
+	fn get_nrst_voltage(&self) -> Result<f32>
 	{
-		self.0.get_target_voltage()
+		self.0.get_nrst_voltage()
 	}
 
-	fn get_srst_val(&self) -> Result<bool>
+	fn get_nrst_val(&self) -> Result<bool>
 	{
-		self.0.get_srst_val()
-	}
-
-	fn get_target_supply_power(&self) -> Result<bool>
-	{
-		self.0.get_target_supply_power()
+		self.0.get_nrst_val()
 	}
 }
 

@@ -113,19 +113,14 @@ impl BmdRemoteProtocol for RemoteV3
 		self.0.get_target_power_state()
 	}
 
-	fn get_target_voltage(&self) -> Result<f32>
+	fn get_nrst_voltage(&self) -> Result<f32>
 	{
-		self.0.get_target_voltage()
+		self.0.get_nrst_voltage()
 	}
 
-	fn get_srst_val(&self) -> Result<bool>
+	fn get_nrst_val(&self) -> Result<bool>
 	{
-		self.0.get_srst_val()
-	}
-
-	fn get_target_supply_power(&self) -> Result<bool>
-	{
-		self.0.get_target_supply_power()
+		self.0.get_nrst_val()
 	}
 }
 

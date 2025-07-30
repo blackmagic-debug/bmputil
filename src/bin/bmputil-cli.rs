@@ -444,7 +444,7 @@ fn power_command(cli_args: &CliArguments) -> Result<()>
 		Err(e) => warn!("Failed to retrieve target power state: {}", e),
 	};
 
-	let voltage = remote.get_target_voltage()?;
+	let voltage = remote.get_nrst_voltage()?;
 	info!("Target voltage: {}V", voltage);
 
 	Ok(())

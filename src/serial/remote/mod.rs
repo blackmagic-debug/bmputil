@@ -27,39 +27,47 @@ pub mod riscv_debug;
 
 pub struct RemoteCommands;
 
-#[allow(unused)]
 impl RemoteCommands
 {
-	/// This command asks the probe if the power is used
+	/// This command asks the probe if the reset pin is on
+	pub const GET_NRST: &'static str = "!Gz#";
+	/// This command asks the probe if power is being supplied to the target
 	pub const GET_TARGET_POWER_STATE: &'static str = "!Gp#";
+	/// This command asks the probe what it's protocol version is
+	pub const HL_CHECK: &'static str = "!HC#";
+	/// This command asks the probe to initialise JTAG comms to any connected targets
 	pub const JTAG_INIT: &'static str = "!JS#";
-	pub const NRST_GET: &'static str = "!Gz#";
-	pub const NRST_SET: &'static str = "!GZ#";
-	pub const PWR_GET: &'static str = "!Gp#";
-	pub const PWR_SET: &'static str = "!GP#";
-	pub const START: &'static str = "!GA#";
-	pub const TARGET_VOLTAGE: &'static str = "!GV#";
+	pub const NRST_TARGET_VOLTAGE: &'static str = "!GV#";
+	/// This command asks the probe to the reset pin state
+	pub const SET_NRST: &'static str = "!GZ#";
+	/// This command asks the probe to set the power state to the target
+	pub const SET_TARGET_POWER_STATE: &'static str = "!GP#";
+	/// This command asks to start remote protocol communications with the probe
+	pub const START: &'static str = "+#!GA#";
 }
 
-/// This is the max possible size of a remote protocol packet which a hard limitation of the
-/// firmware on the probe - 1KiB is all the buffer that could be spared.
-pub const REMOTE_MAX_MSG_SIZE: usize = 1024;
+pub struct RemoteResponse;
 
-/// Start of message marker for the protocol
-pub const REMOTE_SOM: u8 = b'!';
-/// End of message marker for the protocol
-pub const REMOTE_EOM: u8 = b'#';
-/// Response marker for the protocol
-pub const REMOTE_RESP: u8 = b'&';
-
-/// Probe response was okay and the data returned is valid
-pub const REMOTE_RESP_OK: u8 = b'K';
-/// Probe found an error with a request parameter
-pub const REMOTE_RESP_PARERR: u8 = b'P';
-/// Probe encountered an error executing the request
-pub const REMOTE_RESP_ERR: u8 = b'E';
-/// Probe does not support the request made
-pub const REMOTE_RESP_NOTSUP: u8 = b'N';
+impl RemoteResponse
+{
+	/// End of message marker for the protocol
+	pub const EOM: u8 = b'#';
+	/// This is the max possible size of a remote protocol packet which a hard limitation of the
+	/// firmware on the probe - 1KiB is all the buffer that could be spared.
+	pub const MAX_MSG_SIZE: usize = 1024;
+	/// Response marker for the protocol
+	pub const RESP: u8 = b'&';
+	/// Probe encountered an error executing the request
+	pub const RESP_ERR: u8 = b'E';
+	/// Probe does not support the request made
+	pub const RESP_NOTSUP: u8 = b'N';
+	/// Probe response was okay and the data returned is valid
+	pub const RESP_OK: u8 = b'K';
+	/// Probe found an error with a request parameter
+	pub const RESP_PARERR: u8 = b'P';
+	/// Start of message marker for the protocol
+	pub const SOM: u8 = b'!';
+}
 
 pub type TargetAddr32 = u32;
 pub type TargetAddr64 = u64;
@@ -128,9 +136,8 @@ pub trait BmdRemoteProtocol
 	fn supported_architectures(&self) -> Result<Option<TargetArchitecture>>;
 	fn supported_families(&self) -> Result<Option<TargetFamily>>;
 	fn get_target_power_state(&self) -> Result<bool>;
-	fn get_target_voltage(&self) -> Result<f32>;
-	fn get_srst_val(&self) -> Result<bool>;
-	fn get_target_supply_power(&self) -> Result<bool>;
+	fn get_nrst_voltage(&self) -> Result<f32>;
+	fn get_nrst_val(&self) -> Result<bool>;
 }
 
 /// Types implementing this trait provide raw SWD access to targets over the BMD remote protocol
