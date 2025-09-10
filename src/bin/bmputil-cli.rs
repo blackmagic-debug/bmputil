@@ -532,7 +532,11 @@ impl BmputilPanic
 	fn print_header(&self)
 	{
 		eprintln!("------------[ ✂ cut here ✂ ]------------");
-		eprintln!("Unhandled crash in bmputil-cli v{}", crate_version!());
+		eprintln!(
+			"Unhandled crash in bmputil-cli v{} ({})",
+			crate_version!(),
+			std::env::consts::OS
+		);
 		eprintln!();
 	}
 
