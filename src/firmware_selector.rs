@@ -39,8 +39,8 @@ impl<'a> FirmwareMultichoice<'a>
 	{
 		// Map the variant list to create selection items
 		let friendly_names: Vec<_> = variants
-			.iter()
-			.map(|(_, variant)| variant.friendly_name.as_str())
+			.values()
+			.map(|variant| variant.friendly_name.as_str())
 			.collect();
 
 		// Construct the new multi-choice object that will start in the default firmware selection state
