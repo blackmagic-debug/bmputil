@@ -42,7 +42,7 @@ impl RemoteV1
 		Self(RemoteV0::new(interface))
 	}
 
-	pub(crate) fn interface(&self) -> MutexGuard<BmdRspInterface>
+	pub(crate) fn interface(&self) -> MutexGuard<'_, BmdRspInterface>
 	{
 		self.0.interface()
 	}

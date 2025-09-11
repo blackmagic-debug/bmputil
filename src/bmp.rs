@@ -206,7 +206,7 @@ impl BmpDevice
 	/// This struct caches the serial number in an [`std::cell::RefCell`],
 	/// and thus returns a `Ref<str>` rather than the `&str` directly.
 	/// Feel free to clone the result if you want a directly referenceable value.
-	pub fn serial_number(&self) -> Result<Ref<str>>
+	pub fn serial_number(&self) -> Result<Ref<'_, str>>
 	{
 		let serial = self.serial.borrow();
 		if serial.is_some() {
