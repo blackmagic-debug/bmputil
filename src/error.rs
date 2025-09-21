@@ -49,7 +49,11 @@ impl ErrorKind
 	///
 	/// Enables convenient code like:
 	/// ```
-	/// return Err(ErrorKind::DeviceNotFound.error());
+	/// use bmputil::error::{Error, ErrorKind};
+	/// fn do_something() -> Result<(), Error>
+	/// {
+	/// 	Err(ErrorKind::DeviceNotFound.error())
+	/// }
 	/// ```
 	#[inline(always)]
 	pub fn error(self) -> Error
@@ -61,8 +65,14 @@ impl ErrorKind
 	///
 	/// Enables convenient code like:
 	/// ```
-	/// # let operation = || std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-	/// operation().map_err(|e| ErrorKind::DeviceNotFound.error_from(e))?;
+	/// use bmputil::error::{Error, ErrorKind};
+	/// fn do_something() -> Result<(), Error>
+	/// {
+	/// 	let operation =
+	/// 		|| -> Result<(), std::io::Error> { Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)) };
+	/// 	operation().map_err(|e| ErrorKind::DeviceNotFound.error_from(e))?;
+	/// 	Ok(())
+	/// }
 	/// ```
 	#[inline(always)]
 	pub fn error_from<E: StdError + Send + Sync + 'static>(self, source: E) -> Error
