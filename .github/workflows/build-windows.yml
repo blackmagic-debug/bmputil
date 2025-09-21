@@ -1,0 +1,65 @@
+name: Build Windows
+
+on:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+    branches:
+      - 'main'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.job }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: '${{ matrix.os }} (msvc)'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - windows-2022
+          - windows-2025
+      fail-fast: false
+    steps:
+      - name: Runtime environment
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          echo "$env:HOMEDRIVE$env:HOMEPATH\\.local\\bin" >> $env:GITHUB_PATH
+          echo "$env:HOMEDRIVE$env:HOMEPATH\\.cargo\\bin" >> $env:GITHUB_PATH
+          echo "GITHUB_WORKSPACE=$(pwd)" >> $env:GITHUB_ENV
+      - name: Checkout bmputil
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          submodules: true
+      - name: Setup Rust
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc
+          rustup toolchain install stable-aarch64-pc-windows-msvc
+          rustup default stable-x86_64-pc-windows-msvc
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Version tools
+        run: |
+          cargo --version
+          rustc --version
+          cargo llvm-cov --version
+      - name: Build
+        run: cargo b
+      - name: Test
+        run: cargo t
+      - name: Collect code coverage
+        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+      - name: Codecov
+        if: success() && github.repository == 'blackmagic-debug/bmputil'
+        uses: codecov/codecov-action@v5
+        with:
+          files: codecov.json
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
