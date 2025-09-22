@@ -31,6 +31,11 @@ jobs:
           echo "$env:HOMEDRIVE$env:HOMEPATH\\.local\\bin" >> $env:GITHUB_PATH
           echo "$env:HOMEDRIVE$env:HOMEPATH\\.cargo\\bin" >> $env:GITHUB_PATH
           echo "GITHUB_WORKSPACE=$(pwd)" >> $env:GITHUB_ENV
+      - name: Install WDK redist components
+        run: |
+          Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkID=253170 -OutFile wdk-redist.msi
+          Start-Process -FilePath msiexec -Verb Runas -Wait -ArgumentList "/i","$PWD\wdk-redist.msi","/passive","/qn","LicenseAccepted=1"
+          rm wdk-redist.msi
       - name: Checkout bmputil
         uses: actions/checkout@v5
         with:
