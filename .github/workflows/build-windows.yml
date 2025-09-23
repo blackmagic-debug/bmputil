@@ -70,6 +70,8 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   build-mingw:
+    # Turn MSYS2/MinGW builds off for now as they're terminally broken till some things are fixed in libwdi-sys
+    if: false
     name: '${{ matrix.os }} (${{ matrix.sys }})'
     runs-on: ${{ matrix.os }}
     defaults:
@@ -102,6 +104,11 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           echo "GITHUB_WORKSPACE=`pwd`" >> $GITHUB_ENV
+      - name: Install WDK redist components
+        run: |
+          curl -Lo wdk-redist.msi https://go.microsoft.com/fwlink/p/?LinkID=253170
+          sudo msiexec /i $PWD\wdk-redist.msi /passive /qn LicenseAccepted=1
+          rm wdk-redist.msi
       - name: Checkout bmputil
         uses: actions/checkout@v5
         with:
