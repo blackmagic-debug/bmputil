@@ -68,6 +68,17 @@ jobs:
           files: codecov.json
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Release build
+        if: success() && github.event_name == 'push'
+        run: |
+          cargo b -r
+      - name: Upload build
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmputil-${{ matrix.os }}-msvc
+          path: target/release/bmputil-cli
+          if-no-files-found: error
 
   build-mingw:
     # Turn MSYS2/MinGW builds off for now as they're terminally broken till some things are fixed in libwdi-sys
@@ -141,3 +152,14 @@ jobs:
           files: codecov.json
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Release build
+        if: success() && github.event_name == 'push'
+        run: |
+          cargo b -r
+      - name: Upload build
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmputil-${{ matrix.os }}-${{ matrix.sys }}
+          path: target/release/bmputil-cli
+          if-no-files-found: error

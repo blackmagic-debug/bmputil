@@ -63,3 +63,14 @@ jobs:
           files: codecov.json
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Release build
+        if: success() && github.event_name == 'push'
+        run: |
+          cargo b -r
+      - name: Upload build
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmputil-${{ matrix.os.id }}
+          path: target/release/bmputil-cli
+          if-no-files-found: error
