@@ -64,3 +64,53 @@ jobs:
           files: codecov.json
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  build-macos-homebrew:
+    name: '${{ matrix.os }} (homebrew)'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - macos-14
+      fail-fast: false
+    steps:
+      - name: Runtime environment
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          echo "GITHUB_WORKSPACE=`pwd`" >> $GITHUB_ENV
+      - name: Checkout bmputil
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+          submodules: true
+      - name: Setup Rust
+        run: |
+          brew install rustup gcc
+          rustup toolchain install stable
+          rustup default stable
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Version tools
+        run: |
+          cargo --version
+          rustc --version
+          cargo llvm-cov --version
+      - name: Build
+        run: cargo b
+      - name: Test
+        run: cargo t
+      - name: Collect code coverage
+        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+      - name: Codecov
+        if: success() && github.repository == 'blackmagic-debug/bmputil'
+        uses: codecov/codecov-action@v5
+        with:
+          files: codecov.json
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
