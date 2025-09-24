@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
+// SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -110,6 +111,16 @@ impl BmdRemoteProtocol for RemoteV3
 	fn get_target_power_state(&self) -> Result<bool>
 	{
 		self.0.get_target_power_state()
+	}
+
+	fn get_nrst_voltage(&self) -> Result<f32>
+	{
+		self.0.get_nrst_voltage()
+	}
+
+	fn get_nrst_val(&self) -> Result<bool>
+	{
+		self.0.get_nrst_val()
 	}
 }
 
