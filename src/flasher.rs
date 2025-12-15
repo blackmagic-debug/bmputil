@@ -14,7 +14,8 @@ use color_eyre::owo_colors::OwoColorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info, warn};
 
-use crate::bmp::{self, BmpDevice, FirmwareFormat, FirmwareType};
+use crate::bmp::{self, BmpDevice, FirmwareType};
+use crate::firmware_file::FirmwareFormat;
 use crate::usb::PortId;
 use crate::{AllowDangerous, BmpParams, FlashParams, elf};
 
