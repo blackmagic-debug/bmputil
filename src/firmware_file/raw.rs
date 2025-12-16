@@ -11,7 +11,7 @@ use super::FirmwareStorage;
 
 pub struct RawFirmwareFile
 {
-	contents: Vec<u8>,
+	contents: Box<[u8]>,
 }
 
 impl TryFrom<File> for RawFirmwareFile
@@ -26,7 +26,7 @@ impl TryFrom<File> for RawFirmwareFile
 
 		// Put the vec inside our little container and be done
 		Ok(Self {
-			contents,
+			contents: contents.into_boxed_slice(),
 		})
 	}
 }
