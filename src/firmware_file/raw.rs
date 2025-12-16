@@ -20,8 +20,11 @@ impl TryFrom<File> for RawFirmwareFile
 
 	fn try_from(mut file: File) -> Result<Self>
 	{
+		// Pull out the entire file contents into memory and stuff it in a vec
 		let mut contents = Vec::new();
 		file.read_to_end(&mut contents)?;
+
+		// Put the vec inside our little container and be done
 		Ok(Self {
 			contents,
 		})

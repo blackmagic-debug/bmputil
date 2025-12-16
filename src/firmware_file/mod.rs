@@ -57,6 +57,8 @@ impl FirmwareFile
 		self.inner.load_address()
 	}
 
+	/// Provides the firmware data this file holds in a format suitable for
+	/// writing into Flash directly at the load address
 	pub fn firmware_data(&self) -> &[u8]
 	{
 		self.inner.firmware_data()
