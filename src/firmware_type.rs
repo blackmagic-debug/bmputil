@@ -10,7 +10,7 @@ use clap::{ValueEnum, builder::PossibleValue};
 use color_eyre::eyre::{Context, Result, eyre};
 use log::debug;
 
-use crate::bmp::BmpPlatform;
+use crate::{bmp::BmpPlatform, firmware_file::FirmwareFile};
 
 /// Represents a conceptual Vector Table for Armv7 processors.
 pub struct Armv7mVectorTable<'b>
@@ -71,9 +71,24 @@ impl FirmwareType
 	/// Detect the kind of firmware from the given binary by examining its reset vector address.
 	///
 	/// This function panics if `firmware.len() < 8`.
-	pub fn detect_from_firmware(platform: BmpPlatform, firmware: &[u8]) -> Result<Self>
+	pub fn detect_from_firmware(platform: BmpPlatform, firmware_file: &FirmwareFile) -> Result<Self>
 	{
-		let buffer = &firmware[0..(4 * 2)];
+        // If the firmware image has a load address
+        if let Some(load_address) = firmware_file.load_address() {
+            // Check if the address is the bootloader area for the platform
+            let boot_start = platform.load_address(Self::Bootloader);
+            return Ok(
+                if load_address == boot_start {
+                    Self::Bootloader
+                } else {
+                    Self::Application
+                }
+            );
+        }
+
+        // If the firmware doesn't have a known load address, fall back to figuring it out
+        // from the NVIC table at the front of the image
+		let buffer = &firmware_file.firmware_data()[0..(4 * 2)];
 
 		let vector_table = Armv7mVectorTable::from_bytes(buffer);
 		let reset_vector = vector_table

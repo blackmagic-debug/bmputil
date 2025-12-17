@@ -32,10 +32,8 @@ impl Firmware
 	where
 		Params: BmpParams + FlashParams,
 	{
-		let firmware_data = firmware_file.firmware_data();
-
 		Ok(Self {
-			firmware_type: Self::determine_firmware_type(params, device, firmware_data)?,
+			firmware_type: Self::determine_firmware_type(params, device, &firmware_file)?,
 			firmware_file,
 		})
 	}
@@ -43,7 +41,7 @@ impl Firmware
 	fn determine_firmware_type<Params>(
 		params: &Params,
 		device: &BmpDevice,
-		firmware_data: &[u8],
+		firmware_file: &FirmwareFile,
 	) -> Result<FirmwareType>
 	where
 		Params: BmpParams + FlashParams,
@@ -52,7 +50,7 @@ impl Firmware
 		// Using the platform to determine the link address.
 		let platform = device.platform();
 		let firmware_type =
-			FirmwareType::detect_from_firmware(platform, firmware_data).wrap_err("detecting firmware type")?;
+			FirmwareType::detect_from_firmware(platform, firmware_file).wrap_err("detecting firmware type")?;
 
 		debug!("Firmware file was detected as {}", firmware_type);
 
