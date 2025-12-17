@@ -89,8 +89,6 @@ impl Firmware
 	{
 		// Extract the firmware type as a value so it can be captured and moved (copied) by the progress lambda
 		let firmware_type = self.firmware_type;
-		// Pull out the data to program
-		let firmware_data = self.firmware_file.data();
 		// Pull out the length of the firmware image and make it a u64
 		let firmware_length = self.firmware_file.len() as u64;
 
@@ -106,7 +104,7 @@ impl Firmware
 		let progress_bar = Rc::new(progress_bar);
 		let enclosed = Rc::clone(&progress_bar);
 
-		let result = device.download(firmware_data, firmware_type, move |flash_pos_delta| {
+		let result = device.download(&self.firmware_file, firmware_type, move |flash_pos_delta| {
 			// Don't actually print flashing until the erasing has finished.
 			if enclosed.position() == 0 {
 				if firmware_type == FirmwareType::Application {

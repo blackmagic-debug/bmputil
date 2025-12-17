@@ -19,6 +19,7 @@ use nusb::{Device, DeviceInfo, Interface};
 
 pub use crate::bmp_matcher::BmpMatcher;
 use crate::error::ErrorKind;
+use crate::firmware_file::FirmwareFile;
 // XXX: Ideally this shouldn't be pub here, but that's a breaking change.
 pub use crate::firmware_type::FirmwareType;
 use crate::probe_identity::ProbeIdentity;
@@ -496,9 +497,9 @@ impl BmpDevice
 	///
 	/// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
 	/// the flashing process.
-	pub fn download<'r, P>(
+	pub fn download<P>(
 		&mut self,
-		firmware: &'r [u8],
+		firmware_file: &FirmwareFile,
 		firmware_type: FirmwareType,
 		progress: P,
 	) -> Result<DfuSync>
@@ -509,8 +510,11 @@ impl BmpDevice
 			self.detach_and_enumerate().wrap_err("detaching device for download")?;
 		}
 
-		let length = firmware.len() as u32;
-		let load_address = self.platform.load_address(firmware_type);
+		// Extract the file's load address, and if that isn't a thing, fall back on
+		// more crude methods based on the platform we're downloading to
+		let load_address = firmware_file
+			.load_address()
+			.unwrap_or_else(|| self.platform.load_address(firmware_type));
 
 		let dfu_dev = DfuNusb::open(
 			self.device.take().expect("Must have a valid device handle"),
@@ -531,7 +535,7 @@ impl BmpDevice
 
 		debug!("Load address: 0x{:08x}", load_address);
 
-		match self.try_download(firmware, length, &mut dfu_iface) {
+		match self.try_download(firmware_file.data(), firmware_file.len(), &mut dfu_iface) {
 			Err(error) => {
 				if let Some(DfuNusbError::Dfu(DfuCoreError::StateError(DfuState::DfuError))) =
 					error.downcast_ref::<DfuNusbError>()
@@ -555,7 +559,7 @@ impl BmpDevice
 						.unwrap()
 						.control_out_blocking(request, &[], Duration::from_secs(2))?;
 
-					self.try_download(firmware, length, &mut dfu_iface)
+					self.try_download(firmware_file.data(), firmware_file.len(), &mut dfu_iface)
 				} else {
 					Err(error)
 				}
