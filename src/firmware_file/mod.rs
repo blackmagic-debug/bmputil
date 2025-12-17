@@ -40,7 +40,7 @@ impl FirmwareFile
 		file.rewind()?;
 
 		let storage: Box<dyn FirmwareStorage> = if &signature == b"\x7fELF" {
-			Box::new(ELFFirmwareFile::from(file))
+			Box::new(ELFFirmwareFile::try_from(file)?)
 		} else if &signature[0..1] == b":" {
 			Box::new(IntelHexFirmwareFile::from(file))
 		} else {
