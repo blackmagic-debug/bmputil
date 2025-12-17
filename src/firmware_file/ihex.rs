@@ -111,19 +111,21 @@ impl TryFrom<&mut File> for IntelHexRecord
 		let mut data = [0; 2];
 		file.read_exact(&mut data)?;
 		let byte_count = u8::from_str_radix(str::from_utf8(&data)?, 16)?;
-		actual_checksum += byte_count;
+		actual_checksum = actual_checksum.wrapping_add(byte_count);
 
 		// Read 4 bytes to interpret as an address
 		let mut data = [0; 4];
 		file.read_exact(&mut data)?;
 		let address = u16::from_str_radix(str::from_utf8(&data)?, 16)?;
-		actual_checksum += ((address >> 8) as u8) + (address as u8);
+		actual_checksum = actual_checksum
+			.wrapping_add((address >> 8) as u8)
+			.wrapping_add(address as u8);
 
 		// Read 2 bytes to interpret as the record type
 		let mut data = [0; 2];
 		file.read_exact(&mut data)?;
 		let record_type = u8::from_str_radix(str::from_utf8(&data)?, 16)?;
-		actual_checksum += record_type;
+		actual_checksum = actual_checksum.wrapping_add(record_type);
 
 		// Read byte_count byte pairs into a buffer sized to take it
 		let len = byte_count as usize;
@@ -134,14 +136,15 @@ impl TryFrom<&mut File> for IntelHexRecord
 			let begin = idx * 2;
 			let end = begin + 2;
 			bytes[idx] =  u8::from_str_radix(str::from_utf8(&bytes[begin..end])?, 16)?;
-			actual_checksum += bytes[idx];
+			actual_checksum = actual_checksum.wrapping_add(bytes[idx]);
 		}
 
 		// Read 2 bytes to interpret as the checksum
 		let mut data = [0; 2];
 		file.read_exact(&mut data)?;
 		let expected_checksum = u8::from_str_radix(str::from_utf8(&data)?, 16)?;
-		if expected_checksum != !actual_checksum {
+		// Two's complement the checksum to check it
+		if expected_checksum != (!actual_checksum).wrapping_add(1) {
 			return Err(eyre!("Checksum invalid for ihex record"));
 		}
 
