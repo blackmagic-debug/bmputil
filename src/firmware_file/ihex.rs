@@ -2,15 +2,17 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
-use std::fs::File;
-use std::io::Read;
+use std::{fs::File, io::ErrorKind};
+use std::io::{Read, Seek};
 
 use color_eyre::eyre::{Report, Result, eyre};
-use owo_colors::OwoColorize;
+use log::debug;
 
 use super::FirmwareStorage;
 
-pub struct IntelHexFirmwareFile {}
+pub struct IntelHexFirmwareFile {
+	records: Box<[IntelHexRecord]>,
+}
 
 struct IntelHexRecord
 {
@@ -32,17 +34,42 @@ enum IntelHexRecordType
 	StartLinearAddress = 0x05,
 }
 
-impl From<File> for IntelHexFirmwareFile
+impl TryFrom<File> for IntelHexFirmwareFile
 {
-	fn from(_file: File) -> Self
+	type Error = Report;
+
+	fn try_from(mut file: File) -> Result<Self>
 	{
-		eprintln!(
-			"{} The specified firmware file appears to be an Intel HEX file, but Intel HEX files are not currently \
-			 supported. Please use a binary file (e.g. blackmagic.bin), or an ELF (e.g. blackmagic.elf) to flash.",
-			"Error:".red()
-		);
-		std::process::exit(1);
-		// Self {}
+		debug!("Loading file as Intel HEX firmware binary");
+
+		// Set up a vec to receive the records, and a buffer to receive newline characters
+		let mut records = Vec::new();
+		let mut buf = [0];
+		let mut eof =  false;
+		while !eof {
+			// Try to read a record and stuff it into the records vec
+			records.push(IntelHexRecord::try_from(&mut file)?);
+			// Read characters and test if they're new lines
+			while !eof {
+				match file.read(&mut buf) {
+					Ok(0) => eof = true,
+					Ok(_) => {
+						// `buf` now contains a valid character.. see what it was
+						if !matches!(buf[0], b'\r' | b'\n') {
+							file.seek_relative(-1)?;
+							break;
+						}
+					},
+					Err(ref error) if error.kind() == ErrorKind::Interrupted => {},
+					Err(error) => return Err(error.into()),
+				}
+			}
+		};
+		debug!("Read {} records", records.len());
+
+		Ok(Self {
+			records: records.into_boxed_slice()
+		})
 	}
 }
 
@@ -55,13 +82,17 @@ impl FirmwareStorage for IntelHexFirmwareFile
 
 	fn firmware_data(&self) -> &[u8]
 	{
-		&[]
+		eprintln!("Persnickity");
+		std::process::exit(1);
+		// &[]
 	}
 }
 
-impl IntelHexRecord
+impl TryFrom<&mut File> for IntelHexRecord
 {
-	pub fn new(file: &mut File) -> Result<Self>
+	type Error = Report;
+
+	fn try_from(file: &mut File) -> Result<Self>
 	{
 		let mut data = [0];
 		// Consume bytes from `file` till we find an opening `:`
