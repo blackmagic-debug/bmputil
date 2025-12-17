@@ -91,12 +91,14 @@ impl Firmware
 		let firmware_type = self.firmware_type;
 		// Pull out the data to program
 		let firmware_data = self.firmware_file.data();
+		// Pull out the length of the firmware image and make it a u64
+		let firmware_length = self.firmware_file.len() as u64;
 
 		// We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
 		// so it must be moved into the closure. However, since we need to call .finish() here,
 		// it must be owned by both. Hence: Rc<T>.
 		// Default template: `{wide_bar} {pos}/{len}`.
-		let progress_bar = ProgressBar::new(firmware_data.len() as u64).with_style(
+		let progress_bar = ProgressBar::new(firmware_length).with_style(
 			ProgressStyle::default_bar()
 				.template(" {percent:>3}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]")
 				.unwrap(),
@@ -119,7 +121,7 @@ impl Firmware
 		let dfu_iface = result?;
 		info!("Flash complete!");
 
-		if progress_bar.position() == (firmware_data.len() as u64) {
+		if progress_bar.position() == firmware_length {
 			device.reboot(dfu_iface)
 		} else {
 			Err(eyre!("Failed to flash device, download incomplete"))
