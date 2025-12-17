@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+use std::iter::zip;
 use std::ops::Range;
 use std::{collections::BTreeMap, fs::File, io::Read};
 
@@ -15,7 +16,8 @@ use super::FirmwareStorage;
 pub struct ELFFirmwareFile
 {
 	contents: Box<[u8]>,
-	segments: BTreeMap<u32, Range<usize>>
+	segments: BTreeMap<u32, Range<usize>>,
+	firmware_image: Box<[u8]>,
 }
 
 impl TryFrom<File> for ELFFirmwareFile
@@ -42,18 +44,74 @@ impl TryFrom<File> for ELFFirmwareFile
 		// Extract loadable non-zero-length program headers
 		let segments = elf.program_headers
 			.iter()
-			.flat_map(|header|
-			{
+			.flat_map(|header| {
 				// Map into base address + file byte range for the data covered by the segment
 				(header.p_type == PT_LOAD && header.p_filesz != 0)
 					.then_some((header.p_paddr as u32, header.file_range()))
 			})
 			.collect::<BTreeMap<_, _>>();
 
-		Ok(Self {
+		// Make one of ourself
+		let mut result = Self {
 			contents,
 			segments,
-		})
+			firmware_image: Box::default(),
+		};
+		// Use the data to make the firmware image
+		result.build_firmware_image();
+
+		Ok(result)
+	}
+}
+
+impl ELFFirmwareFile
+{
+	fn build_firmware_image(&mut self)
+	{
+		// Figure out where the first segment sits
+		let load_address = self.load_address().unwrap_or(0);
+
+		// Extract slices for each of the segments ready to flatten out
+		let segments_data = self.segments
+			.values()
+			.map(|range| {
+				&self.contents[range.clone()]
+			})
+			.collect::<Vec<_>>();
+
+		// Extract a set of position and length ranges
+		let segment_ranges = self.segments
+			.iter()
+			.map(|(&address, range)| {
+				address..address + (range.len() as u32)
+			})
+			.collect::<Vec<_>>();
+
+		// Figure out the total length of the flattened firmware image to allocate
+		let total_length = segment_ranges
+			.clone()
+			.into_iter()
+			.reduce(|a, b| {
+				a.start..b.end
+			})
+			.map(|range| range.len())
+			.unwrap_or(0);
+
+		// Allocate enough memory to hold the completely flattened firmware image
+		// and initialise it to the erased byte value
+		let mut firmware_image = vec![0xffu8; total_length].into_boxed_slice();
+
+		// Loop through all the segments of data and copy them to their final resting places
+		// in the flattened image
+		for (segment, position) in zip(segments_data, segment_ranges) {
+			// Calculate the location of the segment in the flattened image
+			let range = ((position.start - load_address) as usize)..((position.end - load_address) as usize);
+			// Grab the relevant slice and copy the segment data in
+			firmware_image[range].copy_from_slice(segment);
+		}
+
+		// Store the resulting image back on ourself
+		self.firmware_image = firmware_image;
 	}
 }
 
@@ -61,11 +119,12 @@ impl FirmwareStorage for ELFFirmwareFile
 {
 	fn load_address(&self) -> Option<u32>
 	{
-		None
+		// Extract the first segment (the map ordered them for us) and return its address
+		self.segments.first_key_value().map(|(&address, _)| address)
 	}
 
 	fn firmware_data(&self) -> &[u8]
 	{
-		&[]
+		&self.firmware_image
 	}
 }
