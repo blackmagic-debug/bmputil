@@ -496,22 +496,20 @@ impl BmpDevice
 	///
 	/// `progress` is a callback of the form `fn(just_written: usize)`, for callers to keep track of
 	/// the flashing process.
-	pub fn download<'r, R, P>(
+	pub fn download<'r, P>(
 		&mut self,
-		firmware: &'r R,
-		length: u32,
+		firmware: &'r [u8],
 		firmware_type: FirmwareType,
 		progress: P,
 	) -> Result<DfuSync>
 	where
-		&'r R: Read,
-		R: ?Sized,
 		P: Fn(usize) + 'static,
 	{
 		if self.mode == DfuOperatingMode::Runtime {
 			self.detach_and_enumerate().wrap_err("detaching device for download")?;
 		}
 
+		let length = firmware.len() as u32;
 		let load_address = self.platform.load_address(firmware_type);
 
 		let dfu_dev = DfuNusb::open(

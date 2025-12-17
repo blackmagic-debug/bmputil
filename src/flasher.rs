@@ -23,8 +23,7 @@ use crate::{AllowDangerous, BmpParams, FlashParams};
 pub struct Firmware
 {
 	firmware_type: FirmwareType,
-	data: Vec<u8>,
-	length: u32,
+	firmware_file: FirmwareFile,
 }
 
 impl Firmware
@@ -34,14 +33,10 @@ impl Firmware
 		Params: BmpParams + FlashParams,
 	{
 		let firmware_data = firmware_file.firmware_data();
-		let firmware_length = firmware_data.len();
-		let firmware_length = u32::try_from(firmware_length)
-			.expect("firmware filesize exceeded 32 bits! Firmware binary must be invalid (too big)");
 
 		Ok(Self {
 			firmware_type: Self::determine_firmware_type(params, device, firmware_data)?,
-			data: firmware_data.to_vec(),
-			length: firmware_length,
+			firmware_file,
 		})
 	}
 
@@ -93,21 +88,24 @@ impl Firmware
 
 	pub fn program_firmware(&self, device: &mut BmpDevice) -> Result<()>
 	{
+		// Extract the firmware type as a value so it can be captured and moved (copied) by the progress lambda
+		let firmware_type = self.firmware_type;
+		// Pull out the data to program
+		let firmware_data = self.firmware_file.firmware_data();
+
 		// We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
 		// so it must be moved into the closure. However, since we need to call .finish() here,
 		// it must be owned by both. Hence: Rc<T>.
 		// Default template: `{wide_bar} {pos}/{len}`.
-		let progress_bar = ProgressBar::new(self.length as u64).with_style(
+		let progress_bar = ProgressBar::new(firmware_data.len() as u64).with_style(
 			ProgressStyle::default_bar()
 				.template(" {percent:>3}% |{bar:50}| {bytes}/{total_bytes} [{binary_bytes_per_sec} {elapsed}]")
 				.unwrap(),
 		);
 		let progress_bar = Rc::new(progress_bar);
 		let enclosed = Rc::clone(&progress_bar);
-		// Extract the firmware type as a value so it can be captured and moved (copied) by the progress lambda
-		let firmware_type = self.firmware_type;
 
-		let result = device.download(&*self.data, self.length, firmware_type, move |flash_pos_delta| {
+		let result = device.download(firmware_data, firmware_type, move |flash_pos_delta| {
 			// Don't actually print flashing until the erasing has finished.
 			if enclosed.position() == 0 {
 				if firmware_type == FirmwareType::Application {
@@ -122,7 +120,7 @@ impl Firmware
 		let dfu_iface = result?;
 		info!("Flash complete!");
 
-		if progress_bar.position() == (self.length as u64) {
+		if progress_bar.position() == (firmware_data.len() as u64) {
 			device.reboot(dfu_iface)
 		} else {
 			Err(eyre!("Failed to flash device, download incomplete"))
