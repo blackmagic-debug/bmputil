@@ -66,4 +66,9 @@ impl FirmwareFile
 	{
 		self.inner.firmware_data()
 	}
+
+	pub fn firmware_len(&self) -> u32
+	{
+		self.inner.firmware_data().len() as u32
+	}
 }
