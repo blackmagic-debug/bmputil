@@ -12,7 +12,6 @@ use crate::bmp::FirmwareType;
 pub mod bmp;
 mod bmp_matcher;
 pub mod docs_viewer;
-pub mod elf;
 pub mod error;
 pub mod firmware_file;
 pub mod firmware_selector;
