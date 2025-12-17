@@ -7,6 +7,7 @@ use std::io::{Read, Seek};
 use std::path::Path;
 
 use color_eyre::eyre::{Context, Result, eyre};
+use log::debug;
 
 mod elf;
 mod ihex;
@@ -34,6 +35,8 @@ impl FirmwareFile
 	{
 		let mut file =
 			File::open(file_name).wrap_err_with(|| eyre!("Failed to read file {} as firmware", file_name.display()))?;
+
+		debug!("Reading firmware from {}", file_name.display());
 
 		let mut signature = [0u8; 4];
 		let _ = file.read(&mut signature)?;

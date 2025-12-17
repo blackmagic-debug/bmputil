@@ -10,6 +10,7 @@ use color_eyre::eyre::{Report, Result, eyre};
 use goblin::container::Endian;
 use goblin::elf::program_header::PT_LOAD;
 use goblin::elf::{Elf, header::{EI_CLASS, ELFCLASS32, EM_ARM, ET_EXEC}};
+use log::debug;
 
 use super::FirmwareStorage;
 
@@ -26,6 +27,7 @@ impl TryFrom<File> for ELFFirmwareFile
 
 	fn try_from(mut file: File) -> Result<Self>
 	{
+		debug!("Loading file as ELF firmware binary");
 		// Extract the contents of the ELF file into memory
 		let mut contents = Vec::new();
 		file.read_to_end(&mut contents)?;
@@ -50,6 +52,7 @@ impl TryFrom<File> for ELFFirmwareFile
 					.then_some((header.p_paddr as u32, header.file_range()))
 			})
 			.collect::<BTreeMap<_, _>>();
+		debug!("Consuming {} segments from file", segments.len());
 
 		// Make one of ourself
 		let mut result = Self {
@@ -70,6 +73,7 @@ impl ELFFirmwareFile
 	{
 		// Figure out where the first segment sits
 		let load_address = self.load_address().unwrap_or(0);
+		debug!("Firmware image loads at 0x{load_address:08x}");
 
 		// Extract slices for each of the segments ready to flatten out
 		let segments_data = self.segments
@@ -96,6 +100,7 @@ impl ELFFirmwareFile
 			})
 			.map(|range| range.len())
 			.unwrap_or(0);
+		debug!("Firmware is {total_length} bytes long flattened");
 
 		// Allocate enough memory to hold the completely flattened firmware image
 		// and initialise it to the erased byte value

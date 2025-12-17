@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::Read;
 
 use color_eyre::eyre::{Report, Result};
+use log::debug;
 
 use super::FirmwareStorage;
 
@@ -20,6 +21,7 @@ impl TryFrom<File> for RawFirmwareFile
 
 	fn try_from(mut file: File) -> Result<Self>
 	{
+		debug!("Loading file as raw firmware binary");
 		// Pull out the entire file contents into memory and stuff it in a vec
 		let mut contents = Vec::new();
 		file.read_to_end(&mut contents)?;
