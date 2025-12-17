@@ -7,14 +7,15 @@
 use clap::ValueEnum;
 use clap::builder::PossibleValue;
 
-use crate::bmp::FirmwareType;
+use crate::firmware_type::FirmwareType;
 
 pub mod bmp;
 mod bmp_matcher;
 pub mod docs_viewer;
 pub mod error;
-pub mod firmware_file;
+mod firmware_file;
 pub mod firmware_selector;
+pub mod firmware_type;
 pub mod flasher;
 pub mod metadata;
 pub mod probe_identity;
