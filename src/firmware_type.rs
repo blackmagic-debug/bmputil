@@ -88,7 +88,7 @@ impl FirmwareType
 
         // If the firmware doesn't have a known load address, fall back to figuring it out
         // from the NVIC table at the front of the image
-		let buffer = &firmware_file.firmware_data()[0..(4 * 2)];
+		let buffer = &firmware_file.data()[0..(4 * 2)];
 
 		let vector_table = Armv7mVectorTable::from_bytes(buffer);
 		let reset_vector = vector_table

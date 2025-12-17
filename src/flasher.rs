@@ -38,6 +38,7 @@ impl Firmware
 		})
 	}
 
+	// XXX: Move me to FirmwareFile?
 	fn determine_firmware_type<Params>(
 		params: &Params,
 		device: &BmpDevice,
@@ -89,7 +90,7 @@ impl Firmware
 		// Extract the firmware type as a value so it can be captured and moved (copied) by the progress lambda
 		let firmware_type = self.firmware_type;
 		// Pull out the data to program
-		let firmware_data = self.firmware_file.firmware_data();
+		let firmware_data = self.firmware_file.data();
 
 		// We need an Rc<T> as [`dfu_core::sync::DfuSync`] requires `progress` to be 'static,
 		// so it must be moved into the closure. However, since we need to call .finish() here,
