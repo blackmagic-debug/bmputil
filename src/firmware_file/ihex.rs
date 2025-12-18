@@ -157,7 +157,7 @@ impl FirmwareStorage for IntelHexFirmwareFile
 {
 	fn load_address(&self) -> Option<u32>
 	{
-		None
+		self.segments.first_key_value().map(|(&address, _)| address)
 	}
 
 	fn firmware_data(&self) -> &[u8]
