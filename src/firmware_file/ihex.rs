@@ -10,16 +10,17 @@ use log::debug;
 
 use super::FirmwareStorage;
 
-pub struct IntelHexFirmwareFile {
-	records: Box<[IntelHexRecord]>,
+pub struct IntelHexFirmwareFile
+{
+	segments: Box<[IntelHexSegment]>,
 }
 
 struct IntelHexRecord
 {
-	byte_count: u8,
-	address: u16,
-	record_type: IntelHexRecordType,
-	data: [u8; 255],
+	pub byte_count: u8,
+	pub address: u16,
+	pub record_type: IntelHexRecordType,
+	pub data: [u8; 255],
 }
 
 #[repr(u8)]
@@ -32,6 +33,12 @@ enum IntelHexRecordType
 	StartSegmentAddress = 0x03,
 	ExtendedLinearAddress = 0x04,
 	StartLinearAddress = 0x05,
+}
+
+struct IntelHexSegment
+{
+	base_address: u32,
+	data: Box<[u8]>,
 }
 
 impl TryFrom<File> for IntelHexFirmwareFile
@@ -64,12 +71,80 @@ impl TryFrom<File> for IntelHexFirmwareFile
 					Err(error) => return Err(error.into()),
 				}
 			}
-		};
+		}
 		debug!("Read {} records", records.len());
 
+		// Process all the records from the file into segment data
+		let segments = IntelHexSegment::from_records(&records)?;
+
 		Ok(Self {
-			records: records.into_boxed_slice()
+			segments,
 		})
+	}
+}
+
+impl IntelHexSegment
+{
+	pub fn from_records(records: &[IntelHexRecord]) -> Result<Box<[Self]>>
+	{
+		let mut base_address = 0;
+		let mut begin_address = 0;
+		let mut end_address = 0;
+		let mut segment_data = Vec::new();
+		let mut segments = Vec::new();
+
+		for (idx, record) in records.iter().enumerate() {
+			match record.record_type {
+				IntelHexRecordType::Data => {
+					// Compute the block's address, and make its length usize
+					let address = base_address + record.address as u32;
+					let length = record.byte_count as usize;
+					// If this is not contiguous with the last end address, build a segment and
+					// set things up to take more data
+					if end_address != address {
+						if end_address != begin_address {
+							segments.push(Self {
+								base_address: begin_address,
+								data: segment_data.into_boxed_slice(),
+							});
+						}
+						begin_address = address;
+						end_address = address;
+						segment_data = Vec::new();
+					}
+					// Add the data from this record to the segment data
+					segment_data.extend_from_slice(&record.data[0..length]);
+					end_address += length as u32;
+				},
+				IntelHexRecordType::EndOfFile => {
+					// Check that the EOF record is actually the last one
+					if idx + 1 != records.len() {
+						return Err(eyre!("Premature EOF record found, invalid Intel HEX file"));
+					}
+					// Take any remaining segment data and shove that into the segments vec
+					if end_address != begin_address {
+						segments.push(Self {
+							base_address: begin_address,
+							data: segment_data.into_boxed_slice(),
+						});
+						segment_data = Vec::new();
+					}
+				},
+				IntelHexRecordType::ExtendedLinearAddress => {
+					let bytes = record.data[0..2].try_into()?;
+					let address_high = u16::from_be_bytes(bytes);
+					base_address = (address_high as u32) << 16;
+				},
+				IntelHexRecordType::StartLinearAddress => {
+					let bytes = record.data[0..4].try_into()?;
+					base_address = u32::from_be_bytes(bytes);
+				},
+				_ => todo!(),
+			}
+		}
+
+		debug!("Recovered {} segments from data stream", segments.len());
+		Ok(segments.into_boxed_slice())
 	}
 }
 
