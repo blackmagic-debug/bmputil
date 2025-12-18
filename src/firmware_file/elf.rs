@@ -2,14 +2,17 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::Read;
 use std::iter::zip;
 use std::ops::Range;
-use std::{collections::BTreeMap, fs::File, io::Read};
 
 use color_eyre::eyre::{Report, Result, eyre};
 use goblin::container::Endian;
+use goblin::elf::Elf;
+use goblin::elf::header::{EI_CLASS, ELFCLASS32, EM_ARM, ET_EXEC};
 use goblin::elf::program_header::PT_LOAD;
-use goblin::elf::{Elf, header::{EI_CLASS, ELFCLASS32, EM_ARM, ET_EXEC}};
 use log::debug;
 
 use super::FirmwareStorage;
@@ -38,13 +41,17 @@ impl TryFrom<File> for ELFFirmwareFile
 
 		// Validate the header is for a 32-bit ARM device
 		let header = elf.header;
-		if header.e_type != ET_EXEC || header.e_machine != EM_ARM ||
-			header.endianness()? != Endian::Little || header.e_ident[EI_CLASS] != ELFCLASS32 {
+		if header.e_type != ET_EXEC ||
+			header.e_machine != EM_ARM ||
+			header.endianness()? != Endian::Little ||
+			header.e_ident[EI_CLASS] != ELFCLASS32
+		{
 			return Err(eyre!("ELF does not represent firmware for a Black Magic Debug device"));
 		}
 
 		// Extract loadable non-zero-length program headers
-		let segments = elf.program_headers
+		let segments = elf
+			.program_headers
 			.iter()
 			.flat_map(|header| {
 				// Map into base address + file byte range for the data covered by the segment
@@ -76,28 +83,24 @@ impl ELFFirmwareFile
 		debug!("Firmware image loads at 0x{load_address:08x}");
 
 		// Extract slices for each of the segments ready to flatten out
-		let segments_data = self.segments
+		let segments_data = self
+			.segments
 			.values()
-			.map(|range| {
-				&self.contents[range.clone()]
-			})
+			.map(|range| &self.contents[range.clone()])
 			.collect::<Vec<_>>();
 
 		// Extract a set of position and length ranges
-		let segment_ranges = self.segments
+		let segment_ranges = self
+			.segments
 			.iter()
-			.map(|(&address, range)| {
-				address..address + (range.len() as u32)
-			})
+			.map(|(&address, range)| address..address + (range.len() as u32))
 			.collect::<Vec<_>>();
 
 		// Figure out the total length of the flattened firmware image to allocate
 		let total_length = segment_ranges
 			.clone()
 			.into_iter()
-			.reduce(|a, b| {
-				a.start..b.end
-			})
+			.reduce(|a, b| a.start..b.end)
 			.map(|range| range.len())
 			.unwrap_or(0);
 		debug!("Firmware is {total_length} bytes long flattened");
