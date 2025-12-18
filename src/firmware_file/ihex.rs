@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
-use std::{fs::File, io::ErrorKind};
-use std::io::{Read, Seek};
+use std::fs::File;
+use std::io::{ErrorKind, Read, Seek};
 
 use color_eyre::eyre::{Report, Result, eyre};
 use log::debug;
@@ -45,7 +45,7 @@ impl TryFrom<File> for IntelHexFirmwareFile
 		// Set up a vec to receive the records, and a buffer to receive newline characters
 		let mut records = Vec::new();
 		let mut buf = [0];
-		let mut eof =  false;
+		let mut eof = false;
 		while !eof {
 			// Try to read a record and stuff it into the records vec
 			records.push(IntelHexRecord::try_from(&mut file)?);
@@ -135,7 +135,7 @@ impl TryFrom<&mut File> for IntelHexRecord
 		for idx in 0..len {
 			let begin = idx * 2;
 			let end = begin + 2;
-			bytes[idx] =  u8::from_str_radix(str::from_utf8(&bytes[begin..end])?, 16)?;
+			bytes[idx] = u8::from_str_radix(str::from_utf8(&bytes[begin..end])?, 16)?;
 			actual_checksum = actual_checksum.wrapping_add(bytes[idx]);
 		}
 
@@ -152,10 +152,14 @@ impl TryFrom<&mut File> for IntelHexRecord
 		let mut data = [0xff; 255];
 		data[0..len].copy_from_slice(&bytes[0..len]);
 
+		// Convert the record type and do any record-specific validation
+		let record_type = IntelHexRecordType::try_from(record_type)?;
+		record_type.validate_byte_count(byte_count)?;
+
 		Ok(Self {
 			byte_count,
 			address,
-			record_type: IntelHexRecordType::try_from(record_type)?,
+			record_type,
 			data,
 		})
 	}
@@ -175,6 +179,37 @@ impl TryFrom<u8> for IntelHexRecordType
 			4 => Ok(Self::ExtendedLinearAddress),
 			5 => Ok(Self::StartLinearAddress),
 			_ => Err(eyre!("Invalid record type {value} found")),
+		}
+	}
+}
+
+impl IntelHexRecordType
+{
+	pub fn validate_byte_count(&self, byte_count: u8) -> Result<()>
+	{
+		match self {
+			Self::EndOfFile => {
+				if byte_count == 0 {
+					Ok(())
+				} else {
+					Err(eyre!("Invalid EOF, expected 0 bytes in record, got {byte_count}"))
+				}
+			},
+			Self::ExtendedSegmentAddress | Self::ExtendedLinearAddress => {
+				if byte_count == 2 {
+					Ok(())
+				} else {
+					Err(eyre!("Invalid extended address record, expected 2 bytes, got {byte_count}"))
+				}
+			},
+			Self::StartSegmentAddress | Self::StartLinearAddress => {
+				if byte_count == 4 {
+					Ok(())
+				} else {
+					Err(eyre!("Invalid extended address record, expected 4 bytes, got {byte_count}"))
+				}
+			},
+			_ => Ok(()),
 		}
 	}
 }
