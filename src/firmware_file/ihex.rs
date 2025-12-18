@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Seek};
 
@@ -12,7 +13,7 @@ use super::FirmwareStorage;
 
 pub struct IntelHexFirmwareFile
 {
-	segments: Box<[IntelHexSegment]>,
+	segments: BTreeMap<u32, Box<[u8]>>,
 }
 
 struct IntelHexRecord
@@ -75,7 +76,11 @@ impl TryFrom<File> for IntelHexFirmwareFile
 		debug!("Read {} records", records.len());
 
 		// Process all the records from the file into segment data
-		let segments = IntelHexSegment::from_records(&records)?;
+		let segments = IntelHexSegment::from_records(&records)?
+			.into_iter()
+			// Remap the segments to turn them into a BTreeMap so we get them all in address order
+			.map(|segment| (segment.base_address, segment.data))
+			.collect();
 
 		Ok(Self {
 			segments,
