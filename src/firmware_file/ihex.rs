@@ -14,6 +14,7 @@ use super::FirmwareStorage;
 pub struct IntelHexFirmwareFile
 {
 	segments: BTreeMap<u32, Box<[u8]>>,
+	firmware_image: Box<[u8]>,
 }
 
 struct IntelHexRecord
@@ -82,9 +83,52 @@ impl TryFrom<File> for IntelHexFirmwareFile
 			.map(|segment| (segment.base_address, segment.data))
 			.collect();
 
-		Ok(Self {
+		// Make one of ourself with the segments data we've now collected
+		let mut result = Self {
 			segments,
-		})
+			firmware_image: Box::default(),
+		};
+		// Use the data to make the firmware image
+		result.build_firmware_image();
+
+		Ok(result)
+	}
+}
+
+impl IntelHexFirmwareFile
+{
+	fn build_firmware_image(&mut self)
+	{
+		// Figure out where the first segment sits
+		let load_address = self.load_address().unwrap_or(0);
+		debug!("Firmware image loads at 0x{load_address:08x}");
+
+		// Figure out the total length of the flattened firmware image to allocate
+		let total_length = self
+			.segments
+			.iter()
+			.map(|(&base_address, segment)| base_address..base_address + segment.len() as u32)
+			.reduce(|a, b| a.start..b.end)
+			.map(|range| range.len())
+			.unwrap_or(0);
+		debug!("Firmware is {total_length} bytes long flattened");
+
+		// Allocate enough memory to hold the completely flattened firmware image
+		// and initialise it to the erased byte value
+		let mut firmware_image = vec![0xffu8; total_length].into_boxed_slice();
+
+		// Loop through all the segments of data and copy them to their final resting places
+		// in the flattened image
+		for (base_address, segment) in &self.segments {
+			// Calculate the location of the segment in the flattened image
+			let begin = (base_address - load_address) as usize;
+			let range = begin..begin + segment.len();
+			// Grab the relevant slice and copy the segment data in
+			firmware_image[range].copy_from_slice(segment);
+		}
+
+		// Store the resulting image back on ourself
+		self.firmware_image = firmware_image;
 	}
 }
 
@@ -162,9 +206,7 @@ impl FirmwareStorage for IntelHexFirmwareFile
 
 	fn firmware_data(&self) -> &[u8]
 	{
-		eprintln!("Persnickity");
-		std::process::exit(1);
-		// &[]
+		&self.firmware_image
 	}
 }
 
