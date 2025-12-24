@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: 2025 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
+// SPDX-FileContributor: Modified by P-Storm <pauldeman@gmail.com>
 
 use std::fmt::Display;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -15,7 +16,7 @@ use crate::serial::remote::protocol_v3::RemoteV3;
 use crate::serial::remote::riscv_debug::RiscvDmi;
 use crate::serial::remote::{
 	Align, BmdAdiV5Protocol, BmdJtagProtocol, BmdRemoteProtocol, BmdRiscvProtocol, BmdSwdProtocol, JtagDev,
-	REMOTE_RESP_NOTSUP, REMOTE_RESP_OK, TargetAddr64, TargetArchitecture, TargetFamily, decode_response,
+	RemoteResponse, TargetAddr64, TargetArchitecture, TargetFamily, decode_response,
 };
 
 pub struct RemoteV4
@@ -87,7 +88,7 @@ impl RemoteV4
 		let buffer = iface.buffer_read()?;
 		drop(iface);
 		// Check for communication failures
-		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+		if buffer.is_empty() || buffer.as_bytes()[0] != RemoteResponse::RESP_OK {
 			return Err(eyre!(
 				"Error talking with probe, expected OK response to supported accelerations query, got {:?}",
 				buffer
@@ -180,14 +181,16 @@ impl BmdRemoteProtocol for RemoteV4
 		self.interface().buffer_write(REMOTE_HL_ARCHS)?;
 		let buffer = self.interface().buffer_read()?;
 		// Check too see if that failed for some reason
-		if buffer.is_empty() || (buffer.as_bytes()[0] != REMOTE_RESP_OK && buffer.as_bytes()[0] != REMOTE_RESP_NOTSUP) {
+		if buffer.is_empty() ||
+			(buffer.as_bytes()[0] != RemoteResponse::RESP_OK && buffer.as_bytes()[0] != RemoteResponse::RESP_NOTSUP)
+		{
 			let message = if buffer.len() > 1 {
 				&buffer[1..]
 			} else {
 				"unknown"
 			};
 			Err(eyre!("Supported architectures request failed, error {}", message))
-		} else if buffer.as_bytes()[0] == REMOTE_RESP_NOTSUP {
+		} else if buffer.as_bytes()[0] == RemoteResponse::RESP_NOTSUP {
 			// If we get here, the probe talks v4 but doesn't know this command - meaning pre-v2.0.0 firmware
 			// but post-v1.10.2. Ask the user to upgrade off development firmware onto the release or later.
 			warn!("Please upgrade your firmware to allow checking supported target architectures to work properly");
@@ -205,14 +208,16 @@ impl BmdRemoteProtocol for RemoteV4
 		self.interface().buffer_write(REMOTE_HL_FAMILIES)?;
 		let buffer = self.interface().buffer_read()?;
 		// Check too see if that failed for some reason
-		if buffer.is_empty() || (buffer.as_bytes()[0] != REMOTE_RESP_OK && buffer.as_bytes()[0] != REMOTE_RESP_NOTSUP) {
+		if buffer.is_empty() ||
+			(buffer.as_bytes()[0] != RemoteResponse::RESP_OK && buffer.as_bytes()[0] != RemoteResponse::RESP_NOTSUP)
+		{
 			let message = if buffer.len() > 1 {
 				&buffer[1..]
 			} else {
 				"unknown"
 			};
 			Err(eyre!("Supported architectures request failed, error {}", message))
-		} else if buffer.as_bytes()[0] == REMOTE_RESP_NOTSUP {
+		} else if buffer.as_bytes()[0] == RemoteResponse::RESP_NOTSUP {
 			// If we get here, the probe talks v4 but doesn't know this command - meaning pre-v2.0.0 firmware
 			// but post-v1.10.2. Ask the user to upgrade off development firmware onto the release or later.
 			warn!("Please upgrade your firmware to allow checking supported target families to work properly");
@@ -227,6 +232,16 @@ impl BmdRemoteProtocol for RemoteV4
 	fn get_target_power_state(&self) -> Result<bool>
 	{
 		self.inner_protocol.get_target_power_state()
+	}
+
+	fn get_nrst_voltage(&self) -> Result<f32>
+	{
+		self.inner_protocol.get_nrst_voltage()
+	}
+
+	fn get_nrst_val(&self) -> Result<bool>
+	{
+		self.inner_protocol.get_nrst_val()
 	}
 }
 

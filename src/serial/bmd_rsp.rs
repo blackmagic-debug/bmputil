@@ -18,13 +18,10 @@ pub struct BmdRspInterface
 	handle: File,
 	protocol_version: ProtocolVersion,
 
-	read_buffer: [u8; REMOTE_MAX_MSG_SIZE],
+	read_buffer: [u8; RemoteResponse::MAX_MSG_SIZE],
 	read_buffer_fullness: usize,
 	read_buffer_offset: usize,
 }
-
-const REMOTE_START: &str = "+#!GA#";
-const REMOTE_HL_CHECK: &str = "!HC#";
 
 impl BmdRspInterface
 {
@@ -35,7 +32,7 @@ impl BmdRspInterface
 		let handle = File::options().read(true).write(true).open(serial_port)?;
 
 		// Construct an interface object
-		let mut result = Self {
+		let mut interface = Self {
 			handle,
 			// We start out by not knowing what version of protocol the probe talks
 			protocol_version: ProtocolVersion::Unknown,
@@ -44,20 +41,66 @@ impl BmdRspInterface
 			// probe responses, being mindful that there's no good way to find out
 			// how much data is waiting for us from the probe, so it's this or use
 			// a read call a byte, which is extremely expensive!
-			read_buffer: [0; REMOTE_MAX_MSG_SIZE],
+			read_buffer: [0; RemoteResponse::MAX_MSG_SIZE],
 			read_buffer_fullness: 0,
 			read_buffer_offset: 0,
 		};
 
 		// Call the OS-specific handle configuration function to ready
 		// the interface handle for use with the remote serial protocol
-		result.init_handle()?;
+		interface.init_handle()?;
 
 		// Start remote protocol communications with the probe
-		result.buffer_write(REMOTE_START)?;
-		let buffer = result.buffer_read()?;
+		Self::start_probe_communication(&mut interface)?;
+
+		// Next, ask the probe for its protocol version number.
+		// For historical reasons this is part of the "high level" protocol set, but is
+		// actually a general request.
+		interface.protocol_version = Self::protocol_version(&mut interface)?;
+		trace!("Probe talks BMD RSP {}", interface.protocol_version);
+
+		// Now the object is ready to go, return it to the caller
+		Ok(interface)
+	}
+
+	fn protocol_version(interface: &mut BmdRspInterface) -> Result<ProtocolVersion>
+	{
+		interface.buffer_write(RemoteCommands::HL_CHECK)?;
+		let buffer = interface.buffer_read()?;
+
+		// Check for communication failures, it should respond with at least 1 character
+		let (first, rest) = buffer
+			.split_at_checked(1)
+			.ok_or_else(|| eyre!("Probe failed to respond at all to protocol version request"))?;
+
+		match (first.as_bytes()[0], rest) {
+			// If the request failed by way of a not implemented response, we're on a v0 protocol probe
+			(RemoteResponse::RESP_NOTSUP, _) => Ok(ProtocolVersion::V0),
+			(RemoteResponse::RESP_OK, rest) => {
+				// Parse out the version number from the response
+				let version = decode_response(&rest, 8);
+				// Then decode/translate that to a protocol version enum value
+				match version {
+					// Protocol version number 0 coresponds to an enchanced v0 probe protocol ("v0+")
+					0 => Ok(ProtocolVersion::V0Plus),
+					1 => Ok(ProtocolVersion::V1),
+					2 => Ok(ProtocolVersion::V2),
+					3 => Ok(ProtocolVersion::V3),
+					4 => Ok(ProtocolVersion::V4),
+					_ => Err(eyre!("Unknown remote protocol version {}", version)),
+				}
+			},
+			// If the probe responded with anything other than OK or not supported, we're done
+			_ => Err(eyre!("Probe responded improperly to protocol version request with {}", buffer)),
+		}
+	}
+
+	fn start_probe_communication(interface: &mut BmdRspInterface) -> Result<()>
+	{
+		interface.buffer_write(RemoteCommands::START)?;
+		let buffer = interface.buffer_read()?;
 		// Check if that failed for any reason
-		if buffer.is_empty() || buffer.as_bytes()[0] != REMOTE_RESP_OK {
+		if buffer.is_empty() || buffer.as_bytes()[0] != RemoteResponse::RESP_OK {
 			let message = if buffer.len() > 1 {
 				&buffer[1..]
 			} else {
@@ -66,41 +109,9 @@ impl BmdRspInterface
 			return Err(eyre!("Remote protocol startup failed, error {}", message));
 		}
 		// It did not, grand - we now have the firmware version string, so log it
-		debug!("Remote is {}", &buffer[1..]);
-
-		// Next, ask the probe for its protocol version number.
-		// For historical reasons this is part of the "high level" protocol set, but is
-		// actually a general request.
-		result.buffer_write(REMOTE_HL_CHECK)?;
-		let buffer = result.buffer_read()?;
-		// Check for communication failures
-		if buffer.is_empty() {
-			return Err(eyre!("Probe failed to respond at all to protocol version request"));
-		} else if buffer.as_bytes()[0] != REMOTE_RESP_OK && buffer.as_bytes()[0] != REMOTE_RESP_NOTSUP {
-			// If the probe responded with anything other than OK or not supported, we're done
-			return Err(eyre!("Probe responded improperly to protocol version request with {}", buffer));
-		}
-		// If the request failed by way of a not implemented response, we're on a v0 protocol probe
-		if buffer.as_bytes()[0] == REMOTE_RESP_NOTSUP {
-			result.protocol_version = ProtocolVersion::V0;
-		} else {
-			// Parse out the version number from the response
-			let version = decode_response(&buffer[1..], 8);
-			// Then decode/translate that to a protocol version enum value
-			result.protocol_version = match version {
-				// Protocol version number 0 coresponds to an enchanced v0 probe protocol ("v0+")
-				0 => ProtocolVersion::V0Plus,
-				1 => ProtocolVersion::V1,
-				2 => ProtocolVersion::V2,
-				3 => ProtocolVersion::V3,
-				4 => ProtocolVersion::V4,
-				_ => return Err(eyre!("Unknown remote protocol version {}", version)),
-			};
-		}
-		trace!("Probe talks BMD RSP {}", result.protocol_version);
-
-		// Now the object is ready to go, return it to the caller
-		Ok(result)
+		let firmware_version = &buffer[1..];
+		debug!("Remote is {}", firmware_version);
+		Ok(())
 	}
 
 	/// Extract the remote protocol object to use to talk with this probe
@@ -124,7 +135,7 @@ impl BmdRspInterface
 	{
 		// First drain the buffer till we see a start-of-response byte
 		let mut response = 0;
-		while response != REMOTE_RESP {
+		while response != RemoteResponse::RESP {
 			if self.read_buffer_offset == self.read_buffer_fullness {
 				self.read_more_data()?;
 			}
@@ -133,7 +144,7 @@ impl BmdRspInterface
 		}
 
 		// Now collect the response
-		let mut buffer = [0u8; REMOTE_MAX_MSG_SIZE];
+		let mut buffer = [0u8; RemoteResponse::MAX_MSG_SIZE];
 		let mut offset = 0;
 		while offset < buffer.len() {
 			// Check if we need more data or should use what's in the buffer already
@@ -145,7 +156,7 @@ impl BmdRspInterface
 			while self.read_buffer_offset + response_length < self.read_buffer_fullness &&
 				offset + response_length < buffer.len()
 			{
-				if self.read_buffer[self.read_buffer_offset + response_length] == REMOTE_EOM {
+				if self.read_buffer[self.read_buffer_offset + response_length] == RemoteResponse::EOM {
 					response_length += 1;
 					break;
 				}
@@ -158,7 +169,7 @@ impl BmdRspInterface
 			self.read_buffer_offset += response_length;
 			offset += response_length - 1;
 			// If this was because of REMOTE_EOM, return
-			if buffer[offset] == REMOTE_EOM {
+			if buffer[offset] == RemoteResponse::EOM {
 				buffer[offset] = 0;
 				let result = unsafe { String::from_utf8_unchecked(buffer[..offset].to_vec()) };
 				debug!("BMD RSP read: {}", result);
